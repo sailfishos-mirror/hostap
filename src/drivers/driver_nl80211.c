@@ -6798,9 +6798,25 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 	}
 
 	wpa_hexdump(MSG_DEBUG, "  * IEs", params->wpa_ie, params->wpa_ie_len);
-	if (params->wpa_ie &&
-	    nla_put(msg, NL80211_ATTR_IE, params->wpa_ie_len, params->wpa_ie))
+	if (drv->rsn_override && params->wpa_ie) {
+		u8 *pos, *ies = os_malloc(params->wpa_ie_len + 6);
+
+		if (!ies)
+			return -1;
+
+		os_memcpy(ies, params->wpa_ie, params->wpa_ie_len);
+		pos = &ies[params->wpa_ie_len];
+		*pos++ = WLAN_EID_VENDOR_SPECIFIC;
+		*pos++ = 4;
+		WPA_PUT_BE32(pos, RSNE_OVERRIDE_IE_VENDOR_TYPE);
+		if (nla_put(msg, NL80211_ATTR_IE, params->wpa_ie_len + 6, ies))
+			return -1;
+		os_free(ies);
+	} else if (params->wpa_ie &&
+		   nla_put(msg, NL80211_ATTR_IE, params->wpa_ie_len,
+			   params->wpa_ie)) {
 		return -1;
+	}
 
 	if (params->wpa_proto) {
 		enum nl80211_wpa_versions ver = 0;
@@ -9889,6 +9905,9 @@ static int nl80211_set_param(void *priv, const char *param)
 
 	if (os_strstr(param, "rsn_override_in_driver=1"))
 		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_RSN_OVERRIDE_STA;
+
+	if (os_strstr(param, "rsn_override=1"))
+		drv->rsn_override = 1;
 
 	return 0;
 }

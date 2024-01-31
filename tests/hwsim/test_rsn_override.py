@@ -214,3 +214,23 @@ def test_rsn_override_connect_cmd(dev, apdev):
     wpas.set("rsn_overriding", "1")
     wpas.connect(ssid, psk="12345678", key_mgmt="WPA-PSK-SHA256",
                  ieee80211w="2", scan_freq="2412")
+
+def test_rsn_override_drv_only(dev, apdev):
+    """RSNE=WPA2-Personal/PMF-optional override=WPA3-Personal/PMF-required using driver-only change"""
+    wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+    wpas.interface_add("wlan5", drv_params="rsn_override=1")
+    check_sae_capab(wpas)
+
+    ssid = "test-rsn-override"
+    params = hostapd.wpa2_params(ssid=ssid,
+                                 passphrase="12345678",
+                                 ieee80211w='1')
+    params['rsn_override_key_mgmt'] = 'WPA-PSK-SHA256'
+    params['rsn_override_pairwise'] = 'CCMP GCMP-256'
+    params['rsn_override_mfp'] = '2'
+    params['beacon_prot'] = '1'
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    wpas.set("rsn_overriding", "0")
+    wpas.connect(ssid, psk="12345678", key_mgmt="WPA-PSK-SHA256",
+                 ieee80211w="2", scan_freq="2412")

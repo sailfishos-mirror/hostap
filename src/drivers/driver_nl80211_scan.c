@@ -726,6 +726,50 @@ static int nl80211_scan_filtered(struct wpa_driver_nl80211_data *drv,
 }
 
 
+static u8 * override_rsn_ies(const u8 *ie, size_t *len)
+{
+	u8 *rsne, *rsnxe, *o_rsne, *o_rsnxe;
+	u8 *buf;
+
+	if (!ie)
+		return NULL;
+
+	if (!get_vendor_ie(ie, *len, RSNE_OVERRIDE_IE_VENDOR_TYPE))
+		return NULL;
+
+	buf = os_memdup(ie, *len);
+	if (!buf)
+		return NULL;
+	rsne = (u8 *) get_ie(buf, *len, WLAN_EID_RSN);
+	rsnxe = (u8 *) get_ie(buf, *len, WLAN_EID_RSNX);
+	o_rsne = (u8 *) get_vendor_ie(buf, *len, RSNE_OVERRIDE_IE_VENDOR_TYPE);
+	o_rsnxe = (u8 *) get_vendor_ie(buf, *len,
+				       RSNXE_OVERRIDE_IE_VENDOR_TYPE);
+	if (rsne)
+		rsne[0] = 254;
+	if (rsnxe)
+		rsnxe[0] = 254;
+
+	o_rsne[4] = WLAN_EID_RSN;
+	o_rsne[5] = o_rsne[1] - 4;
+	o_rsne[0] = 254;
+	o_rsne[1] = 2;
+	o_rsne[2] = 0xcc;
+	o_rsne[3] = 0xcc;
+
+	if (o_rsnxe) {
+		o_rsnxe[4] = WLAN_EID_RSNX;
+		o_rsnxe[5] = o_rsnxe[1] - 4;
+		o_rsnxe[0] = 254;
+		o_rsnxe[1] = 2;
+		o_rsnxe[2] = 0xee;
+		o_rsnxe[3] = 0xee;
+	}
+
+	return buf;
+}
+
+
 static struct wpa_scan_res *
 nl80211_parse_bss_info(struct wpa_driver_nl80211_data *drv,
 		       struct nl_msg *msg, const u8 *bssid)
@@ -754,6 +798,7 @@ nl80211_parse_bss_info(struct wpa_driver_nl80211_data *drv,
 	const u8 *ie, *beacon_ie;
 	size_t ie_len, beacon_ie_len;
 	u8 *pos;
+	u8 *ie_buf = NULL, *beacon_ie_buf = NULL;
 
 	nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
 		  genlmsg_attrlen(gnlh, 0), NULL);
@@ -768,6 +813,11 @@ nl80211_parse_bss_info(struct wpa_driver_nl80211_data *drv,
 	if (bss[NL80211_BSS_INFORMATION_ELEMENTS]) {
 		ie = nla_data(bss[NL80211_BSS_INFORMATION_ELEMENTS]);
 		ie_len = nla_len(bss[NL80211_BSS_INFORMATION_ELEMENTS]);
+		if (drv->rsn_override) {
+			ie_buf = override_rsn_ies(ie, &ie_len);
+			if (ie_buf)
+				ie = ie_buf;
+		}
 	} else {
 		ie = NULL;
 		ie_len = 0;
@@ -775,18 +825,30 @@ nl80211_parse_bss_info(struct wpa_driver_nl80211_data *drv,
 	if (bss[NL80211_BSS_BEACON_IES]) {
 		beacon_ie = nla_data(bss[NL80211_BSS_BEACON_IES]);
 		beacon_ie_len = nla_len(bss[NL80211_BSS_BEACON_IES]);
+		if (drv->rsn_override) {
+			beacon_ie_buf = override_rsn_ies(beacon_ie,
+							 &beacon_ie_len);
+			if (ie_buf)
+				beacon_ie = beacon_ie_buf;
+		}
 	} else {
 		beacon_ie = NULL;
 		beacon_ie_len = 0;
 	}
 
 	if (nl80211_scan_filtered(drv, ie ? ie : beacon_ie,
-				  ie ? ie_len : beacon_ie_len))
+				  ie ? ie_len : beacon_ie_len)) {
+		os_free(ie_buf);
+		os_free(beacon_ie_buf);
 		return NULL;
+	}
 
 	r = os_zalloc(sizeof(*r) + ie_len + beacon_ie_len);
-	if (r == NULL)
+	if (!r) {
+		os_free(ie_buf);
+		os_free(beacon_ie_buf);
 		return NULL;
+	}
 	if (bss[NL80211_BSS_BSSID])
 		os_memcpy(r->bssid, nla_data(bss[NL80211_BSS_BSSID]),
 			  ETH_ALEN);
@@ -862,6 +924,8 @@ nl80211_parse_bss_info(struct wpa_driver_nl80211_data *drv,
 			  ETH_ALEN);
 	}
 
+	os_free(ie_buf);
+	os_free(beacon_ie_buf);
 	return r;
 }
 
