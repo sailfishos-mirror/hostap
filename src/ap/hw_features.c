@@ -185,7 +185,8 @@ int hostapd_get_hw_features(struct hostapd_iface *iface)
 			} else if (((feature->channels[j].flag &
 				     HOSTAPD_CHAN_RADAR) &&
 				    !(iface->drv_flags &
-				      WPA_DRIVER_FLAGS_DFS_OFFLOAD)) ||
+				      WPA_DRIVER_FLAGS_DFS_OFFLOAD) &&
+				    !iface->assisted_dfs) ||
 				   (feature->channels[j].flag &
 				    HOSTAPD_CHAN_NO_IR)) {
 				feature->channels[j].flag |=

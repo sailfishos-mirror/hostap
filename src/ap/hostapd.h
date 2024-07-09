@@ -747,6 +747,10 @@ struct hostapd_iface {
 	struct hostapd_multi_hw_info *multi_hw_info;
 	unsigned int num_multi_hws;
 	struct hostapd_multi_hw_info *current_hw_info;
+
+	/* Use assisted DFS functionality from the driver. This is used only
+	 * in wpa_supplicant builds for P2P GO functionality. */
+	bool assisted_dfs;
 };
 
 /* hostapd.c */

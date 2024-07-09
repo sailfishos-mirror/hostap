@@ -2600,8 +2600,12 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
 		}
 
 #ifdef NEED_AP_MLME
-		/* Handle DFS only if it is not offloaded to the driver */
-		if (!(iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD)) {
+		if (iface->assisted_dfs) {
+			wpa_printf(MSG_DEBUG,
+				   "Request to start AP with assisted DFS");
+		} else if (!(iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD)) {
+			/* Handle DFS only if it is not offloaded to the driver
+			 */
 			/* Check DFS */
 			res = hostapd_handle_dfs(iface);
 			if (res <= 0) {
@@ -2735,7 +2739,7 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
 	}
 
 	if ((iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD) &&
-	    !res_dfs_offload) {
+	    !res_dfs_offload && !iface->assisted_dfs) {
 		/*
 		 * If freq is DFS, and DFS is offloaded to the driver, then wait
 		 * for CAC to complete.
