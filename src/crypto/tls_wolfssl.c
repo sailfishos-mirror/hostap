@@ -21,18 +21,20 @@
 #include <wolfssl/wolfcrypt/asn.h>
 #include <wolfssl/openssl/x509v3.h>
 
+#if LIBWOLFSSL_VERSION_HEX >= 0x05007002
+/* wolfSSL_set_session_ticket_ext_cb added in wolfSSL 5.7.2 */
 #if defined(EAP_FAST) || defined(EAP_FAST_DYNAMIC) || defined(EAP_SERVER_FAST)
 #define HAVE_AESGCM
 #include <wolfssl/wolfcrypt/aes.h>
+#define INC_EAP_FAST
+#endif
 #endif
 
 #ifdef CONFIG_FIPS
 #include <wolfssl/wolfcrypt/fips_test.h>
 #endif /* CONFIG_FIPS */
 
-#if !defined(CONFIG_FIPS) &&                             \
-    (defined(EAP_FAST) || defined(EAP_FAST_DYNAMIC) ||   \
-     defined(EAP_SERVER_FAST))
+#if !defined(CONFIG_FIPS) && defined(INC_EAP_FAST)
 #define WOLFSSL_NEED_EAP_FAST_PRF
 #endif
 
@@ -91,11 +93,12 @@ struct tls_connection {
 	unsigned char client_random[RAN_LEN];
 	unsigned char server_random[RAN_LEN];
 	unsigned int flags;
-#if defined(EAP_FAST) || defined(EAP_FAST_DYNAMIC) || defined(EAP_SERVER_FAST)
+#ifdef INC_EAP_FAST
 	tls_session_ticket_cb session_ticket_cb;
 	void *session_ticket_cb_ctx;
-	byte session_ticket[SESSION_TICKET_LEN];
-#endif
+	u8 *session_ticket;
+	size_t session_ticket_len;
+#endif /* INC_EAP_FAST */
 	unsigned int ca_cert_verify:1;
 	unsigned int cert_probe:1;
 	unsigned int server_cert_only:1;
@@ -548,6 +551,7 @@ void tls_connection_deinit(void *tls_ctx, struct tls_connection *conn)
 	os_free(conn->domain_match);
 	os_free(conn->peer_subject);
 	os_free(conn->check_cert_subject);
+	os_free(conn->session_ticket);
 
 	/* self */
 	os_free(conn);
@@ -2547,7 +2551,7 @@ int tls_connection_get_eap_fast_key(void *tls_ctx, struct tls_connection *conn,
 }
 
 
-#if defined(EAP_FAST) || defined(EAP_FAST_DYNAMIC) || defined(EAP_SERVER_FAST)
+#ifdef INC_EAP_FAST
 
 int tls_connection_client_hello_ext(void *ssl_ctx, struct tls_connection *conn,
 				    int ext_type, const u8 *data,
@@ -2572,33 +2576,63 @@ static int tls_sess_sec_cb(WOLFSSL *s, void *secret, int *secret_len, void *arg)
 	int ret;
 	unsigned char client_random[RAN_LEN];
 	unsigned char server_random[RAN_LEN];
-	word32 ticket_len = sizeof(conn->session_ticket);
 
 	if (!conn || !conn->session_ticket_cb)
-		return 1;
+		return -1;
+
+	wpa_printf(MSG_DEBUG, "wolfSSL: %s", __func__);
 
 	if (wolfSSL_get_client_random(s, client_random,
 				      sizeof(client_random)) == 0 ||
 	    wolfSSL_get_server_random(s, server_random,
-				      sizeof(server_random)) == 0 ||
-	    wolfSSL_get_SessionTicket(s, conn->session_ticket,
-				      &ticket_len) != 1)
-		return 1;
-
-	if (ticket_len == 0)
-		return 0;
+				      sizeof(server_random)) == 0)
+		return -1;
 
 	ret = conn->session_ticket_cb(conn->session_ticket_cb_ctx,
-				      conn->session_ticket, ticket_len,
+				      conn->session_ticket,
+				      conn->session_ticket_len,
 				      client_random, server_random, secret);
+
+	wpa_printf(MSG_DEBUG, "wolfSSL: %s conn->session_ticket_cb: %d",
+		   __func__, ret);
+
+	os_free(conn->session_ticket);
+	conn->session_ticket = NULL;
+
 	if (ret <= 0)
-		return 1;
+		return -1;
 
 	*secret_len = SECRET_LEN;
 	return 0;
 }
 
-#endif /* EAP_FAST || EAP_FAST_DYNAMIC || EAP_SERVER_FAST */
+
+static int tls_session_ticket_ext_cb(SSL *s, const unsigned char *data,
+				     int len, void *arg)
+{
+	struct tls_connection *conn = arg;
+
+	if (conn == NULL || conn->session_ticket_cb == NULL)
+		return 0;
+
+	wpa_printf(MSG_DEBUG, "wolfSSL: %s: length=%d", __func__, len);
+
+	os_free(conn->session_ticket);
+	conn->session_ticket = NULL;
+
+	wpa_hexdump(MSG_DEBUG, "wolfSSL: ClientHello SessionTicket extension",
+		    data, len);
+
+	conn->session_ticket = os_memdup(data, len);
+	if (!conn->session_ticket)
+		return 0;
+
+	conn->session_ticket_len = len;
+
+	return 1;
+}
+
+#endif /* INC_EAP_FAST */
 
 
 int tls_connection_set_session_ticket_cb(void *tls_ctx,
@@ -2606,7 +2640,7 @@ int tls_connection_set_session_ticket_cb(void *tls_ctx,
 					 tls_session_ticket_cb cb,
 					 void *ctx)
 {
-#if defined(EAP_FAST) || defined(EAP_FAST_DYNAMIC) || defined(EAP_SERVER_FAST)
+#ifdef INC_EAP_FAST
 	conn->session_ticket_cb = cb;
 	conn->session_ticket_cb_ctx = ctx;
 
@@ -2614,15 +2648,21 @@ int tls_connection_set_session_ticket_cb(void *tls_ctx,
 		if (wolfSSL_set_session_secret_cb(conn->ssl, tls_sess_sec_cb,
 						  conn) != 1)
 			return -1;
+		if (wolfSSL_set_session_ticket_ext_cb(conn->ssl,
+				tls_session_ticket_ext_cb, conn) != 1)
+			return -1;
 	} else {
 		if (wolfSSL_set_session_secret_cb(conn->ssl, NULL, NULL) != 1)
+			return -1;
+		if (wolfSSL_set_session_ticket_ext_cb(conn->ssl, NULL, NULL) !=
+		    1)
 			return -1;
 	}
 
 	return 0;
-#else /* EAP_FAST || EAP_FAST_DYNAMIC || EAP_SERVER_FAST */
+#else /* INC_EAP_FAST */
 	return -1;
-#endif /* EAP_FAST || EAP_FAST_DYNAMIC || EAP_SERVER_FAST */
+#endif /* INC_EAP_FAST */
 }
 
 
