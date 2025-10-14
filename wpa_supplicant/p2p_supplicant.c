@@ -2792,6 +2792,7 @@ wpas_p2p_init_group_interface(struct wpa_supplicant *wpa_s, int go)
 
 	wpas_p2p_clone_config(group_wpa_s, wpa_s);
 	group_wpa_s->p2p2 = wpa_s->p2p2;
+	group_wpa_s->assisted_dfs = wpa_s->assisted_dfs;
 
 	if (wpa_s->conf->p2p_interface_random_mac_addr) {
 		if (wpa_drv_set_mac_addr(group_wpa_s,
@@ -5801,6 +5802,7 @@ int wpas_p2p_mac_setup(struct wpa_supplicant *wpa_s)
 int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
 {
 	struct p2p_config p2p;
+	struct wpa_supplicant *t_wpa_s;
 	int i;
 
 	if (wpa_s->conf->p2p_disabled)
@@ -6023,6 +6025,16 @@ int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
 	if (global->p2p == NULL)
 		return -1;
 	global->p2p_init_wpa_s = wpa_s;
+
+	for (t_wpa_s = global->ifaces; t_wpa_s; t_wpa_s = t_wpa_s->next) {
+		if (global->p2p && t_wpa_s->dfs_ap_connected) {
+			p2p_update_dfs_ap_info(
+				global->p2p, t_wpa_s->sta_connected_freq,
+				t_wpa_s->sta_connected_chan_width,
+				false);
+			break;
+		}
+	}
 
 	for (i = 0; i < MAX_WPS_VENDOR_EXT; i++) {
 		if (wpa_s->conf->wps_vendor_ext[i] == NULL)

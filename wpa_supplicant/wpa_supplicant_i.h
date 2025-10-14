@@ -718,6 +718,7 @@ struct wpa_supplicant {
 	unsigned char own_addr[ETH_ALEN];
 	unsigned char perm_addr[ETH_ALEN];
 	char ifname[100];
+	u8 hw_dfs_domain;
 #ifdef CONFIG_MATCH_IFACE
 	int matched;
 #endif /* CONFIG_MATCH_IFACE */
@@ -1639,6 +1640,13 @@ struct wpa_supplicant {
 	bool last_scan_non_coloc_6ghz;
 	bool support_6ghz;
 	bool allow_p2p_assisted_dfs;
+	char device_country[3];
+	bool device_country_set;
+	bool assisted_dfs;
+
+	bool dfs_ap_connected;
+	int sta_connected_freq;
+	enum chan_width sta_connected_chan_width;
 
 	struct wpa_signal_info last_signal_info;
 
@@ -2092,5 +2100,8 @@ bool wpas_ap_supports_rsn_overriding_2(struct wpa_supplicant *wpa_s,
 				       struct wpa_bss *bss);
 int wpas_get_owe_trans_network(const u8 *owe_ie, const u8 **bssid,
 			       const u8 **ssid, size_t *ssid_len);
+void wpas_update_dfs_ap_info(struct wpa_supplicant *wpa_s, int freq,
+			     enum chan_width ap_ch_width,
+			     bool disconnect_evt);
 
 #endif /* WPA_SUPPLICANT_I_H */

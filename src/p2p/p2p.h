@@ -2817,4 +2817,7 @@ int p2p_pasn_get_ptk(struct p2p_data *p2p, const u8 **buf, size_t *buf_len);
 void p2p_usd_service_hash(struct p2p_data *p2p, const char *service_name);
 int p2p_get_dira_info(struct p2p_data *p2p, char *buf, size_t buflen);
 
+void p2p_update_dfs_ap_info(struct p2p_data *p2p, int freq,
+			    enum chan_width ap_ch_width, bool disconnect_evt);
+
 #endif /* P2P_H */

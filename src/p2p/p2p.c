@@ -3075,6 +3075,22 @@ void p2p_set_dev_addr(struct p2p_data *p2p, const u8 *addr)
 }
 
 
+void p2p_update_dfs_ap_info(struct p2p_data *p2p, int freq,
+			    enum chan_width ap_ch_width, bool disconnect_evt)
+{
+	if (disconnect_evt) {
+		p2p->dfs_ap_connected = false;
+		p2p->sta_connected_freq = 0;
+		p2p->sta_connected_chan_width = CHAN_WIDTH_UNKNOWN;
+		return;
+	}
+
+	p2p->sta_connected_freq = freq;
+	p2p->sta_connected_chan_width = ap_ch_width;
+	p2p->dfs_ap_connected = true;
+}
+
+
 static void p2p_pairing_info_deinit(struct p2p_data *p2p)
 {
 #ifdef CONFIG_PASN

@@ -7835,6 +7835,7 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 						      &wpa_s->hw.num_modes,
 						      &wpa_s->hw.flags,
 						      &dfs_domain);
+	wpa_s->hw_dfs_domain = dfs_domain;
 	if (wpa_s->hw.modes) {
 		u16 i;
 
@@ -10180,4 +10181,26 @@ int wpas_get_owe_trans_network(const u8 *owe_ie, const u8 **bssid,
 #else /* CONFIG_OWE */
 	return -1;
 #endif /* CONFIG_OWE */
+}
+
+
+void wpas_update_dfs_ap_info(struct wpa_supplicant *wpa_s, int freq,
+			     enum chan_width ap_ch_width,
+			     bool disconnect_evt)
+{
+	if (disconnect_evt) {
+		wpa_printf(MSG_DEBUG, "Disconnect event of DFS AP");
+		wpa_s->sta_connected_freq = 0;
+		wpa_s->sta_connected_chan_width = CHAN_WIDTH_UNKNOWN;
+	} else {
+		wpa_s->sta_connected_freq = freq;
+		wpa_s->sta_connected_chan_width = ap_ch_width;
+	}
+	wpa_s->dfs_ap_connected = !disconnect_evt;
+
+#ifdef CONFIG_P2P
+	if (wpa_s->global->p2p)
+		p2p_update_dfs_ap_info(wpa_s->global->p2p, freq, ap_ch_width,
+				       disconnect_evt);
+#endif /* CONFIG_P2P */
 }

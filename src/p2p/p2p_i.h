@@ -695,6 +695,25 @@ struct p2p_data {
 
 	bool usd_service;
 	u8 p2p_service_hash[P2PS_HASH_LEN];
+
+	/**
+	 * dfs_ap_connected - Whether STA is connected to a DFS AP
+	 */
+	bool dfs_ap_connected;
+
+	/**
+	 * sta_connected_freq - STA connection frequency
+	 *
+	 * Valid only when dfs_ap_connected is true.
+	 */
+	int sta_connected_freq;
+
+	/**
+	 * sta_connected_chan_width - STA connection channel width
+	 *
+	 * Valid only when dfs_ap_connected is true.
+	 */
+	enum chan_width sta_connected_chan_width;
 };
 
 /**
