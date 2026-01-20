@@ -1638,6 +1638,7 @@ struct wpa_supplicant {
 	bool last_scan_all_chan;
 	bool last_scan_non_coloc_6ghz;
 	bool support_6ghz;
+	bool allow_p2p_assisted_dfs;
 
 	struct wpa_signal_info last_signal_info;
 

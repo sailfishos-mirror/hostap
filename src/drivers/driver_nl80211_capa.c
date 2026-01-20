@@ -1525,6 +1525,10 @@ static void qca_nl80211_get_features(struct wpa_driver_nl80211_data *drv)
 	if (check_feature(QCA_WLAN_VENDOR_FEATURE_PCC_MODE, &info))
 		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_P2P_FEATURE_PCC_MODE;
 
+	if (check_feature(QCA_WLAN_VENDOR_FEATURE_SUPPORT_P2P_ASSISTED_DFS,
+			  &info))
+		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_P2P_ASSISTED_DFS;
+
 	os_free(info.flags);
 }
 

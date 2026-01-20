@@ -7927,6 +7927,9 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 
 	wpa_s->nan_mgmt = iface->nan_mgmt;
 
+	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_P2P_ASSISTED_DFS)
+		wpa_s->allow_p2p_assisted_dfs = true;
+
 	if (wpa_s->num_multichan_concurrent == 0)
 		wpa_s->num_multichan_concurrent = 1;
 
