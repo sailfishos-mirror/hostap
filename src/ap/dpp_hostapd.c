@@ -3987,6 +3987,7 @@ int hostapd_dpp_push_button(struct hostapd_data *hapd, const char *cmd)
 	}
 	eloop_register_timeout(100, 0, hostapd_dpp_push_button_expire,
 			       hapd, NULL);
+	hostapd_drv_dpp_listen(hapd, true);
 
 	wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_PB_STATUS "started");
 	return 0;
@@ -4002,6 +4003,7 @@ void hostapd_dpp_push_button_stop(struct hostapd_data *hapd)
 	eloop_cancel_timeout(hostapd_dpp_push_button_expire, hapd, NULL);
 	if (hostapd_dpp_pb_active(hapd)) {
 		wpa_printf(MSG_DEBUG, "DPP: Stop active push button mode");
+		hostapd_drv_dpp_listen(hapd, false);
 		if (!ifaces->dpp_pb_result_indicated)
 			wpa_msg(hapd->msg_ctx, MSG_INFO,
 				DPP_EVENT_PB_RESULT "failed");
