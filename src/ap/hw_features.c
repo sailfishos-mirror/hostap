@@ -597,6 +597,9 @@ static void ap_ht40_scan_retry(void *eloop_data, void *user_data)
 
 	wpa_printf(MSG_DEBUG,
 		   "Failed to request a scan in device, bringing up in HT20 mode");
+	hostapd_set_oper_centr_freq_seg0_idx(iface->conf, 0);
+	hostapd_set_oper_centr_freq_seg1_idx(iface->conf, 0);
+	hostapd_set_oper_chwidth(iface->conf, CONF_OPER_CHWIDTH_USE_HT);
 	iface->conf->secondary_channel = 0;
 	iface->conf->ht_capab &= ~HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET;
 	hostapd_setup_interface_complete(iface, 0);
