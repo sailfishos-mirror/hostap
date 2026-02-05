@@ -12834,6 +12834,16 @@ static int wpas_ctrl_nan_publish(struct wpa_supplicant *wpa_s, char *cmd,
 			continue;
 		}
 
+		if (os_strncmp(token, "match_filter_tx=", 16) == 0) {
+			params.match_filter_tx = token + 16;
+			continue;
+		}
+
+		if (os_strncmp(token, "match_filter_rx=", 16) == 0) {
+			params.match_filter_rx = token + 16;
+			continue;
+		}
+
 		wpa_printf(MSG_INFO, "CTRL: Invalid NAN_PUBLISH parameter: %s",
 			   token);
 		goto fail;
@@ -13023,6 +13033,16 @@ static int wpas_ctrl_nan_subscribe(struct wpa_supplicant *wpa_s, char *cmd,
 
 		if (os_strcmp(token, "sync=1") == 0) {
 			params.sync = true;
+			continue;
+		}
+
+		if (os_strncmp(token, "match_filter_tx=", 16) == 0) {
+			params.match_filter_tx = token + 16;
+			continue;
+		}
+
+		if (os_strncmp(token, "match_filter_rx=", 16) == 0) {
+			params.match_filter_rx = token + 16;
 			continue;
 		}
 
