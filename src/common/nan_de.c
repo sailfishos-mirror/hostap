@@ -307,7 +307,8 @@ static void nan_de_tx_sdf(struct nan_de *de, struct nan_de_service *srv,
 		wpabuf_put_buf(buf, srv->elems);
 	}
 
-	nan_de_tx(de, srv->freq, wait_time, dst, de->nmi, a3, buf);
+	nan_de_tx(de, srv->sync ? 0 : srv->freq, srv->sync ? 0 : wait_time,
+		  dst, de->nmi, a3, buf);
 	wpabuf_free(buf);
 }
 
@@ -1072,10 +1073,6 @@ static void nan_de_rx_subscribe(struct nan_de *de, struct nan_de_service *srv,
 				enum nan_service_protocol_type srv_proto_type,
 				const u8 *ssi, size_t ssi_len)
 {
-	struct wpabuf *buf;
-	size_t len = 0, sda_len, sdea_len;
-	u8 ctrl = 0;
-	u16 sdea_ctrl = 0;
 	const u8 *network_id;
 
 	/* Publish function processing of a receive Subscribe message */
@@ -1098,60 +1095,6 @@ static void nan_de_rx_subscribe(struct nan_de *de, struct nan_de_service *srv,
 		goto offload;
 
 	/* Reply with a solicited Publish message */
-	/* Service Descriptor attribute */
-	sda_len = NAN_SERVICE_ID_LEN + 1 + 1 + 1;
-	len += NAN_ATTR_HDR_LEN + sda_len;
-
-	/* Service Descriptor Extension attribute */
-	sdea_len = 1 + 2;
-	if (srv->ssi)
-		sdea_len += 2 + 4 + wpabuf_len(srv->ssi);
-	len += NAN_ATTR_HDR_LEN + sdea_len;
-
-	/* Element Container attribute */
-	if (srv->elems)
-		len += NAN_ATTR_HDR_LEN + 1 + wpabuf_len(srv->elems);
-
-	buf = nan_de_alloc_sdf(len);
-	if (!buf)
-		return;
-
-	/* Service Descriptor attribute */
-	wpabuf_put_u8(buf, NAN_ATTR_SDA);
-	wpabuf_put_le16(buf, sda_len);
-	wpabuf_put_data(buf, srv->service_id, NAN_SERVICE_ID_LEN);
-	wpabuf_put_u8(buf, srv->id); /* Instance ID */
-	wpabuf_put_u8(buf, instance_id); /* Requestor Instance ID */
-	ctrl |= NAN_SRV_CTRL_PUBLISH;
-	wpabuf_put_u8(buf, ctrl);
-
-	/* Service Descriptor Extension attribute */
-	if (srv->type == NAN_DE_PUBLISH || srv->ssi) {
-		wpabuf_put_u8(buf, NAN_ATTR_SDEA);
-		wpabuf_put_le16(buf, sdea_len);
-		wpabuf_put_u8(buf, srv->id); /* Instance ID */
-		if (srv->type == NAN_DE_PUBLISH) {
-			if (srv->publish.fsd)
-				sdea_ctrl |= NAN_SDEA_CTRL_FSD_REQ;
-			if (srv->publish.fsd_gas)
-				sdea_ctrl |= NAN_SDEA_CTRL_FSD_GAS;
-		}
-		wpabuf_put_le16(buf, sdea_ctrl);
-		if (srv->ssi) {
-			wpabuf_put_le16(buf, 4 + wpabuf_len(srv->ssi));
-			wpabuf_put_be24(buf, OUI_WFA);
-			wpabuf_put_u8(buf, srv->srv_proto_type);
-			wpabuf_put_buf(buf, srv->ssi);
-		}
-	}
-
-	/* Element Container attribute */
-	if (srv->elems) {
-		wpabuf_put_u8(buf, NAN_ATTR_ELEM_CONTAINER);
-		wpabuf_put_le16(buf, 1 + wpabuf_len(srv->elems));
-		wpabuf_put_u8(buf, 0); /* Map ID */
-		wpabuf_put_buf(buf, srv->elems);
-	}
 
 	if (srv->is_p2p)
 		network_id = p2p_network_id;
@@ -1163,10 +1106,9 @@ static void nan_de_rx_subscribe(struct nan_de *de, struct nan_de_service *srv,
 	else if (srv->is_p2p)
 		a3 = de->nmi;
 
-	nan_de_tx(de, srv->sync ? 0 : srv->freq, srv->sync ? 0 : 100,
-		  srv->publish.solicited_multicast ? network_id : peer_addr,
-		  de->nmi, a3, buf);
-	wpabuf_free(buf);
+	nan_de_tx_sdf(de, srv, 100, NAN_SRV_CTRL_PUBLISH,
+		      srv->publish.solicited_multicast ?
+		      network_id : peer_addr, a3, instance_id, srv->ssi);
 
 	if (!srv->is_p2p && !srv->sync)
 		nan_de_pause_state(srv, peer_addr, instance_id);
