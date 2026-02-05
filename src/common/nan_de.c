@@ -67,6 +67,10 @@ struct nan_de_service {
 	bool is_pr;
 	bool listen_stopped;
 	bool sync;
+
+	/* Filters */
+	struct wpabuf *matching_filter_tx;
+	struct wpabuf *matching_filter_rx;
 };
 
 #define NAN_DE_N_MIN 5
@@ -138,6 +142,8 @@ static void nan_de_service_free(struct nan_de_service *srv)
 	os_free(srv->service_name);
 	wpabuf_free(srv->ssi);
 	wpabuf_free(srv->elems);
+	wpabuf_free(srv->matching_filter_tx);
+	wpabuf_free(srv->matching_filter_rx);
 	os_free(srv->freq_list);
 	os_free(srv);
 }
@@ -255,6 +261,11 @@ static void nan_de_tx_sdf(struct nan_de *de, struct nan_de_service *srv,
 
 	/* Service Descriptor attribute */
 	sda_len = NAN_SERVICE_ID_LEN + 1 + 1 + 1;
+	if (srv->matching_filter_tx && wpabuf_len(srv->matching_filter_tx)) {
+		sda_len += wpabuf_len(srv->matching_filter_tx) + 1;
+		ctrl |= NAN_SRV_CTRL_MATCHING_FILTER;
+	}
+
 	len += NAN_ATTR_HDR_LEN + sda_len;
 
 	/* Service Descriptor Extension attribute */
@@ -278,6 +289,11 @@ static void nan_de_tx_sdf(struct nan_de *de, struct nan_de_service *srv,
 	wpabuf_put_u8(buf, srv->id); /* Instance ID */
 	wpabuf_put_u8(buf, req_instance_id); /* Requestor Instance ID */
 	wpabuf_put_u8(buf, ctrl);
+
+	if (ctrl & NAN_SRV_CTRL_MATCHING_FILTER) {
+		wpabuf_put_u8(buf, wpabuf_len(srv->matching_filter_tx));
+		wpabuf_put_buf(buf, srv->matching_filter_tx);
+	}
 
 	/* Service Descriptor Extension attribute */
 	if (srv->type == NAN_DE_PUBLISH || ssi) {
@@ -989,12 +1005,117 @@ static void nan_de_process_elem_container(struct nan_de *de, const u8 *buf,
 }
 
 
+static bool nan_de_filter_match(struct nan_de_service *srv,
+				const u8 *matching_filter,
+				size_t matching_filter_len)
+{
+	const u8 *spos, *spos_end, *ppos, *ppos_end;
+	const u8 *publish_filter = NULL, *subscribe_filter = NULL;
+	u8 publish_filter_len = 0, subscribe_filter_len = 0;
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN: Check matching filter for service id %d type %d",
+		   srv->id, srv->type);
+
+	if (srv->type == NAN_DE_PUBLISH) {
+		if (srv->matching_filter_rx) {
+			publish_filter =
+				wpabuf_head_u8(srv->matching_filter_rx);
+			publish_filter_len =
+				wpabuf_len(srv->matching_filter_rx);
+		}
+		subscribe_filter = matching_filter;
+		subscribe_filter_len = matching_filter_len;
+	} else if (srv->type == NAN_DE_SUBSCRIBE) {
+		if (srv->matching_filter_rx) {
+			subscribe_filter =
+				wpabuf_head_u8(srv->matching_filter_rx);
+			subscribe_filter_len =
+				wpabuf_len(srv->matching_filter_rx);
+		}
+		publish_filter = matching_filter;
+		publish_filter_len = matching_filter_len;
+	} else {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Unsupported service type %d for matching filter",
+			   srv->type);
+		return false;
+	}
+
+	if (!subscribe_filter)
+		return true;
+
+	spos = subscribe_filter;
+	spos_end = subscribe_filter + subscribe_filter_len;
+
+	ppos = publish_filter;
+	ppos_end = publish_filter + publish_filter_len;
+
+	wpa_hexdump(MSG_DEBUG, "NAN: subscribe filter",
+		    spos, spos_end - spos);
+	if (ppos)
+		wpa_hexdump(MSG_DEBUG, "NAN: publish filter",
+			    ppos, ppos_end - ppos);
+
+	while (spos < spos_end) {
+		u8 slen, plen = 0;
+
+		slen = *spos++;
+
+		/* Invalid filter length - do not match */
+		if (slen > spos_end - spos)
+			return false;
+
+		/* Read publish filter */
+		if (ppos && ppos < ppos_end) {
+			plen = *ppos++;
+			if (plen > ppos_end - ppos)
+				return false;
+		}
+
+		if (slen > 0) {
+			if (!ppos)
+				return false;
+
+			/* For non zero filters, compare */
+			if (plen &&
+			    (plen != slen || os_memcmp(spos, ppos, plen) != 0))
+				return false;
+
+			/* Filter matches */
+		}
+
+		spos += slen;
+
+		/*
+		 * If ppos is NULL we can still have match if the subscribe
+		 * filter is <0><0>...
+		 */
+		if (!ppos)
+			continue;
+
+		ppos += plen;
+
+		/* Publish filter is over */
+		if (ppos >= ppos_end && spos < spos_end)
+			return false;
+	}
+
+	return true;
+}
+
+
 static void nan_de_rx_publish(struct nan_de *de, struct nan_de_service *srv,
 			      const u8 *peer_addr, const u8 *a3, u8 instance_id,
+			      const u8 *matching_filter,
+			      size_t matching_filter_len,
 			      u8 req_instance_id, u16 sdea_control,
 			      enum nan_service_protocol_type srv_proto_type,
 			      const u8 *ssi, size_t ssi_len)
 {
+	if (!nan_de_filter_match(srv, matching_filter, matching_filter_len))
+		return;
+
 	/* Skip USD logic */
 	if (srv->sync)
 		goto send_event;
@@ -1028,40 +1149,6 @@ send_event:
 			peer_addr,
 			sdea_control & NAN_SDEA_CTRL_FSD_REQ,
 			sdea_control & NAN_SDEA_CTRL_FSD_GAS);
-}
-
-
-static bool nan_de_filter_match(struct nan_de_service *srv,
-				const u8 *matching_filter,
-				size_t matching_filter_len)
-{
-	const u8 *pos, *end;
-
-	/* Since we do not currently support matching_filter_rx values for the
-	 * local Publish function, any matching filter with at least one
-	 * <length,value> pair with length larger than zero implies a mismatch.
-	 */
-
-	if (!matching_filter)
-		return true;
-
-	pos = matching_filter;
-	end = matching_filter + matching_filter_len;
-
-	while (pos < end) {
-		u8 len;
-
-		len = *pos++;
-		if (len > end - pos)
-			break;
-		if (len) {
-			/* A non-empty Matching Filter entry: no match since
-			 * there is no local matching_filter_rx. */
-			return false;
-		}
-	}
-
-	return true;
 }
 
 
@@ -1278,6 +1365,8 @@ static void nan_de_rx_sda(struct nan_de *de, const u8 *peer_addr, const u8 *a3,
 		switch (type) {
 		case NAN_SRV_CTRL_PUBLISH:
 			nan_de_rx_publish(de, srv, peer_addr, a3, instance_id,
+					  matching_filter,
+					  matching_filter_len,
 					  req_instance_id,
 					  sdea_control, srv_proto_type,
 					  ssi, ssi_len);
@@ -1470,6 +1559,28 @@ int nan_de_publish(struct nan_de *de, const char *service_name,
 			goto fail;
 	}
 
+	if (params->match_filter_rx) {
+		srv->matching_filter_rx =
+			wpabuf_parse_bin(params->match_filter_rx);
+		if (!srv->matching_filter_rx ||
+		    wpabuf_len(srv->matching_filter_rx) > 255) {
+			wpa_printf(MSG_INFO,
+				   "NAN: Failed to parse RX matching filter");
+			goto fail;
+		}
+	}
+
+	if (params->match_filter_tx) {
+		srv->matching_filter_tx =
+			wpabuf_parse_bin(params->match_filter_tx);
+		if (!srv->matching_filter_tx ||
+		    wpabuf_len(srv->matching_filter_tx) > 255) {
+			wpa_printf(MSG_INFO,
+				   "NAN: Failed to parse TX matching filter");
+			goto fail;
+		}
+	}
+
 	srv->sync = params->sync;
 
 	/* Prepare for single and multi-channel states; starting with
@@ -1630,6 +1741,28 @@ int nan_de_subscribe(struct nan_de *de, const char *service_name,
 		srv->elems = wpabuf_dup(elems);
 		if (!srv->elems)
 			goto fail;
+	}
+
+	if (params->match_filter_rx) {
+		srv->matching_filter_rx =
+			wpabuf_parse_bin(params->match_filter_rx);
+		if (!srv->matching_filter_rx ||
+		    wpabuf_len(srv->matching_filter_rx) > 255) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Failed to parse RX matching filter");
+			goto fail;
+		}
+	}
+
+	if (params->match_filter_tx) {
+		srv->matching_filter_tx =
+			wpabuf_parse_bin(params->match_filter_tx);
+		if (!srv->matching_filter_tx ||
+		    wpabuf_len(srv->matching_filter_tx) > 255) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Failed to parse TX matching filter");
+			goto fail;
+		}
 	}
 
 	wpa_printf(MSG_DEBUG, "NAN: Assigned new subscribe handle %d for %s",

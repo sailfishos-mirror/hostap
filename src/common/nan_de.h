@@ -121,6 +121,13 @@ struct nan_publish_params {
 
 	/* Synchronized discovery */
 	bool sync;
+
+	/*
+	 * Null-terminated string containing the hex-encoded
+	 * representation of the matching filters.
+	 */
+	const char *match_filter_tx;
+	const char *match_filter_rx;
 };
 
 /* Returns -1 on failure or >0 publish_id */
@@ -160,6 +167,13 @@ struct nan_subscribe_params {
 
 	/* Synchronized discovery */
 	bool sync;
+
+	/*
+	 * Null-terminated string containing the hex-encoded
+	 * representation of the matching filters.
+	 */
+	const char *match_filter_tx;
+	const char *match_filter_rx;
 };
 
 /* Returns -1 on failure or >0 subscribe_id */
