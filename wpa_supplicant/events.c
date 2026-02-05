@@ -51,7 +51,6 @@
 #include "mesh.h"
 #include "mesh_mpm.h"
 #include "wmm_ac.h"
-#include "nan_usd.h"
 #include "dpp_supplicant.h"
 #include "pr_supplicant.h"
 #include "nan_supplicant.h"

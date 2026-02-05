@@ -66,7 +66,6 @@
 #include "wpas_kay.h"
 #include "mesh.h"
 #include "dpp_supplicant.h"
-#include "nan_usd.h"
 #include "pr_supplicant.h"
 #include "nan_supplicant.h"
 #ifdef CONFIG_MESH

@@ -28,7 +28,7 @@
 #include "../autoscan.h"
 #include "../ap.h"
 #include "../interworking.h"
-#include "../nan_usd.h"
+#include "../nan_supplicant.h"
 #include "dbus_new_helpers.h"
 #include "dbus_new.h"
 #include "dbus_new_handlers.h"

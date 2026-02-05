@@ -284,15 +284,13 @@ endif
 endif
 
 ifdef CONFIG_NAN
-OBJS += nan_supplicant.c
-OBJS += src/nan/nan.c
-CFLAGS += -DCONFIG_NAN
+NEED_NAN=y
+L_CFLAGS += -DCONFIG_NAN
 endif
 
 ifdef CONFIG_NAN_USD
-OBJS += src/common/nan_de.c
-OBJS += nan_usd.c
 NEED_OFFCHANNEL=y
+NEED_NAN=y
 L_CFLAGS += -DCONFIG_NAN_USD
 endif
 
@@ -300,6 +298,12 @@ ifdef CONFIG_PR
 OBJS += src/common/proximity_ranging.c
 OBJS += pr_supplicant.c
 L_CFLAGS += -DCONFIG_PR
+endif
+
+ifdef NEED_NAN
+OBJS += nan_supplicant.c
+OBJS += src/nan/nan.c
+OBJS += src/common/nan_de.c
 endif
 
 ifdef CONFIG_OWE

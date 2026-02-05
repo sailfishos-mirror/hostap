@@ -40,7 +40,7 @@
 #include "wps_supplicant.h"
 #include "p2p_supplicant.h"
 #include "wifi_display.h"
-#include "nan_usd.h"
+#include "nan_supplicant.h"
 
 
 /*

@@ -61,7 +61,6 @@
 #include "mesh.h"
 #include "dpp_supplicant.h"
 #include "sme.h"
-#include "nan_usd.h"
 #include "pr_supplicant.h"
 #include "nan_supplicant.h"
 
