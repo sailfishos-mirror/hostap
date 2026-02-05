@@ -856,7 +856,7 @@ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s)
 #endif /* CONFIG_DPP */
 
 #ifdef CONFIG_NAN_USD
-	wpas_nan_usd_deinit(wpa_s);
+	wpas_nan_de_deinit(wpa_s);
 #endif /* CONFIG_NAN_USD */
 
 #ifdef CONFIG_PASN
@@ -7987,7 +7987,7 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_DPP */
 
 #ifdef CONFIG_NAN_USD
-	if (wpas_nan_usd_init(wpa_s) < 0)
+	if (wpas_nan_de_init(wpa_s) < 0)
 		return -1;
 #endif /* CONFIG_NAN_USD */
 

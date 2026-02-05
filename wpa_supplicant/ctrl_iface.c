@@ -9211,7 +9211,7 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
 	wpa_s->conf->ignore_old_scan_res = 0;
 
 #ifdef CONFIG_NAN_USD
-	wpas_nan_usd_flush(wpa_s);
+	wpas_nan_de_flush(wpa_s);
 #endif /* CONFIG_NAN_USD */
 
 	wpas_pr_flush(wpa_s);
@@ -12836,8 +12836,8 @@ static int wpas_ctrl_nan_publish(struct wpa_supplicant *wpa_s, char *cmd,
 		goto fail;
 	}
 
-	publish_id = wpas_nan_usd_publish(wpa_s, service_name, srv_proto_type,
-					  ssi, &params, p2p);
+	publish_id = wpas_nan_publish(wpa_s, service_name, srv_proto_type,
+				      ssi, &params, p2p);
 	if (publish_id > 0)
 		ret = os_snprintf(buf, buflen, "%d", publish_id);
 fail:
@@ -12868,7 +12868,7 @@ static int wpas_ctrl_nan_cancel_publish(struct wpa_supplicant *wpa_s,
 		return -1;
 	}
 
-	wpas_nan_usd_cancel_publish(wpa_s, publish_id);
+	wpas_nan_cancel_publish(wpa_s, publish_id);
 	return 0;
 }
 
@@ -12904,7 +12904,7 @@ static int wpas_ctrl_nan_update_publish(struct wpa_supplicant *wpa_s,
 		goto fail;
 	}
 
-	ret = wpas_nan_usd_update_publish(wpa_s, publish_id, ssi);
+	ret = wpas_nan_update_publish(wpa_s, publish_id, ssi);
 fail:
 	wpabuf_free(ssi);
 	return ret;
@@ -13024,9 +13024,9 @@ static int wpas_ctrl_nan_subscribe(struct wpa_supplicant *wpa_s, char *cmd,
 		goto fail;
 	}
 
-	subscribe_id = wpas_nan_usd_subscribe(wpa_s, service_name,
-					      srv_proto_type, ssi,
-					      &params, p2p);
+	subscribe_id = wpas_nan_subscribe(wpa_s, service_name,
+					  srv_proto_type, ssi,
+					  &params, p2p);
 	if (subscribe_id > 0)
 		ret = os_snprintf(buf, buflen, "%d", subscribe_id);
 fail:
@@ -13057,7 +13057,7 @@ static int wpas_ctrl_nan_cancel_subscribe(struct wpa_supplicant *wpa_s,
 		return -1;
 	}
 
-	wpas_nan_usd_cancel_subscribe(wpa_s, subscribe_id);
+	wpas_nan_cancel_subscribe(wpa_s, subscribe_id);
 	return 0;
 }
 
@@ -13138,8 +13138,8 @@ static int wpas_ctrl_nan_transmit(struct wpa_supplicant *wpa_s, char *cmd)
 		goto fail;
 	}
 
-	ret = wpas_nan_usd_transmit(wpa_s, handle, ssi, NULL, peer_addr,
-				    req_instance_id);
+	ret = wpas_nan_transmit(wpa_s, handle, ssi, NULL, peer_addr,
+				req_instance_id);
 fail:
 	wpabuf_free(ssi);
 	return ret;
@@ -14230,7 +14230,7 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 		if (wpas_ctrl_nan_unpause_publish(wpa_s, buf + 20) < 0)
 			reply_len = -1;
 	} else if (os_strcmp(buf, "NAN_FLUSH") == 0) {
-		wpas_nan_usd_flush(wpa_s);
+		wpas_nan_de_flush(wpa_s);
 #endif /* CONFIG_NAN_USD */
 #ifdef CONFIG_PASN
 	} else if (os_strncmp(buf, "PASN_START ", 11) == 0) {
