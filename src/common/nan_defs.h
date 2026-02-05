@@ -90,6 +90,16 @@ enum nan_service_protocol_type {
 	NAN_SRV_PROTO_CSA_MATTER = 3,
 };
 
+/* SRF Control field */
+/* bit 0 = 0: Address Set is a sequence of MAC Addresses
+ * bit 0 = 1: Address Set is a Bloom filter */
+#define NAN_SRF_CTRL_BF 	BIT(0)
+#define NAN_SRF_CTRL_INCLUDE 	BIT(1)
+
+/* bit 2-3: Bloom Filter Index */
+#define NAN_SRF_CTRL_BF_IDX_MSK (BIT(0) | BIT(1))
+#define NAN_SRF_CTRL_BF_IDX_POS 2
+
 #define NAN_ATTR_HDR_LEN 3
 #define NAN_SERVICE_ID_LEN 6
 

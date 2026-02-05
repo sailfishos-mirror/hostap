@@ -174,6 +174,18 @@ struct nan_subscribe_params {
 	 */
 	const char *match_filter_tx;
 	const char *match_filter_rx;
+
+	/* Service response filter include flag */
+	bool srf_include;
+
+	/* Service response filter MAC list */
+	const char *srf_mac_list;
+
+	/* Bloom filter length in octets. If 0, MAC list is used instead */
+	u8 srf_bf_len;
+
+	/* Bloom filter index (0-3) */
+	u8 srf_bf_idx;
 };
 
 /* Returns -1 on failure or >0 subscribe_id */

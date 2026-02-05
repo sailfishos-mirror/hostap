@@ -13046,6 +13046,26 @@ static int wpas_ctrl_nan_subscribe(struct wpa_supplicant *wpa_s, char *cmd,
 			continue;
 		}
 
+		if (os_strncmp(token, "srf_include=", 12) == 0) {
+			params.srf_include = !!atoi(token + 12);
+			continue;
+		}
+
+		if (os_strncmp(token, "srf_mac_list=", 13) == 0) {
+			params.srf_mac_list = token + 13;
+			continue;
+		}
+
+		if (os_strncmp(token, "srf_bf_len=", 11) == 0) {
+			params.srf_bf_len = atoi(token + 11);
+			continue;
+		}
+
+		if (os_strncmp(token, "srf_bf_idx=", 11) == 0) {
+			params.srf_bf_idx = atoi(token + 11);
+			continue;
+		}
+
 		wpa_printf(MSG_INFO,
 			   "CTRL: Invalid NAN_SUBSCRIBE parameter: %s",
 			   token);

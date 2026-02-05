@@ -10,6 +10,7 @@
 
 #include "utils/common.h"
 #include "utils/eloop.h"
+#include "utils/crc32.h"
 #include "crypto/crypto.h"
 #include "crypto/sha256.h"
 #include "ieee802_11_defs.h"
@@ -71,6 +72,11 @@ struct nan_de_service {
 	/* Filters */
 	struct wpabuf *matching_filter_tx;
 	struct wpabuf *matching_filter_rx;
+
+	bool srf_include;
+	bool srf_type_bloom_filter;
+	u8 srf_bf_idx;
+	struct wpabuf *srf;
 };
 
 #define NAN_DE_N_MIN 5
@@ -144,6 +150,7 @@ static void nan_de_service_free(struct nan_de_service *srv)
 	wpabuf_free(srv->elems);
 	wpabuf_free(srv->matching_filter_tx);
 	wpabuf_free(srv->matching_filter_rx);
+	wpabuf_free(srv->srf);
 	os_free(srv->freq_list);
 	os_free(srv);
 }
@@ -266,6 +273,12 @@ static void nan_de_tx_sdf(struct nan_de *de, struct nan_de_service *srv,
 		ctrl |= NAN_SRV_CTRL_MATCHING_FILTER;
 	}
 
+	if (srv->srf && wpabuf_len(srv->srf)) {
+		/* SRF length + SRF control */
+		sda_len += 1 + 1 + wpabuf_len(srv->srf);
+		ctrl |= NAN_SRV_CTRL_RESP_FILTER;
+	}
+
 	len += NAN_ATTR_HDR_LEN + sda_len;
 
 	/* Service Descriptor Extension attribute */
@@ -293,6 +306,22 @@ static void nan_de_tx_sdf(struct nan_de *de, struct nan_de_service *srv,
 	if (ctrl & NAN_SRV_CTRL_MATCHING_FILTER) {
 		wpabuf_put_u8(buf, wpabuf_len(srv->matching_filter_tx));
 		wpabuf_put_buf(buf, srv->matching_filter_tx);
+	}
+
+	if (ctrl & NAN_SRV_CTRL_RESP_FILTER) {
+		u8 srf_ctrl = 0;
+
+		if (srv->srf_type_bloom_filter)
+			srf_ctrl = NAN_SRF_CTRL_BF;
+
+		if (srv->srf_include)
+			srf_ctrl |= NAN_SRF_CTRL_INCLUDE;
+
+		srf_ctrl |= (srv->srf_bf_idx & NAN_SRF_CTRL_BF_IDX_MSK) <<
+			NAN_SRF_CTRL_BF_IDX_POS;
+		wpabuf_put_u8(buf, wpabuf_len(srv->srf) + 1);
+		wpabuf_put_u8(buf, srf_ctrl);
+		wpabuf_put_buf(buf, srv->srf);
 	}
 
 	/* Service Descriptor Extension attribute */
@@ -1236,6 +1265,62 @@ static void nan_de_rx_follow_up(struct nan_de *de, struct nan_de_service *srv,
 }
 
 
+static bool nan_check_bloom_filter(const u8 *nmi, const u8 *bf,
+				   size_t bf_len, u8 bf_idx)
+{
+	u8 a_j_x[1 + ETH_ALEN];
+	int j;
+	u32 crc;
+
+	for (j = 4 * bf_idx; j < 4 * (bf_idx + 1); j++) {
+		a_j_x[0] = j;
+		os_memcpy(&a_j_x[1], nmi, ETH_ALEN);
+		crc = (~ieee80211_crc32(a_j_x, 1 + ETH_ALEN)) & 0xFFFF;
+		crc %= bf_len * 8;
+		if (!(bf[crc / 8] & BIT(crc % 8)))
+			return false;
+	}
+
+	return true;
+}
+
+
+static bool nan_srf_match(struct nan_de *de, const u8 *srf, size_t srf_len)
+{
+	u8 srf_ctrl;
+	bool srf_type_bf;
+	bool include;
+	u8 srf_bf_idx;
+
+	if (srf_len < 1)
+		return false;
+
+	srf_ctrl = *srf++;
+	srf_len--;
+
+	srf_type_bf = !!(srf_ctrl & NAN_SRF_CTRL_BF);
+	include = !!(srf_ctrl & NAN_SRF_CTRL_INCLUDE);
+	srf_bf_idx = (srf_ctrl >> NAN_SRF_CTRL_BF_IDX_POS) &
+		NAN_SRF_CTRL_BF_IDX_MSK;
+
+	if (srf_type_bf) {
+		if (nan_check_bloom_filter(de->nmi, srf, srf_len, srf_bf_idx))
+			return include;
+	} else {
+		/* MAC Address filter */
+		while (srf_len >= ETH_ALEN) {
+			if (ether_addr_equal(srf, de->nmi))
+				return include;
+
+			srf += ETH_ALEN;
+			srf_len -= ETH_ALEN;
+		}
+	}
+
+	return !include;
+}
+
+
 static void nan_de_rx_sda(struct nan_de *de, const u8 *peer_addr, const u8 *a3,
 			  unsigned int freq, const u8 *buf, size_t len,
 			  const u8 *sda, size_t sda_len)
@@ -1303,6 +1388,13 @@ static void nan_de_rx_sda(struct nan_de *de, const u8 *peer_addr, const u8 *a3,
 		flen = *sda++;
 		if (end - sda < flen)
 			return;
+
+		if (!nan_srf_match(de, sda, flen)) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Discard SDA with non-matching SRF");
+			return;
+		}
+
 		sda += flen;
 	}
 
@@ -1667,6 +1759,67 @@ int nan_de_unpause_publish(struct nan_de *de, int publish_id,
 }
 
 
+static void bloom_filter_add(u8 *bf, u8 bf_idx, u8 bf_len, const u8 *mac)
+{
+	u8 a_j_x[1 + ETH_ALEN];
+	int j;
+	u32 crc;
+
+	for (j = 4 * bf_idx; j < 4 * (bf_idx + 1); j++) {
+		a_j_x[0] = j;
+		os_memcpy(&a_j_x[1], mac, ETH_ALEN);
+		crc = (~ieee80211_crc32(a_j_x, 1 + ETH_ALEN)) & 0xFFFF;
+		crc %= bf_len * 8;
+		bf[crc / 8] |= 1 << (crc % 8);
+	}
+}
+
+
+static struct wpabuf * nan_build_bloom_filter(const char *srf_mac_list,
+					      u8 srf_bf_len, u8 srf_bf_idx)
+{
+	struct wpabuf *srf;
+	int i, n;
+	u8 mac[ETH_ALEN];
+	u8 *bf;
+
+	if (srf_bf_idx > 3)
+		return NULL;
+
+	if (os_strlen(srf_mac_list) % (ETH_ALEN * 2)) {
+		wpa_printf(MSG_INFO,
+			   "NAN: Invalid SRF MAC list length %zu",
+			   os_strlen(srf_mac_list));
+		return NULL;
+	}
+
+	n = os_strlen(srf_mac_list) / (ETH_ALEN * 2);
+
+	srf = wpabuf_alloc(srf_bf_len);
+	if (!srf)
+		return NULL;
+
+	bf = wpabuf_put(srf, srf_bf_len);
+
+	for (i = 0; i < n; i++) {
+		if (hexstr2bin(srf_mac_list + i * 2 * ETH_ALEN, mac, ETH_ALEN))
+		{
+			wpa_printf(MSG_INFO,
+				   "NAN: Invalid SRF MAC address %s",
+				   srf_mac_list + i * 2 * ETH_ALEN);
+			goto out;
+		}
+
+		bloom_filter_add(bf, srf_bf_idx, srf_bf_len, mac);
+	}
+
+	return srf;
+out:
+	wpabuf_free(srf);
+	return NULL;
+}
+
+
 int nan_de_subscribe(struct nan_de *de, const char *service_name,
 		     enum nan_service_protocol_type srv_proto_type,
 		     const struct wpabuf *ssi, const struct wpabuf *elems,
@@ -1763,6 +1916,31 @@ int nan_de_subscribe(struct nan_de *de, const char *service_name,
 				   "NAN: Failed to parse TX matching filter");
 			goto fail;
 		}
+	}
+
+	if (params->srf_mac_list) {
+		if (params->srf_bf_len) {
+			srv->srf = nan_build_bloom_filter(params->srf_mac_list,
+							  params->srf_bf_len,
+							  params->srf_bf_idx);
+			srv->srf_type_bloom_filter = true;
+			srv->srf_bf_idx = params->srf_bf_idx;
+		} else {
+			srv->srf = wpabuf_parse_bin(params->srf_mac_list);
+			if (wpabuf_len(srv->srf) % ETH_ALEN) {
+				wpa_printf(MSG_INFO,
+					   "NAN: Invalid SRF MAC list length");
+				goto fail;
+			}
+		}
+
+		if (!srv->srf || wpabuf_len(srv->srf) > 254) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Failed to parse SRF MAC list");
+			goto fail;
+		}
+
+		srv->srf_include = params->srf_include;
 	}
 
 	wpa_printf(MSG_DEBUG, "NAN: Assigned new subscribe handle %d for %s",
