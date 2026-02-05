@@ -82,7 +82,7 @@ void wpas_nan_deinit(struct wpa_supplicant *wpa_s)
 
 static int wpas_nan_ready(struct wpa_supplicant *wpa_s)
 {
-	return wpa_s->nan_mgmt && wpa_s->nan &&
+	return wpa_s->nan_mgmt && wpa_s->nan && wpa_s->nan_de &&
 		wpa_s->wpa_state != WPA_INTERFACE_DISABLED;
 }
 
