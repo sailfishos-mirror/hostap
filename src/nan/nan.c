@@ -65,6 +65,26 @@ int nan_start(struct nan_data *nan, struct nan_cluster_config *config)
 }
 
 
+int nan_update_config(struct nan_data *nan, struct nan_cluster_config *config)
+{
+	int ret;
+
+	wpa_printf(MSG_DEBUG, "NAN: Update configuration");
+
+	if (!nan->nan_started) {
+		wpa_printf(MSG_DEBUG, "NAN: Not started yet");
+		return -1;
+	}
+
+	ret = nan->cfg->update_config(nan->cfg->cb_ctx, config);
+	if (ret)
+		wpa_printf(MSG_DEBUG, "NAN: Failed to update config. ret=%d",
+			   ret);
+
+	return ret;
+}
+
+
 void nan_flush(struct nan_data *nan)
 {
 	wpa_printf(MSG_DEBUG, "NAN: Reset internal state");

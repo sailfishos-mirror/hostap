@@ -26,11 +26,20 @@ struct nan_config {
 	 * @ctx: Callback context from cb_ctx
 	 */
 	void (*stop)(void *ctx);
+
+	/**
+	 * update_config - Update NAN configuration
+	 * @ctx: Callback context from cb_ctx
+	 * @config: NAN cluster configuration
+	 */
+	int (*update_config)(void *ctx, struct nan_cluster_config *config);
+
 };
 
 struct nan_data * nan_init(const struct nan_config *cfg);
 void nan_deinit(struct nan_data *nan);
 int nan_start(struct nan_data *nan, struct nan_cluster_config *config);
+int nan_update_config(struct nan_data *nan, struct nan_cluster_config *config);
 void nan_stop(struct nan_data *nan);
 void nan_flush(struct nan_data *nan);
 

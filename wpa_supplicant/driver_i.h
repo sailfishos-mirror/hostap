@@ -1295,6 +1295,14 @@ static inline void wpa_drv_nan_stop(struct wpa_supplicant *wpa_s)
 	wpa_s->driver->nan_stop(wpa_s->drv_priv);
 }
 
+static inline int wpa_drv_nan_update_config(struct wpa_supplicant *wpa_s,
+					    struct nan_cluster_config *conf)
+{
+	if (!wpa_s->driver->nan_change_config)
+		return -1;
+	return wpa_s->driver->nan_change_config(wpa_s->drv_priv, conf);
+}
+
 #endif /* CONFIG_NAN */
 
 #endif /* DRIVER_I_H */

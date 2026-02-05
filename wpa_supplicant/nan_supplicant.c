@@ -24,6 +24,16 @@
 
 #define DEFAULT_NAN_MASTER_PREF 2
 #define DEFAULT_NAN_DUAL_BAND   0
+#define DEFAULT_NAN_SCAN_PERIOD 60
+#define DEFAULT_NAN_SCAN_DWELL_TIME 150
+#define DEFAULT_NAN_DISCOVERY_BEACON_INTERVAL 100
+#define DEFAULT_NAN_LOW_BAND_FREQUENCY 2437
+#define DEFAULT_NAN_HIGH_BAND_FREQUENCY 5745
+#define DEFAULT_NAN_RSSI_CLOSE -50
+#define DEFAULT_NAN_RSSI_MIDDLE -65
+
+#define NAN_MIN_RSSI_CLOSE  -60
+#define NAN_MIN_RSSI_MIDDLE -75
 
 #ifdef CONFIG_NAN
 
@@ -32,6 +42,15 @@ static int wpas_nan_start_cb(void *ctx, struct nan_cluster_config *config)
 	struct wpa_supplicant *wpa_s = ctx;
 
 	return wpa_drv_nan_start(wpa_s, config);
+}
+
+
+static int wpas_nan_update_config_cb(void *ctx,
+				     struct nan_cluster_config *config)
+{
+	struct wpa_supplicant *wpa_s = ctx;
+
+	return wpa_drv_nan_update_config(wpa_s, config);
 }
 
 
@@ -59,12 +78,44 @@ int wpas_nan_init(struct wpa_supplicant *wpa_s)
 
 	nan.start = wpas_nan_start_cb;
 	nan.stop = wpas_nan_stop_cb;
+	nan.update_config = wpas_nan_update_config_cb;
 
 	wpa_s->nan = nan_init(&nan);
 	if (!wpa_s->nan) {
 		wpa_printf(MSG_INFO, "NAN: Failed to init");
 		return -1;
 	}
+
+	/* Set the default configuration */
+	os_memset(&wpa_s->nan_config, 0, sizeof(wpa_s->nan_config));
+
+	wpa_s->nan_config.master_pref = DEFAULT_NAN_MASTER_PREF;
+	wpa_s->nan_config.dual_band = DEFAULT_NAN_DUAL_BAND;
+	os_memset(wpa_s->nan_config.cluster_id, 0, ETH_ALEN);
+	wpa_s->nan_config.scan_period = DEFAULT_NAN_SCAN_PERIOD;
+	wpa_s->nan_config.scan_dwell_time = DEFAULT_NAN_SCAN_DWELL_TIME;
+	wpa_s->nan_config.discovery_beacon_interval =
+		DEFAULT_NAN_DISCOVERY_BEACON_INTERVAL;
+
+	wpa_s->nan_config.low_band_cfg.frequency =
+		DEFAULT_NAN_LOW_BAND_FREQUENCY;
+	wpa_s->nan_config.low_band_cfg.rssi_close = DEFAULT_NAN_RSSI_CLOSE;
+	wpa_s->nan_config.low_band_cfg.rssi_middle = DEFAULT_NAN_RSSI_MIDDLE;
+	wpa_s->nan_config.low_band_cfg.awake_dw_interval = true;
+
+	wpa_s->nan_config.high_band_cfg.frequency =
+		DEFAULT_NAN_HIGH_BAND_FREQUENCY;
+	wpa_s->nan_config.high_band_cfg.rssi_close = DEFAULT_NAN_RSSI_CLOSE;
+	wpa_s->nan_config.high_band_cfg.rssi_middle = DEFAULT_NAN_RSSI_MIDDLE;
+	wpa_s->nan_config.high_band_cfg.awake_dw_interval = true;
+
+	/* TODO: Optimize this, so that the notification are enabled only when
+	 * needed, i.e., when the DE is configured with unsolicited publish or
+	 * active subscribe
+	 */
+	wpa_s->nan_config.enable_dw_notif =
+		!!(wpa_s->nan_drv_flags &
+		   WPA_DRIVER_FLAGS_NAN_SUPPORT_USERSPACE_DE);
 
 	return 0;
 }
@@ -90,27 +141,10 @@ static int wpas_nan_ready(struct wpa_supplicant *wpa_s)
 /* Join a cluster using current configuration */
 int wpas_nan_start(struct wpa_supplicant *wpa_s)
 {
-	struct nan_cluster_config cluster_config;
-
 	if (!wpas_nan_ready(wpa_s))
 		return -1;
 
-	if (!(wpa_s->nan_drv_flags &
-	      WPA_DRIVER_FLAGS_NAN_SUPPORT_SYNC_CONFIG)) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Driver doesn't support configurable NAN sync");
-		return -1;
-	}
-
-	cluster_config.master_pref = DEFAULT_NAN_MASTER_PREF;
-	cluster_config.dual_band = DEFAULT_NAN_DUAL_BAND;
-
-	if (wpa_s->nan_drv_flags & WPA_DRIVER_FLAGS_NAN_SUPPORT_USERSPACE_DE) {
-		wpa_printf(MSG_DEBUG, "NAN: Enable DW notifications");
-		cluster_config.enable_dw_notif = true;
-	}
-
-	return nan_start(wpa_s->nan, &cluster_config);
+	return nan_start(wpa_s->nan, &wpa_s->nan_config);
 }
 
 
@@ -132,6 +166,99 @@ void wpas_nan_flush(struct wpa_supplicant *wpa_s)
 		return;
 
 	nan_flush(wpa_s->nan);
+}
+
+
+int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
+{
+	struct nan_cluster_config *config = &wpa_s->nan_config;
+	char *param = os_strchr(cmd, ' ');
+
+	if (!param)
+		return -1;
+
+	*param++ = '\0';
+
+#define NAN_PARSE_INT(_str, _min, _max)				     \
+	if (os_strcmp(#_str, cmd) == 0) {			     \
+		int val = atoi(param);                               \
+								     \
+		if (val < (_min) || val > (_max)) {                  \
+			wpa_printf(MSG_INFO,                         \
+				   "NAN: Invalid value for " #_str); \
+			return -1;                                   \
+		}                                                    \
+		config->_str = val;                                  \
+		return 0;                                            \
+	}
+
+#define NAN_PARSE_BAND(_str)						\
+	if (os_strcmp(#_str, cmd) == 0) {				\
+		int a, b, c, d;						\
+									\
+		if (sscanf(param, "%d,%d,%d,%d", &a, &b, &c, &d) !=	\
+		    4) {						\
+			wpa_printf(MSG_DEBUG,				\
+				   "NAN: Invalid value for " #_str);	\
+			return -1;					\
+		}							\
+									\
+		if (a < NAN_MIN_RSSI_CLOSE ||				\
+		    b < NAN_MIN_RSSI_MIDDLE ||				\
+		    a <= b) {						\
+			wpa_printf(MSG_DEBUG,				\
+				   "NAN: Invalid value for " #_str);	\
+			return -1;					\
+		}							\
+		config->_str.rssi_close = a;				\
+		config->_str.rssi_middle = b;				\
+		config->_str.awake_dw_interval = c;			\
+		config->_str.disable_scan = !!d;			\
+		return 0;						\
+	}
+
+	/* 0 and 255 are reserved */
+	NAN_PARSE_INT(master_pref, 1, 254);
+	NAN_PARSE_INT(dual_band, 0, 1);
+	NAN_PARSE_INT(scan_period, 0, 0xffff);
+	NAN_PARSE_INT(scan_dwell_time, 10, 150);
+	NAN_PARSE_INT(discovery_beacon_interval, 50, 200);
+
+	NAN_PARSE_BAND(low_band_cfg);
+	NAN_PARSE_BAND(high_band_cfg);
+
+	if (os_strcmp("cluster_id", cmd) == 0) {
+		u8 cluster_id[ETH_ALEN];
+
+		if (hwaddr_aton(param, cluster_id) < 0) {
+			wpa_printf(MSG_INFO, "NAN: Invalid cluster ID");
+			return -1;
+		}
+
+		if (cluster_id[0] != 0x50 || cluster_id[1] != 0x6f ||
+		    cluster_id[2] != 0x9a || cluster_id[3] != 0x01) {
+			wpa_printf(MSG_DEBUG, "NAN: Invalid cluster ID format");
+			return -1;
+		}
+
+		os_memcpy(config->cluster_id, cluster_id, ETH_ALEN);
+		return 0;
+	}
+#undef NAN_PARSE_INT
+#undef NAN_PARSE_BAND
+
+	wpa_printf(MSG_INFO, "NAN: Unknown NAN_SET cmd='%s'", cmd);
+	return -1;
+}
+
+
+int wpas_nan_update_conf(struct wpa_supplicant *wpa_s)
+{
+	if (!wpas_nan_ready(wpa_s))
+		return -1;
+
+	wpa_printf(MSG_DEBUG, "NAN: Update NAN configuration");
+	return nan_update_config(wpa_s->nan, &wpa_s->nan_config);
 }
 
 

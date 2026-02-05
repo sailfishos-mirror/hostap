@@ -3406,6 +3406,20 @@ static int wpa_cli_cmd_nan_stop(struct wpa_ctrl *ctrl, int argc,
 	return wpa_cli_cmd(ctrl, "NAN_STOP", 0, argc, argv);
 }
 
+
+static int wpa_cli_cmd_nan_set(struct wpa_ctrl *ctrl, int argc,
+			       char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_SET", 2, argc, argv);
+}
+
+
+static int wpa_cli_cmd_nan_update_conf(struct wpa_ctrl *ctrl, int argc,
+				       char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_UPDATE_CONF", 0, argc, argv);
+}
+
 #endif /* CONFIG_NAN */
 
 
@@ -4193,6 +4207,10 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	  "= start/join NAN cluster with current configuration" },
 	{ "nan_stop", wpa_cli_cmd_nan_stop, NULL, cli_cmd_flag_none,
 	  "= stop NAN operation" },
+	{ "nan_set", wpa_cli_cmd_nan_set, NULL, cli_cmd_flag_none,
+	  "= set NAN configuration variable" },
+	{ "nan_update_conf", wpa_cli_cmd_nan_update_conf, NULL,
+	  cli_cmd_flag_none, "= update NAN configuration" },
 #endif /* CONFIG_NAN */
 	{ "new_random_mac_address", wpa_cli_cmd_generate_new_mac, NULL,
 	  cli_cmd_flag_none, "= Generate new random MAC address" },
