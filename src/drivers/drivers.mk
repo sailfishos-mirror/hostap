@@ -162,6 +162,7 @@ endif
 else
   ifdef CONFIG_LIBNL_TINY
     DRV_LIBS += -lnl-tiny
+    DRV_CFLAGS += -I/usr/include/libnl-tiny
   else
     DRV_LIBS += -lnl
     DRV_LIBS += -lnl-genl
