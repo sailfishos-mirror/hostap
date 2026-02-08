@@ -5618,7 +5618,7 @@ struct wpa_driver_ops {
 	 *
 	 * This command joins an existing NAN cluster or starts a new one.
 	 */
-	int (*nan_start)(void *priv, struct nan_cluster_config *conf);
+	int (*nan_start)(void *priv, const struct nan_cluster_config *conf);
 
 	/**
 	 * nan_change_config - Update the NAN cluster configuration
@@ -5628,7 +5628,8 @@ struct wpa_driver_ops {
 	 *
 	 * This command modifies the NAN cluster configuration.
 	 */
-	int (*nan_change_config)(void *priv, struct nan_cluster_config *conf);
+	int (*nan_change_config)(void *priv,
+				 const struct nan_cluster_config *conf);
 
 	/**
 	 * nan_stop - Stop NAN operation

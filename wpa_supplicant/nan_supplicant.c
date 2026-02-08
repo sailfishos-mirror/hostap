@@ -37,7 +37,7 @@
 
 #ifdef CONFIG_NAN
 
-static int wpas_nan_start_cb(void *ctx, struct nan_cluster_config *config)
+static int wpas_nan_start_cb(void *ctx, const struct nan_cluster_config *config)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 
@@ -46,7 +46,7 @@ static int wpas_nan_start_cb(void *ctx, struct nan_cluster_config *config)
 
 
 static int wpas_nan_update_config_cb(void *ctx,
-				     struct nan_cluster_config *config)
+				     const struct nan_cluster_config *config)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 

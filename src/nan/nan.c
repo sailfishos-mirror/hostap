@@ -43,7 +43,7 @@ void nan_deinit(struct nan_data *nan)
 }
 
 
-int nan_start(struct nan_data *nan, struct nan_cluster_config *config)
+int nan_start(struct nan_data *nan, const struct nan_cluster_config *config)
 {
 	int ret;
 
@@ -65,7 +65,8 @@ int nan_start(struct nan_data *nan, struct nan_cluster_config *config)
 }
 
 
-int nan_update_config(struct nan_data *nan, struct nan_cluster_config *config)
+int nan_update_config(struct nan_data *nan,
+		      const struct nan_cluster_config *config)
 {
 	int ret;
 

@@ -15257,7 +15257,7 @@ wpa_driver_get_multi_hw_info(void *priv, unsigned int *num_multi_hws)
 
 static int nl80211_nan_config(struct i802_bss *bss,
 			      struct wpa_driver_nl80211_data *drv,
-			      struct nan_cluster_config *params,
+			      const struct nan_cluster_config *params,
 			      enum nl80211_commands cmd)
 {
 	struct nl_msg *msg;
@@ -15392,7 +15392,7 @@ fail:
 
 
 static int wpa_driver_nl80211_nan_start(void *priv,
-					struct nan_cluster_config *params)
+					const struct nan_cluster_config *params)
 {
 	struct i802_bss *bss = priv;
 	struct wpa_driver_nl80211_data *drv = bss->drv;
@@ -15415,7 +15415,7 @@ static int wpa_driver_nl80211_nan_start(void *priv,
 
 static int
 wpa_driver_nl80211_nan_change_config(void *priv,
-				     struct nan_cluster_config *params)
+				     const struct nan_cluster_config *params)
 {
 	struct i802_bss *bss = priv;
 	struct wpa_driver_nl80211_data *drv = bss->drv;
