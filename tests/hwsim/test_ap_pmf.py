@@ -1534,6 +1534,13 @@ def run_ap_pmf_beacon_protection_mismatch(dev, apdev, clear):
     if "OK" not in res:
         raise Exception("SET_KEY failed")
 
+    if clear:
+        res = hapd.request("SET_KEY %d %s %d %d %s %s %d" % (WPA_ALG_NONE, addr, 7, 1, 6*"00", "", KEY_FLAG_GROUP))
+    else:
+        res = hapd.request("SET_KEY %d %s %d %d %s %s %d" % (WPA_ALG_IGTK, addr, 7, 1, 6*"00", 16*"00", KEY_FLAG_GROUP_TX_DEFAULT))
+    if "OK" not in res:
+        raise Exception("SET_KEY failed")
+
     ev = dev[0].wait_event(["CTRL-EVENT-UNPROT-BEACON"], timeout=5)
     if ev is None:
         raise Exception("Unprotected Beacon frame not reported")
