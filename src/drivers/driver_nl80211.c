@@ -3463,6 +3463,14 @@ wpa_driver_nl80211_finish_drv_init(struct i802_bss *bss, const u8 *set_addr,
 	if (drv->vendor_cmd_test_avail)
 		qca_vendor_test(drv);
 
+	if (bss->added_if_into_bridge &&
+	    linux_br_add_if(drv->global->ioctl_sock, bss->brname,
+			    bss->ifname) < 0) {
+		wpa_printf(MSG_WARNING,
+			   "nl80211: Failed to re-add interface %s into bridge %s: %s",
+			   bss->ifname, bss->brname, strerror(errno));
+	}
+
 	return 0;
 }
 
