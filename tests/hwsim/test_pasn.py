@@ -987,15 +987,30 @@ def test_pasn_kdk_derivation(dev, apdev):
 
 def test_pasn_sae_kdk_secure_ltf(dev, apdev):
     """Station authentication with SAE AP with KDK derivation during connection based on Secure LTF support"""
+    run_pasn_sae_kdk_secure_ltf(dev, apdev, True, True)
+
+def test_pasn_sae_kdk_secure_ltf_ap(dev, apdev):
+    """Station authentication with SAE AP with Secure LTF support only on AP"""
+    run_pasn_sae_kdk_secure_ltf(dev, apdev, True, False)
+
+def test_pasn_sae_kdk_secure_ltf_sta(dev, apdev):
+    """Station authentication with SAE AP with Secure LTF support only on STA"""
+    run_pasn_sae_kdk_secure_ltf(dev, apdev, False, True)
+
+def run_pasn_sae_kdk_secure_ltf(dev, apdev, ap_secure_ltf, sta_secure_ltf):
     params = hostapd.wpa2_params(ssid="test-sae",
                                  passphrase="12345678")
     params['wpa_key_mgmt'] = 'SAE'
     params['sae_pwe'] = "2"
-    params['driver_params'] = "secure_ltf=1"
+    if ap_secure_ltf:
+        params['driver_params'] = "secure_ltf=1"
     hapd = start_pasn_ap(apdev[0], params)
 
     wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
-    wpas.interface_add("wlan5", drv_params="secure_ltf=1")
+    if sta_secure_ltf:
+        wpas.interface_add("wlan5", drv_params="secure_ltf=1")
+    else:
+        wpas.interface_add("wlan5")
     check_pasn_capab(wpas)
     check_sae_capab(wpas)
 
@@ -1005,7 +1020,8 @@ def test_pasn_sae_kdk_secure_ltf(dev, apdev):
         wpas.connect("test-sae", psk="12345678", key_mgmt="SAE",
                      scan_freq="2412")
 
-        check_pasn_ptk(wpas, hapd, "CCMP", clear_keys=False, require_kdk=True)
+        check_pasn_ptk(wpas, hapd, "CCMP", clear_keys=False,
+                       require_kdk=ap_secure_ltf and sta_secure_ltf)
     finally:
         wpas.set("sae_pwe", "0")
 
