@@ -8140,9 +8140,11 @@ static bool hostapd_skip_rnr(size_t i, struct mbssid_ie_profiles *skip_profiles,
 	    i >= skip_profiles->start && i < skip_profiles->end)
 		return true;
 
-	/* No need to report if length is for normal TBTT and the BSS is
-	 * affiliated with an AP MLD. MLD TBTT will include this. */
-	if (tbtt_info_len == RNR_TBTT_INFO_LEN && ap_mld)
+	/* No need to report if length is for normal TBTT and both the reporting
+	 * AP and neighbor AP are affiliated with an AP MLD. MLD TBTT will
+	 * include this. */
+	if (tbtt_info_len == RNR_TBTT_INFO_LEN && ap_mld &&
+	    reporting_hapd->conf->mld_ap)
 		return true;
 
 	/* No need to report if length is for MLD TBTT and the BSS is not
@@ -8241,9 +8243,10 @@ repeat_rnr_len:
 	total_tbtt_count += tbtt_count;
 
 	/* If building for co-location, re-build again but this time include
-	 * ML TBTTs.
+	 * ML TBTTs if the reporting AP is affiliated with an AP MLD.
 	 */
-	if (!mld_update && tbtt_info_len == RNR_TBTT_INFO_LEN) {
+	if (!mld_update && tbtt_info_len == RNR_TBTT_INFO_LEN &&
+	    reporting_hapd->conf->mld_ap) {
 		tbtt_info_len = RNR_TBTT_INFO_MLD_LEN;
 
 		/* If no TBTT was found, adjust the len and total_len since it
@@ -8536,7 +8539,8 @@ static bool hostapd_eid_rnr_bss(struct hostapd_data *hapd,
 	*eid++ = RNR_20_MHZ_PSD_MAX_TXPOWER;
 
 #ifdef CONFIG_IEEE80211BE
-	if (ap_mld) {
+	/* Include the MLD parameters only when TBTT length is for ML RNR */
+	if (ap_mld && tbtt_info_len == RNR_TBTT_INFO_MLD_LEN) {
 		u8 param_ch = bss->eht_mld_bss_param_change;
 
 		/* If BSS is not a partner of the reporting_hapd or
@@ -8628,9 +8632,10 @@ repeat_rnr:
 	total_tbtt_count += tbtt_count;
 
 	/* If building for co-location, re-build again but this time include
-	 * ML TBTTs.
+	 * ML TBTTs if the reporting AP is affiliated with an AP MLD.
 	 */
-	if (!mld_update && tbtt_info_len == RNR_TBTT_INFO_LEN) {
+	if (!mld_update && tbtt_info_len == RNR_TBTT_INFO_LEN &&
+	    reporting_hapd->conf->mld_ap) {
 		tbtt_info_len = RNR_TBTT_INFO_MLD_LEN;
 		goto repeat_rnr;
 	}
