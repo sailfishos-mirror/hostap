@@ -8487,14 +8487,16 @@ static bool hostapd_eid_rnr_bss(struct hostapd_data *hapd,
 	bool ap_mld = false;
 	u8 *eid = *pos;
 
+	if (!bss || !bss->conf || !bss->started ||
+	    bss == reporting_hapd || !bss->beacon_set_done)
+		return false;
+
 #ifdef CONFIG_IEEE80211BE
-	ap_mld = !!hapd->conf->mld_ap;
+	ap_mld = !!bss->conf->mld_ap;
 #endif /* CONFIG_IEEE80211BE */
 
 	/* MLD RNR has to be included for the parameter change count */
-	if (!bss || !bss->conf || !bss->started ||
-	    bss == reporting_hapd || !bss->beacon_set_done ||
-	    (bss->conf->ignore_broadcast_ssid && !(ap_mld && mld_update)))
+	if (bss->conf->ignore_broadcast_ssid && !(ap_mld && mld_update))
 		return false;
 
 	if (hostapd_skip_rnr(i, skip_profiles, ap_mld, tbtt_info_len,
