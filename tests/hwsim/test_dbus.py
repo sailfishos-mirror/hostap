@@ -1571,8 +1571,19 @@ def test_dbus_connect_psk_mem(dev, apdev):
         if not t.success():
             raise Exception("Expected signals not seen")
 
-def test_dbus_connect_oom(dev, apdev):
-    """D-Bus AddNetwork and connect when out-of-memory"""
+def test_dbus_connect_oom_1_100(dev, apdev):
+    """D-Bus AddNetwork and connect when out-of-memory (1-100)"""
+    run_dbus_connect_oom(dev, apdev, 1, 100)
+
+def test_dbus_connect_oom_101_200(dev, apdev):
+    """D-Bus AddNetwork and connect when out-of-memory (101-200)"""
+    run_dbus_connect_oom(dev, apdev, 101, 200)
+
+def test_dbus_connect_oom_201_300(dev, apdev):
+    """D-Bus AddNetwork and connect when out-of-memory (201-300)"""
+    run_dbus_connect_oom(dev, apdev, 251, 300)
+
+def run_dbus_connect_oom(dev, apdev, start, stop):
     (bus, wpas_obj, path, if_obj) = prepare_dbus(dev[0])
     iface = dbus.Interface(if_obj, WPAS_DBUS_IFACE)
 
@@ -1694,7 +1705,7 @@ def test_dbus_connect_oom(dev, apdev):
             return self.state == 7
 
     count = 0
-    for i in range(1, 1000):
+    for i in range(start, stop + 1):
         hapd.dump_monitor()
         for j in range(3):
             dev[j].dump_monitor()
