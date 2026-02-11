@@ -76,6 +76,10 @@ enum qca_radiotap_vendor_ids {
  * @QCA_WLAN_VENDOR_ATTR_CONFIG_TX_NSS_5GHZ: Configure TX_NSS in 5 or 6 GHz band
  * @QCA_WLAN_VENDOR_ATTR_CONFIG_RX_NSS_5GHZ: Configure RX_NSS in 5 or 6 GHz band
  *
+ * To effectively clear or reset the NSS configuration, user-space can set the
+ * attribute to 0xFF or 255, allowing the driver to apply the default NSS
+ * configuration.
+ *
  * Global chain configuration - Applies to all bands (2.4 GHz and 5/6 GHz)
  * The following attributes are used to dynamically configure the number of
  * chains to be used for transmitting or receiving the data in the 2.4 GHz and
