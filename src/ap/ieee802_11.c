@@ -4682,8 +4682,18 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 			goto skip_sae_owe;
 #ifdef CONFIG_SAE
 		if (wpa_auth_uses_sae(sta->wpa_sm) && sta->sae &&
-		    sta->sae->state == SAE_ACCEPTED)
+		    sta->sae->state == SAE_ACCEPTED) {
+			if (!sta->sae->h2e &&
+			    wpa_key_mgmt_sae_ext_key(wpa_auth_sta_key_mgmt(
+							     sta->wpa_sm))) {
+				wpa_printf(MSG_DEBUG, "SAE: STA " MACSTR
+					   " tried to use EXT-KEY AKM without H2E",
+					   MAC2STR(sta->addr));
+				resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
+				goto out;
+			}
 			wpa_auth_add_sae_pmkid(sta->wpa_sm, sta->sae->pmkid);
+		}
 
 		if (wpa_auth_uses_sae(sta->wpa_sm) &&
 		    sta->auth_alg == WLAN_AUTH_OPEN) {

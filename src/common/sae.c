@@ -2254,11 +2254,9 @@ u16 sae_parse_commit(struct sae_data *sae, const u8 *data, size_t len,
 		sae_parse_token_container(sae, pos, end, token, token_len);
 
 	/* Conditional AKM Suite Selector element */
-	if (h2e) {
-		res = sae_parse_akm_suite_selector(sae, &pos, end);
-		if (res != WLAN_STATUS_SUCCESS)
-			return res;
-	}
+	res = sae_parse_akm_suite_selector(sae, &pos, end);
+	if (res != WLAN_STATUS_SUCCESS)
+		return res;
 
 	if (sae->own_akm_suite_selector &&
 	    sae->own_akm_suite_selector != sae->peer_akm_suite_selector) {
@@ -2276,6 +2274,12 @@ u16 sae_parse_commit(struct sae_data *sae, const u8 *data, size_t len,
 		else if (sae->peer_akm_suite_selector ==
 		    RSN_AUTH_KEY_MGMT_FT_SAE_EXT_KEY)
 			sae->akmp = WPA_KEY_MGMT_FT_SAE_EXT_KEY;
+	}
+
+	if (wpa_key_mgmt_sae_ext_key(sae->akmp) && !h2e) {
+		wpa_printf(MSG_DEBUG,
+			   "SAE: Tried to use EXT-KEY AKM without H2E");
+		return WLAN_STATUS_UNSPECIFIED_FAILURE;
 	}
 
 	/*
