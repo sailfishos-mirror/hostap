@@ -5054,7 +5054,8 @@ int ieee80211_ml_process_link(struct hostapd_data *hapd,
 			      struct sta_info *origin_sta,
 			      struct mld_link_info *link,
 			      const u8 *ies, size_t ies_len,
-			      enum link_parse_type type, bool offload)
+			      enum link_parse_type type, bool offload,
+			      bool *set_beacon)
 {
 	struct ieee802_11_elems elems;
 	struct wpabuf *mlbuf = NULL;
@@ -5139,8 +5140,8 @@ int ieee80211_ml_process_link(struct hostapd_data *hapd,
 		}
 		hapd->sta_aid[(sta->aid - 1) / 32] |= BIT((sta->aid - 1) % 32);
 		sta->listen_interval = origin_sta->listen_interval;
-		if (update_ht_state(hapd, sta) > 0)
-			ieee802_11_update_beacons(hapd->iface);
+		if (update_ht_state(hapd, sta) > 0 && set_beacon)
+			*set_beacon = true;
 	}
 
 	/*
@@ -5212,7 +5213,8 @@ int hostapd_process_assoc_ml_info(struct hostapd_data *hapd,
 				  struct sta_info *sta,
 				  const u8 *ies, size_t ies_len,
 				  bool reassoc, int tx_link_status,
-				  bool offload)
+				  bool offload,
+				  bool *set_beacon)
 {
 	int ret = 0;
 #ifdef CONFIG_IEEE80211BE
@@ -5256,7 +5258,8 @@ int hostapd_process_assoc_ml_info(struct hostapd_data *hapd,
 			if (ieee80211_ml_process_link(
 				    bss, sta, link, ies, ies_len,
 				    reassoc ? LINK_PARSE_REASSOC :
-				    LINK_PARSE_ASSOC, offload))
+				    LINK_PARSE_ASSOC, offload,
+				    set_beacon))
 				ret = -1;
 		}
 	}
@@ -6271,9 +6274,6 @@ static void handle_assoc(struct hostapd_data *hapd,
 	}
 #endif /* CONFIG_FILS */
 
-	if (set_beacon)
-		ieee802_11_update_beacons(hapd->iface);
-
  fail:
 
 	/*
@@ -6296,7 +6296,7 @@ static void handle_assoc(struct hostapd_data *hapd,
 	 */
 	if (sta)
 		hostapd_process_assoc_ml_info(hapd, sta, pos, left, reassoc,
-					      resp, false);
+					      resp, false, &set_beacon);
 
 	if (resp == WLAN_STATUS_SUCCESS && sta &&
 	    add_associated_sta(hapd, sta, reassoc))
@@ -6306,6 +6306,9 @@ static void handle_assoc(struct hostapd_data *hapd,
 	if (sta && delay_assoc && resp == WLAN_STATUS_SUCCESS &&
 	    eloop_is_timeout_registered(fils_hlp_timeout, hapd, sta) &&
 	    sta->fils_pending_assoc_req) {
+		if (set_beacon)
+			ieee802_11_update_beacons(hapd->iface);
+
 		/* Do not reschedule fils_hlp_timeout in case the station
 		 * retransmits (Re)Association Request frame while waiting for
 		 * the previously started FILS HLP wait, so that the timeout can
@@ -6325,6 +6328,9 @@ static void handle_assoc(struct hostapd_data *hapd,
 		sta->fils_hlp_resp = NULL;
 	}
 	if (sta && delay_assoc && resp == WLAN_STATUS_SUCCESS) {
+		if (set_beacon)
+			ieee802_11_update_beacons(hapd->iface);
+
 		sta->fils_pending_assoc_req = tmp;
 		sta->fils_pending_assoc_req_len = left;
 		sta->fils_pending_assoc_is_reassoc = reassoc;
@@ -6345,6 +6351,10 @@ static void handle_assoc(struct hostapd_data *hapd,
 					    NULL : sta,
 					    mgmt->sa, resp, reassoc,
 					    pos, left, rssi, omit_rsnxe);
+
+	if (set_beacon)
+		ieee802_11_update_beacons(hapd->iface);
+
 	os_free(tmp);
 
 	/*

@@ -971,7 +971,7 @@ skip_wpa_check:
 #ifdef CONFIG_IEEE80211BE
 	if (hostapd_process_assoc_ml_info(hapd, sta, req_ies, req_ies_len,
 					  !!reassoc, WLAN_STATUS_SUCCESS,
-					  true)) {
+					  true, NULL)) {
 		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
 		reason = WLAN_REASON_UNSPECIFIED;
 		goto fail;

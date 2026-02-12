@@ -1758,7 +1758,7 @@ hostapd_ml_process_reconf_link(struct hostapd_data *hapd,
 
 	/* Parse STA profile, check the IEs, and send ADD_LINK_STA */
 	ieee80211_ml_process_link(lhapd, assoc_sta, &link, ies, ies_len,
-				  LINK_PARSE_RECONF, false);
+				  LINK_PARSE_RECONF, false, NULL);
 	if (link.status != WLAN_STATUS_SUCCESS)
 		return link.status;
 

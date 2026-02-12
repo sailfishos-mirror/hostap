@@ -304,14 +304,16 @@ int hostapd_process_assoc_ml_info(struct hostapd_data *hapd,
 				  struct sta_info *sta,
 				  const u8 *ies, size_t ies_len,
 				  bool reassoc, int tx_link_status,
-				  bool offload);
+				  bool offload,
+				  bool *set_beacon);
 
 void ml_deinit_link_reconf_req(struct link_reconf_req_list **req_list_ptr);
 int ieee80211_ml_process_link(struct hostapd_data *hapd,
 			      struct sta_info *origin_sta,
 			      struct mld_link_info *link,
 			      const u8 *ies, size_t ies_len,
-			      enum link_parse_type type, bool offload);
+			      enum link_parse_type type, bool offload,
+			      bool *set_beacon);
 void ieee80211_ml_build_assoc_resp(struct hostapd_data *hapd,
 				   struct mld_link_info *link);
 
