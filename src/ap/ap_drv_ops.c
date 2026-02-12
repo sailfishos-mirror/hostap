@@ -1248,7 +1248,7 @@ int hostapd_drv_do_acs(struct hostapd_data *hapd)
 	params.hw_mode = hapd->iface->conf->hw_mode;
 	params.link_id = -1;
 #ifdef CONFIG_IEEE80211BE
-	if (hapd->conf->mld_ap && hostapd_is_eht_enabled(hapd))
+	if (hapd->conf->mld_ap)
 		params.link_id = hapd->mld_link_id;
 #endif /* CONFIG_IEEE80211BE */
 
