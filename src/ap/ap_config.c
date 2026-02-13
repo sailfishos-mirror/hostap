@@ -1309,6 +1309,22 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 		}
 	}
 
+	if (full_config) {
+		size_t i;
+
+		for (i = 0; i < conf->num_bss; i++) {
+			if (conf->bss[i] != bss &&
+			    os_strcmp(conf->bss[i]->iface, bss->iface) == 0) {
+				wpa_printf(MSG_ERROR,
+					   "Duplicate interface '%s' for BSSID "
+					   MACSTR " and " MACSTR, bss->iface,
+					   MAC2STR(conf->bss[i]->bssid),
+					   MAC2STR(bss->bssid));
+				return -1;
+			}
+		}
+	}
+
 #ifdef CONFIG_IEEE80211R_AP
 	if (full_config && wpa_key_mgmt_ft(bss->wpa_key_mgmt) &&
 	    (bss->nas_identifier == NULL ||
