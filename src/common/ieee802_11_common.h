@@ -394,7 +394,7 @@ const u8 * get_basic_mle_eml_capa(const u8 *buf, size_t len);
 int get_basic_mle_link_id(const u8 *buf, size_t len);
 
 unsigned int get_max_nss_capability(struct ieee802_11_elems *elems,
-				    bool parse_for_rx);
+				    bool parse_for_rx, enum chan_width bw);
 
 struct supported_chan_width {
 	bool is_160_supported;
