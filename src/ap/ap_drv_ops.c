@@ -480,7 +480,7 @@ int hostapd_sta_add(struct hostapd_data *hapd,
 		    const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab,
 		    u32 flags, u8 qosinfo, u8 vht_opmode, int supp_p2p_ps,
 		    int set, const u8 *link_addr, bool mld_link_sta,
-		    u16 eml_cap)
+		    u16 eml_cap, bool epp_sta)
 {
 	struct hostapd_sta_add_params params;
 
@@ -510,6 +510,9 @@ int hostapd_sta_add(struct hostapd_data *hapd,
 	params.support_p2p_ps = supp_p2p_ps;
 	params.set = set;
 	params.mld_link_id = -1;
+#ifdef CONFIG_ENC_ASSOC
+	params.epp_sta = epp_sta;
+#endif /* CONFIG_ENC_ASSOC */
 
 #ifdef CONFIG_IEEE80211BE
 	/*

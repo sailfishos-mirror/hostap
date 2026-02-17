@@ -4480,6 +4480,13 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 	const u8 *wpa_ie;
 	size_t wpa_ie_len;
 	const u8 *p2p_dev_addr = NULL;
+#ifdef CONFIG_SAE
+	bool epp_sta = false;
+
+#ifdef CONFIG_ENC_ASSOC
+	epp_sta = sta->epp_sta;
+#endif /* CONFIG_ENC_ASSOC */
+#endif /* CONFIG_SAE */
 
 	if (type != LINK_PARSE_RECONF) {
 		resp = check_ssid(hapd, sta, elems->ssid, elems->ssid_len);
@@ -4788,7 +4795,7 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 			if (wpa_key_mgmt_sae_ext_key(sa->akmp))
 				wpa_auth_set_hash_alg_sae_ext_key(
 					sta->wpa_sm, sa->pmk_len);
-		} else if (wpa_auth_uses_sae(sta->wpa_sm) &&
+		} else if (!epp_sta && wpa_auth_uses_sae(sta->wpa_sm) &&
 			   sta->auth_alg != WLAN_AUTH_SAE &&
 			   !(sta->auth_alg == WLAN_AUTH_FT &&
 			     wpa_auth_uses_ft_sae(sta->wpa_sm))) {
@@ -5185,6 +5192,9 @@ int ieee80211_ml_process_link(struct hostapd_data *hapd,
 	sta->flags |= origin_sta->flags | WLAN_STA_ASSOC_REQ_OK;
 	sta->mld_assoc_link_id = origin_sta->mld_assoc_link_id;
 	ap_sta_set_mld(sta, true);
+#ifdef CONFIG_ENC_ASSOC
+	sta->epp_sta = origin_sta->epp_sta;
+#endif /* CONFIG_ENC_ASSOC */
 
 	status = __check_assoc_ies(hapd, sta, NULL, 0, &elems, type,
 				   origin_sta->wpa_sm);
@@ -5379,8 +5389,12 @@ static int add_associated_sta(struct hostapd_data *hapd,
 	struct ieee80211_eht_capabilities eht_cap;
 	int set = 1;
 	const u8 *mld_link_addr = NULL;
-	bool mld_link_sta = false;
+	bool mld_link_sta = false, epp_sta = false;
 	u16 eml_cap = 0;
+
+#ifdef CONFIG_ENC_ASSOC
+	epp_sta = sta->epp_sta;
+#endif /* CONFIG_ENC_ASSOC */
 
 #ifdef CONFIG_IEEE80211BE
 	if (ap_sta_is_mld(hapd, sta)) {
@@ -5472,7 +5486,8 @@ static int add_associated_sta(struct hostapd_data *hapd,
 			    sta->he_6ghz_capab,
 			    sta->flags | WLAN_STA_ASSOC, sta->qosinfo,
 			    sta->vht_opmode, sta->p2p_ie ? 1 : 0,
-			    set, mld_link_addr, mld_link_sta, eml_cap)) {
+			    set, mld_link_addr, mld_link_sta, eml_cap,
+			    epp_sta)) {
 		hostapd_logger(hapd, sta->addr,
 			       HOSTAPD_MODULE_IEEE80211, HOSTAPD_LEVEL_NOTICE,
 			       "Could not %s STA to kernel driver",

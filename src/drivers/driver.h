@@ -2680,6 +2680,9 @@ struct hostapd_sta_add_params {
 	size_t eht_capab_len;
 	u32 flags; /* bitmask of WPA_STA_* flags */
 	u32 flags_mask; /* unset bits in flags */
+#ifdef CONFIG_ENC_ASSOC
+	bool epp_sta;
+#endif /* CONFIG_ENC_ASSOC */
 #ifdef CONFIG_MESH
 	enum mesh_plink_state plink_state;
 	u16 peer_aid;
