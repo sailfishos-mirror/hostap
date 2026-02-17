@@ -717,6 +717,10 @@ static int hostapd_config_parse_key_mgmt(int line, const char *value)
 		else if (os_strcmp(start, "PASN") == 0)
 			val |= WPA_KEY_MGMT_PASN;
 #endif /* CONFIG_PASN */
+#ifdef CONFIG_ENC_ASSOC
+		else if (os_strcmp(start, "EPPKE") == 0)
+			val |= WPA_KEY_MGMT_EPPKE;
+#endif /* CONFIG_ENC_ASSOC */
 		else {
 			wpa_printf(MSG_ERROR, "Line %d: invalid key_mgmt '%s'",
 				   line, start);

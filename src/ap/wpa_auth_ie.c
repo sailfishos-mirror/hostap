@@ -303,6 +303,13 @@ static u8 * rsne_write_data(u8 *buf, size_t len, u8 *pos, int group,
 		num_suites++;
 	}
 #endif /* CONFIG_PASN */
+#ifdef CONFIG_ENC_ASSOC
+	if (key_mgmt & WPA_KEY_MGMT_EPPKE) {
+		RSN_SELECTOR_PUT(pos, RSN_AUTH_KEY_MGMT_EPPKE);
+		pos += RSN_SELECTOR_LEN;
+		num_suites++;
+	}
+#endif /* CONFIG_ENC_ASSOC */
 
 #ifdef CONFIG_RSN_TESTING
 	if (rsn_testing) {
@@ -503,6 +510,22 @@ static u32 rsnxe_capab(struct wpa_auth_config *conf, int key_mgmt)
 		capab |= BIT(WLAN_RSNX_CAPAB_SSID_PROTECTION);
 	if (conf->spp_amsdu)
 		capab |= BIT(WLAN_RSNX_CAPAB_SPP_A_MSDU);
+#ifdef CONFIG_ENC_ASSOC
+	/* Per IEEE 802.11bi/D4.0, 12.16.7 (PMKSA caching privacy)
+	 * a STA that sets the PMKSA Caching Privacy Support
+	 * field in the RSNXE to 1 shall set the (Re)Association
+	 * Frame Encryption Support field in the RSNXE to 1.
+	 */
+	if (conf->assoc_frame_encryption ||
+	    conf->pmksa_caching_privacy) {
+		capab |= BIT(WLAN_RSNX_CAPAB_ASSOC_FRAME_ENCRYPTION);
+		capab |= BIT(WLAN_RSNX_CAPAB_KEK_IN_PASN);
+	}
+	if (conf->pmksa_caching_privacy)
+		capab |= BIT(WLAN_RSNX_CAPAB_PMKSA_CACHING_PRIVACY);
+	if (conf->eap_using_authentication_frames)
+		capab |= BIT(WLAN_RSNX_CAPAB_802_1X_IN_AUTH_FRAMES);
+#endif /* CONFIG_ENC_ASSOC */
 
 	return capab;
 }
