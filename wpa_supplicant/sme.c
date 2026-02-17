@@ -3069,6 +3069,18 @@ mscs_fail:
 			wpas_connection_failed(wpa_s, wpa_s->pending_bssid,
 					       NULL);
 			wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
+
+#ifdef CONFIG_ENC_ASSOC
+			/* Clear configured keys and PTKSA */
+			if (wpa_s->ptksa &&
+			    ptksa_cache_get(wpa_s->ptksa, wpa_s->bssid,
+					    WPA_CIPHER_NONE)) {
+				wpa_clear_keys(wpa_s, wpa_s->bssid);
+				ptksa_cache_flush(wpa_s->ptksa, wpa_s->bssid,
+						  WPA_CIPHER_NONE);
+			}
+#endif /* CONFIG_ENC_ASSOC */
+
 			os_memset(wpa_s->pending_bssid, 0, ETH_ALEN);
 		}
 		return;
@@ -3131,6 +3143,16 @@ static void sme_deauth(struct wpa_supplicant *wpa_s, const u8 **link_bssids)
 
 	wpas_connection_failed(wpa_s, wpa_s->pending_bssid, link_bssids);
 	wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
+
+#ifdef CONFIG_ENC_ASSOC
+	/* Clear configured keys and PTKSA */
+	if (wpa_s->ptksa &&
+	    ptksa_cache_get(wpa_s->ptksa, wpa_s->bssid, WPA_CIPHER_NONE)) {
+		wpa_clear_keys(wpa_s, wpa_s->bssid);
+		ptksa_cache_flush(wpa_s->ptksa, wpa_s->bssid, WPA_CIPHER_NONE);
+	}
+#endif /* CONFIG_ENC_ASSOC */
+
 	os_memset(wpa_s->bssid, 0, ETH_ALEN);
 	os_memset(wpa_s->pending_bssid, 0, ETH_ALEN);
 	if (bssid_changed)
