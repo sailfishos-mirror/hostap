@@ -197,6 +197,10 @@ int wpa_pasn_auth_rx(struct pasn_data *pasn, const u8 *data, size_t len,
 		     struct wpa_pasn_params_data *pasn_params);
 int wpa_pasn_auth_tx_status(struct pasn_data *pasn,
 			    const u8 *data, size_t data_len, u8 acked);
+int wpas_parse_pasn_frame(struct pasn_data *pasn, u16 auth_type,
+			  u16 auth_transaction, u16 status_code,
+			  const u8 *frame_data, size_t frame_data_len,
+			  struct wpa_pasn_params_data *pasn_params);
 
 /* Responder */
 int handle_auth_pasn_1(struct pasn_data *pasn,

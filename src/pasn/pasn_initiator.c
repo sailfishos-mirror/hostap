@@ -1163,38 +1163,26 @@ static bool is_pasn_auth_frame(struct pasn_data *pasn,
 }
 
 
-int wpa_pasn_auth_rx(struct pasn_data *pasn, const u8 *data, size_t len,
-		     struct wpa_pasn_params_data *pasn_params)
-
+int wpas_parse_pasn_frame(struct pasn_data *pasn, u16 auth_type,
+			  u16 auth_transaction, u16 status,
+			  const u8 *auth_data, size_t auth_data_len,
+			  struct wpa_pasn_params_data *pasn_params)
 {
 	struct ieee802_11_elems elems;
 	struct wpa_ie_data rsn_data;
-	const struct ieee80211_mgmt *mgmt =
-		(const struct ieee80211_mgmt *) data;
-	const u8 *auth_data = mgmt->u.auth.variable;
-	size_t auth_data_len = len - offsetof(struct ieee80211_mgmt,
-					      u.auth.variable);
-	struct wpabuf *wrapped_data = NULL, *secret = NULL, *frame = NULL;
+	struct wpabuf *wrapped_data = NULL, *secret = NULL;
 	u8 mic[WPA_PASN_MAX_MIC_LEN], out_mic[WPA_PASN_MAX_MIC_LEN];
 	u8 mic_len;
-	u16 status;
 	int ret, inc_y;
 	u8 *copy = NULL;
 	size_t mic_offset, copy_len;
 
-	if (!is_pasn_auth_frame(pasn, mgmt, len, true))
-		return -2;
-
-	if (mgmt->u.auth.auth_transaction !=
-	    host_to_le16(pasn->trans_seq + 1)) {
+	if (auth_transaction != pasn->trans_seq + 1) {
 		wpa_printf(MSG_DEBUG,
 			   "PASN: RX: Invalid transaction sequence: (%u != %u)",
-			   le_to_host16(mgmt->u.auth.auth_transaction),
-			   pasn->trans_seq + 1);
+			   auth_transaction, pasn->trans_seq + 1);
 		return -3;
 	}
-
-	status = le_to_host16(mgmt->u.auth.status_code);
 
 	if (status != WLAN_STATUS_SUCCESS &&
 	    status != WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY) {
@@ -1365,14 +1353,23 @@ int wpa_pasn_auth_rx(struct pasn_data *pasn, const u8 *data, size_t len,
 	/* Use a copy of the message since we need to clear the MIC field */
 	if (!elems.mic)
 		goto fail;
-	mic_offset = elems.mic - (const u8 *) &mgmt->u.auth;
-	copy_len = len - offsetof(struct ieee80211_mgmt, u.auth);
-	if (mic_offset + mic_len > copy_len)
-		goto fail;
-	copy = os_memdup(&mgmt->u.auth, copy_len);
+	mic_offset = elems.mic - auth_data;
+
+	/* 6 octets for the fixed fields Authentic Algorithm, Authentication
+	 * Transaction and Status Code (2 octets each). */
+	copy = os_malloc(auth_data_len + 6);
 	if (!copy)
 		goto fail;
-	os_memset(copy + mic_offset, 0, mic_len);
+
+	WPA_PUT_LE16(copy, auth_type);
+	WPA_PUT_LE16(copy + 2, auth_transaction);
+	WPA_PUT_LE16(copy + 4, status);
+	os_memcpy(copy + 6, auth_data, auth_data_len);
+	copy_len = auth_data_len + 6;
+	if (mic_offset + mic_len > auth_data_len)
+		goto fail;
+
+	os_memset(copy + 6 + mic_offset, 0, mic_len);
 
 	if (pasn->beacon_rsne_rsnxe) {
 		/* Verify the MIC */
@@ -1437,6 +1434,48 @@ int wpa_pasn_auth_rx(struct pasn_data *pasn, const u8 *data, size_t len,
 		goto fail;
 	}
 
+	return 0;
+
+fail:
+	wpabuf_free(wrapped_data);
+	wpabuf_free(secret);
+	os_free(copy);
+	return -1;
+}
+
+
+int wpa_pasn_auth_rx(struct pasn_data *pasn, const u8 *data, size_t len,
+		     struct wpa_pasn_params_data *pasn_params)
+{
+	const struct ieee80211_mgmt *mgmt =
+		(const struct ieee80211_mgmt *) data;
+	struct wpabuf *frame = NULL;
+	int ret;
+	u16 status = le_to_host16(mgmt->u.auth.status_code);
+
+	if (!is_pasn_auth_frame(pasn, mgmt, len, true))
+		return -2;
+
+	ret = wpas_parse_pasn_frame(pasn, le_to_host16(mgmt->u.auth.auth_alg),
+				    le_to_host16(mgmt->u.auth.auth_transaction),
+				    status,
+				    mgmt->u.auth.variable,
+				    len - offsetof(struct ieee80211_mgmt,
+				    u.auth.variable), pasn_params);
+
+	if (ret < 0) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: Failed parsing PASN M2 auth frame");
+		if (ret < -1)
+			return ret;
+		goto fail;
+	}
+
+	if (ret == 1) {
+		wpa_printf(MSG_DEBUG, "PASN: Temporary rejection, Retry");
+		return 1;
+	}
+
 	frame = wpas_pasn_build_auth_3(pasn, true);
 	if (!frame) {
 		wpa_printf(MSG_DEBUG, "PASN: Failed building 3rd auth frame");
@@ -1463,9 +1502,6 @@ int wpa_pasn_auth_rx(struct pasn_data *pasn, const u8 *data, size_t len,
 	return 0;
 fail:
 	wpa_printf(MSG_DEBUG, "PASN: Failed RX processing - terminating");
-	wpabuf_free(wrapped_data);
-	wpabuf_free(secret);
-	os_free(copy);
 
 	/*
 	 * TODO: In case of an error the standard allows to silently drop
