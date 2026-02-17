@@ -419,6 +419,11 @@ pasn_derive_keys(struct pasn_data *pasn,
 #ifdef CONFIG_ENC_ASSOC
 	if (pasn->auth_alg == WLAN_AUTH_EPPKE && pasn->is_ml_peer)
 		own_addr = pasn->mld_addr;
+
+	if (pasn->derive_kek) {
+		pasn->kek_len = wpa_kek_len(pasn->akmp, pasn->pmk_len);
+		wpa_printf(MSG_DEBUG, "PASN: kek_len=%zu", pasn->kek_len);
+	}
 #endif /* CONFIG_ENC_ASSOC */
 
 	ret = pasn_pmk_to_ptk(pmk, pmk_len, peer_addr, own_addr,
@@ -790,7 +795,8 @@ int handle_auth_pasn_1(struct pasn_data *pasn,
 
 	wpa_printf(MSG_DEBUG, "PASN: kdk_len=%zu", pasn->kdk_len);
 
-	if (!ieee802_11_rsnx_capab_len(elems.rsnxe, elems.rsnxe_len,
+	if (!pasn->derive_kek ||
+	    !ieee802_11_rsnx_capab_len(elems.rsnxe, elems.rsnxe_len,
 				       WLAN_RSNX_CAPAB_KEK_IN_PASN)) {
 		pasn->kek_len = 0;
 		pasn->derive_kek = false;

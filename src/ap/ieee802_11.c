@@ -3016,6 +3016,12 @@ static void hapd_initialize_pasn(struct hostapd_data *hapd,
 	pasn_set_bssid(pasn, hapd->own_addr);
 	pasn_set_own_addr(pasn, hapd->own_addr);
 #if defined(CONFIG_IEEE80211BE) && defined(CONFIG_ENC_ASSOC)
+	/* Per IEEE802.11bi/D4.0, 12.16.9 (Enhanced privacy
+	 * protection key exchange), if (Re)Association frame
+	 * Encryption is activated, KEK in PASN shall be true.
+	 */
+	if (hapd->conf->assoc_frame_encryption)
+		pasn->derive_kek = true;
 	if (hapd->conf->mld_ap)
 		pasn_set_own_mld_addr(pasn, hapd->mld->mld_addr);
 #endif /* CONFIG_IEEE80211BE && CONFIG_ENC_ASSOC */

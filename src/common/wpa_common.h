@@ -774,6 +774,7 @@ int wpa_parse_cipher(const char *value);
 int wpa_write_ciphers(char *start, char *end, int ciphers, const char *delim);
 int wpa_select_ap_group_cipher(int wpa, int wpa_pairwise, int rsn_pairwise);
 unsigned int wpa_mic_len(int akmp, size_t pmk_len, enum rsn_hash_alg hash);
+unsigned int wpa_kek_len(int akmp, size_t pmk_len);
 int wpa_use_akm_defined(int akmp);
 int wpa_use_cmac(int akmp);
 int wpa_use_aes_key_wrap(int akmp);

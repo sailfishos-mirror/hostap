@@ -62,7 +62,7 @@ static unsigned int wpa_kck2_len(int akmp)
 #endif /* CONFIG_IEEE80211R */
 
 
-static unsigned int wpa_kek_len(int akmp, size_t pmk_len)
+unsigned int wpa_kek_len(int akmp, size_t pmk_len)
 {
 	switch (akmp) {
 	case WPA_KEY_MGMT_FILS_SHA384:
