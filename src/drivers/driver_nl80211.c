@@ -4383,6 +4383,8 @@ static enum nl80211_auth_type get_nl_auth_type(int wpa_auth_alg)
 		return NL80211_AUTHTYPE_FILS_SK;
 	if (wpa_auth_alg & WPA_AUTH_ALG_FILS_SK_PFS)
 		return NL80211_AUTHTYPE_FILS_SK_PFS;
+	if (wpa_auth_alg & WPA_AUTH_ALG_EPPKE)
+		return NL80211_AUTHTYPE_EPPKE;
 
 	return NL80211_AUTHTYPE_MAX + 1;
 }

@@ -231,6 +231,8 @@ int rsn_key_mgmt_to_wpa_akm(u32 akm_suite)
 	case RSN_AUTH_KEY_MGMT_PASN:
 		return WPA_KEY_MGMT_PASN;
 #endif /* CONFIG_PASN */
+	case RSN_AUTH_KEY_MGMT_EPPKE:
+		return WPA_KEY_MGMT_EPPKE;
 	default:
 		return 0;
 	}
@@ -2937,6 +2939,8 @@ const char * wpa_key_mgmt_txt(int key_mgmt, int proto)
 		return "PASN";
 	case WPA_KEY_MGMT_IEEE8021X_SHA384:
 		return "WPA2-EAP-SHA384";
+	case WPA_KEY_MGMT_EPPKE:
+		return "EPPKE";
 	default:
 		return "UNKNOWN";
 	}
@@ -2991,6 +2995,8 @@ u32 wpa_akm_to_suite(int akm)
 	if (akm & WPA_KEY_MGMT_PASN)
 		return RSN_AUTH_KEY_MGMT_PASN;
 #endif /* CONFIG_PASN */
+	if (akm & WPA_KEY_MGMT_EPPKE)
+		return RSN_AUTH_KEY_MGMT_EPPKE;
 	return 0;
 }
 
