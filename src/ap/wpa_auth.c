@@ -7941,6 +7941,75 @@ bool wpa_auth_sm_known_sta_identification(struct wpa_state_machine *sm,
 }
 
 
+#ifdef CONFIG_ENC_ASSOC
+
+u8 * wpa_auth_eid_key_delivery(u8 *eid, size_t max_len,
+			       struct wpa_state_machine *sm, bool is_ml)
+{
+	size_t gtk_len, kde_len = 0;
+	u8 rsc[WPA_KEY_RSC_LEN] = {0}, *gtk;
+	struct wpa_group *gsm = sm->group;
+	u8 hdr[2];
+
+	/* TODO: Make sure there is sufficient length for the element and also
+	 * support fragmentation of the Key Delivery element. */
+
+	/* ElementID(0xff)|Length(1B)|ElementID EXtn(1B)|RSC(8B)|KDE list */
+	*eid++ = WLAN_EID_EXTENSION;
+
+	if (!is_ml) {
+		/* GTK KDE: 0xdd|len(1B)|RSN Selector(4B)|KeyID(2B)|GTK| */
+		kde_len = 2 + RSN_SELECTOR_LEN + 2 + gsm->GTK_len +
+			ieee80211w_kde_len(sm);
+	} else {
+		kde_len = wpa_auth_ml_group_kdes_len(sm, KDE_ALL_LINKS);
+	}
+
+	*eid++ = 1 + WPA_KEY_RSC_LEN + kde_len;
+	*eid++ = WLAN_EID_EXT_KEY_DELIVERY;
+
+	/* RSC */
+	if (!is_ml && sm->group->wpa_group_state == WPA_GROUP_SETKEYSDONE)
+		wpa_auth_get_seqnum(sm->wpa_auth, NULL, gsm->GN, rsc);
+	os_memcpy(eid, rsc, WPA_KEY_RSC_LEN);
+	eid += WPA_KEY_RSC_LEN;
+
+	if (is_ml) {
+		eid = wpa_auth_ml_group_kdes(sm, eid, KDE_ALL_LINKS);
+	} else {
+		gtk = gsm->GTK[gsm->GN - 1];
+		gtk_len = gsm->GTK_len;
+		hdr[0] = gsm->GN & 0x03;
+		eid = wpa_add_kde(eid, RSN_KEY_DATA_GROUPKEY, hdr, 2,
+				  gtk, gtk_len);
+		eid = ieee80211w_kde_add(sm, eid);
+	}
+
+	return eid;
+}
+
+
+u8 * wpa_auth_write_assoc_resp_eppke(struct wpa_state_machine *sm,
+				     u8 *pos, size_t max_len, bool is_ml)
+{
+	int res;
+	u8 *end = pos + max_len;
+
+	if (!sm)
+		return pos;
+
+	res = wpa_write_rsn_ie(&sm->wpa_auth->conf, pos, max_len, NULL);
+	if (res < 0)
+		return pos;
+	pos += res;
+	pos = wpa_auth_eid_key_delivery(pos, end - pos, sm, is_ml);
+
+	return pos;
+}
+
+#endif /* CONFIG_ENC_ASSOC */
+
+
 void wpa_reset_assoc_sm_info(struct wpa_state_machine *assoc_sm,
 			     struct wpa_authenticator *wpa_auth,
 			     u8 mld_assoc_link_id)

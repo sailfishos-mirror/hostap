@@ -659,6 +659,12 @@ void wpa_auth_set_ssid_protection(struct wpa_state_machine *sm, bool val);
 void wpa_auth_set_transition_disable(struct wpa_authenticator *wpa_auth,
 				     u8 val);
 
+u8 * wpa_auth_eid_key_delivery(u8 *eid, size_t max_len,
+			       struct wpa_state_machine *sm,
+			       bool is_ml);
+u8 * wpa_auth_write_assoc_resp_eppke(struct wpa_state_machine *sm,
+				     u8 *pos, size_t max_len, bool is_ml);
+
 int wpa_auth_resend_m1(struct wpa_state_machine *sm, int change_anonce,
 		       void (*cb)(void *ctx1, void *ctx2),
 		       void *ctx1, void *ctx2);

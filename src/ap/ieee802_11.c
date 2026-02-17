@@ -5731,6 +5731,16 @@ rsnxe_done:
 	}
 #endif /* CONFIG_OWE */
 
+#ifdef CONFIG_ENC_ASSOC
+	if (sta && sta->auth_alg == WLAN_AUTH_EPPKE &&
+	    status_code == WLAN_STATUS_SUCCESS) {
+		reply->frame_control |= WLAN_FC_PROTECTED;
+		p = wpa_auth_write_assoc_resp_eppke(sta->wpa_sm, p,
+						    buf + buflen - p,
+						    ap_sta_is_mld(hapd, sta));
+	}
+#endif /* CONFIG_ENC_ASSOC */
+
 #ifdef CONFIG_DPP2
 	if (DPP_VERSION > 1 && (hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_DPP) &&
 	    sta && sta->dpp_pfs && status_code == WLAN_STATUS_SUCCESS &&
