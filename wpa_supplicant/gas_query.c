@@ -38,6 +38,7 @@
 struct gas_query_pending {
 	struct dl_list list;
 	struct gas_query *gas;
+	struct wpa_radio_work *work;
 	u8 addr[ETH_ALEN];
 	u8 dialog_token;
 	u8 next_frag_id;
@@ -47,7 +48,6 @@ struct gas_query_pending {
 	unsigned int wildcard_bssid:1;
 	unsigned int maintain_addr:1;
 	unsigned int sent:1;
-	unsigned int radio_work_removal_scheduled:1;
 	int freq;
 	u16 status_code;
 	struct wpabuf *req;
@@ -69,7 +69,6 @@ struct gas_query {
 	struct wpa_supplicant *wpa_s;
 	struct dl_list pending; /* struct gas_query_pending */
 	struct gas_query_pending *current;
-	struct wpa_radio_work *work;
 	struct os_reltime last_mac_addr_rand;
 	int last_rand_sa_type;
 	u8 rand_addr[ETH_ALEN];
@@ -144,12 +143,11 @@ static void gas_query_free(struct gas_query_pending *query, int del_list)
 	if (del_list)
 		dl_list_del(&query->list);
 
-	if (gas->work && gas->work->ctx == query) {
-		radio_work_done(gas->work);
-		gas->work = NULL;
-	} else if (!query->radio_work_removal_scheduled) {
-		radio_remove_pending_work(gas->wpa_s, query);
-	}
+	if (gas->current == query)
+		gas->current = NULL;
+
+	if (query->work)
+		radio_work_done(query->work);
 
 	eloop_cancel_timeout(gas_query_tx_comeback_timeout, gas, query);
 	eloop_cancel_timeout(gas_query_timeout, gas, query);
@@ -170,8 +168,6 @@ static void gas_query_done(struct gas_query *gas,
 		" dialog_token=%u freq=%d status_code=%u result=%s",
 		MAC2STR(query->addr), query->dialog_token, query->freq,
 		query->status_code, gas_result_txt(result));
-	if (gas->current == query)
-		gas->current = NULL;
 	if (query->offchannel_tx_started)
 		offchannel_send_action_done(gas->wpa_s);
 	dl_list_del(&query->list);
@@ -205,7 +201,6 @@ gas_query_get_pending(struct gas_query *gas, const u8 *addr, u8 dialog_token)
 {
 	struct gas_query_pending *q, *alt = NULL;
 	struct wpa_supplicant *wpa_s = gas->wpa_s;
-	void *ctx = gas->work ? gas->work->ctx : NULL;
 
 	/* Prefer a pending entry that matches with the current radio_work to
 	 * avoid issues when freeing the pending entry in gas_query_free(). That
@@ -220,7 +215,7 @@ gas_query_get_pending(struct gas_query *gas, const u8 *addr, u8 dialog_token)
 		    (wpa_s->valid_links &&
 		     ether_addr_equal(wpa_s->ap_mld_addr, addr) &&
 		     wpas_ap_link_address(wpa_s, q->addr))) {
-			if (q == ctx)
+			if (q == gas->current)
 				return q;
 			if (!alt)
 				alt = q;
@@ -717,9 +712,7 @@ static void gas_query_start_cb(struct wpa_radio_work *work, int deinit)
 	struct wpa_supplicant *wpa_s = gas->wpa_s;
 
 	if (deinit) {
-		query->radio_work_removal_scheduled = 1;
 		if (work->started) {
-			gas->work = NULL;
 			gas_query_done(gas, query, GAS_QUERY_DELETED_AT_DEINIT);
 			return;
 		}
@@ -732,15 +725,12 @@ static void gas_query_start_cb(struct wpa_radio_work *work, int deinit)
 		if (wpas_update_random_addr_disassoc(wpa_s) < 0) {
 			wpa_msg(wpa_s, MSG_INFO,
 				"Failed to assign random MAC address for GAS");
-			query->radio_work_removal_scheduled = 1;
 			gas_query_free(query, 1);
-			radio_work_done(work);
 			return;
 		}
 		os_memcpy(query->sa, wpa_s->own_addr, ETH_ALEN);
 	}
 
-	gas->work = work;
 	gas_query_tx_initial_req(gas, query);
 }
 
@@ -919,8 +909,9 @@ int gas_query_req(struct gas_query *gas, const u8 *dst, int freq,
 		" dialog_token=%u freq=%d",
 		MAC2STR(query->addr), query->dialog_token, query->freq);
 
-	if (!radio_add_work(gas->wpa_s, freq, "gas-query", 0,
-			    gas_query_start_cb, query)) {
+	query->work = radio_add_work(gas->wpa_s, freq, "gas-query", 0,
+				     gas_query_start_cb, query);
+	if (!query->work) {
 		query->req = NULL; /* caller will free this in error case */
 		gas_query_free(query, 1);
 		return -1;
@@ -936,15 +927,6 @@ int gas_query_stop(struct gas_query *gas, u8 dialog_token)
 
 	dl_list_for_each(query, &gas->pending, struct gas_query_pending, list) {
 		if (query->dialog_token == dialog_token) {
-			if (!gas->work) {
-				/* The pending radio work has not yet been
-				 * started, but the pending entry has a
-				 * reference to the soon to be freed query.
-				 * Need to remove that radio work now to avoid
-				 * leaving behind a reference to freed memory.
-				 */
-				radio_remove_pending_work(gas->wpa_s, query);
-			}
 			gas_query_done(gas, query, GAS_QUERY_STOPPED);
 			return 0;
 		}

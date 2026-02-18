@@ -7413,23 +7413,6 @@ void radio_remove_works(struct wpa_supplicant *wpa_s,
 }
 
 
-void radio_remove_pending_work(struct wpa_supplicant *wpa_s, void *ctx)
-{
-	struct wpa_radio_work *work;
-	struct wpa_radio *radio = wpa_s->radio;
-
-	dl_list_for_each(work, &radio->work, struct wpa_radio_work, list) {
-		if (work->ctx != ctx)
-			continue;
-		wpa_dbg(wpa_s, MSG_DEBUG, "Free pending radio work '%s'@%p%s",
-			work->type, work, work->started ? " (started)" : "");
-		dl_list_del(&work->list);
-		radio_work_free(work);
-		break;
-	}
-}
-
-
 static void radio_remove_pending_connect(struct wpa_supplicant *wpa_s,
 					 const struct wpa_ssid *ssid)
 {
