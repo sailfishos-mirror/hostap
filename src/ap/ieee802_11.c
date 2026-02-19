@@ -8146,6 +8146,12 @@ static bool hostapd_skip_rnr(size_t i, struct mbssid_ie_profiles *skip_profiles,
 			     struct hostapd_data *reporting_hapd,
 			     struct hostapd_data *bss, u8 *match_idx)
 {
+	bool reporting_ap_mld = false;
+
+#ifdef CONFIG_IEEE80211BE
+	reporting_ap_mld = !!reporting_hapd->conf->mld_ap;
+#endif /* CONFIG_IEEE80211BE */
+
 	if (!mld_update && skip_profiles &&
 	    i >= skip_profiles->start && i < skip_profiles->end)
 		return true;
@@ -8153,8 +8159,7 @@ static bool hostapd_skip_rnr(size_t i, struct mbssid_ie_profiles *skip_profiles,
 	/* No need to report if length is for normal TBTT and both the reporting
 	 * AP and neighbor AP are affiliated with an AP MLD. MLD TBTT will
 	 * include this. */
-	if (tbtt_info_len == RNR_TBTT_INFO_LEN && ap_mld &&
-	    reporting_hapd->conf->mld_ap)
+	if (tbtt_info_len == RNR_TBTT_INFO_LEN && ap_mld && reporting_ap_mld)
 		return true;
 
 	/* No need to report if length is for MLD TBTT and the BSS is not
@@ -8200,6 +8205,11 @@ hostapd_eid_rnr_iface_len(struct hostapd_data *hapd,
 	size_t i, start;
 	u8 tbtt_info_len = mld_update ? RNR_TBTT_INFO_MLD_LEN :
 		RNR_TBTT_INFO_LEN;
+	bool reporting_ap_mld = false;
+
+#ifdef CONFIG_IEEE80211BE
+	reporting_ap_mld = !!reporting_hapd->conf->mld_ap;
+#endif /* CONFIG_IEEE80211BE */
 
 repeat_rnr_len:
 	start = 0;
@@ -8256,7 +8266,7 @@ repeat_rnr_len:
 	 * ML TBTTs if the reporting AP is affiliated with an AP MLD.
 	 */
 	if (!mld_update && tbtt_info_len == RNR_TBTT_INFO_LEN &&
-	    reporting_hapd->conf->mld_ap) {
+	    reporting_ap_mld) {
 		tbtt_info_len = RNR_TBTT_INFO_MLD_LEN;
 
 		/* If no TBTT was found, adjust the len and total_len since it
@@ -8599,6 +8609,7 @@ static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
 	u8 tbtt_count, total_tbtt_count = 0, op_class, channel;
 	u8 tbtt_info_len = mld_update ? RNR_TBTT_INFO_MLD_LEN :
 		RNR_TBTT_INFO_LEN;
+	bool reporting_ap_mld = false;
 
 	if (!(iface->drv_flags & WPA_DRIVER_FLAGS_AP_CSA) || !iface->freq)
 		return eid;
@@ -8609,6 +8620,10 @@ static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
 					  &op_class, &channel) ==
 	    NUM_HOSTAPD_MODES)
 		return eid;
+
+#ifdef CONFIG_IEEE80211BE
+	reporting_ap_mld = !!reporting_hapd->conf->mld_ap;
+#endif /* CONFIG_IEEE80211BE */
 
 repeat_rnr:
 	start = 0;
@@ -8647,7 +8662,7 @@ repeat_rnr:
 	 * ML TBTTs if the reporting AP is affiliated with an AP MLD.
 	 */
 	if (!mld_update && tbtt_info_len == RNR_TBTT_INFO_LEN &&
-	    reporting_hapd->conf->mld_ap) {
+	    reporting_ap_mld) {
 		tbtt_info_len = RNR_TBTT_INFO_MLD_LEN;
 		goto repeat_rnr;
 	}
