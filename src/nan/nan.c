@@ -47,6 +47,26 @@ static void nan_del_peer(struct nan_data *nan, struct nan_peer *peer)
 	wpa_printf(MSG_DEBUG, "NAN: Removing peer: " MACSTR,
 		   MAC2STR(peer->nmi_addr));
 
+	if (!dl_list_empty(&peer->ndps)) {
+		struct nan_ndp *ndp, *tndp;
+
+		/* TODO: tear down active NDPs */
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Peer delete while there are active NDPs");
+
+		dl_list_for_each_safe(ndp, tndp, &peer->ndps,
+				      struct nan_ndp, list) {
+			dl_list_del(&ndp->list);
+			os_free(ndp);
+		}
+	}
+
+	if (peer->ndp_setup.ndp) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Peer delete while NDP setup is WIP");
+		os_free(peer->ndp_setup.ndp);
+	}
+
 	dl_list_del(&peer->list);
 	os_free(peer);
 }
@@ -162,12 +182,23 @@ static struct nan_peer * nan_alloc_peer(struct nan_data *nan)
 
 	dl_list_for_each(peer, &nan->peer_list, struct nan_peer, list) {
 		count++;
+
+		/* Do not expire peers that we have NDPs with */
+		if (!dl_list_empty(&peer->ndps) || peer->ndp_setup.ndp)
+			continue;
+
 		if (!oldest ||
 		    os_reltime_before(&peer->last_seen, &oldest->last_seen))
 			oldest = peer;
 	}
 
-	if (count >= NAN_MAX_PEERS && oldest) {
+	if (count >= NAN_MAX_PEERS) {
+		if (!oldest) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Cannot remove any of the peers");
+			return NULL;
+		}
+
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Remove peer=" MACSTR " to make room",
 			   MAC2STR(oldest->nmi_addr));
@@ -180,6 +211,7 @@ static struct nan_peer * nan_alloc_peer(struct nan_data *nan)
 		return NULL;
 
 	dl_list_add(&nan->peer_list, &peer->list);
+	dl_list_init(&peer->ndps);
 	return peer;
 }
 

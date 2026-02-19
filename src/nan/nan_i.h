@@ -16,16 +16,99 @@
 
 struct nan_config;
 
+/*
+ * enum nan_ndp_state - State of NDP establishment
+ * @NAN_NDP_STATE_NONE: No NDP establishment in progress
+ * @NAN_NDP_STATE_START: Starting NDP establishment
+ * @NAN_NDP_STATE_REQ_SENT: NDP request was sent
+ * @NAN_NDP_STATE_REQ_RECV: NDP response was received and processed
+ * @NAN_NDP_STATE_RES_SENT: NDP response was sent and NDP is not accepted yet
+ * @NAN_NDP_STATE_RES_RECV: NDP response was received and NDP was not accepted
+ *     yet (security is negotiated or confirmation is required)
+ * @NAN_NDP_STATE_CON_SENT: NDP confirm was sent and NDP was not done yet, as
+ *     security is negotiated
+ * @NAN_NDP_STATE_CON_RECV: NDP confirm received and NDP was not done yet, as
+ *     security is negotiated
+ * @NAN_NDP_STATE_DONE: NDP establishment is done (either success or reject).
+ *     In this state the NAN module handles actions such as notification to the
+ *     encapsulating logic, etc. Once processing is done the NDP should either
+ *     be cleared (rejected) or moved to the list of NDPs associated with the
+ *     peer.
+ */
+enum nan_ndp_state {
+	NAN_NDP_STATE_NONE,
+	NAN_NDP_STATE_START,
+	NAN_NDP_STATE_REQ_SENT,
+	NAN_NDP_STATE_REQ_RECV,
+	NAN_NDP_STATE_RES_SENT,
+	NAN_NDP_STATE_RES_RECV,
+	NAN_NDP_STATE_CON_SENT,
+	NAN_NDP_STATE_CON_RECV,
+	NAN_NDP_STATE_DONE,
+};
+
+/*
+ * struct nan_ndp - NDP information
+ *
+ * Used to maintain the NDP as an object in a peer's list of NDPs.
+ *
+ * @list: Used for linking in the NDPs list
+ * @peer: Pointer to the peer data structure
+ * @initiator: True iff the local device is the initiator
+ * @ndp_id: NDP ID
+ * @init_ndi: Initiator NDI
+ * @resp_ndi: Responder NDI. Might not always be set (as this depends on the
+ *     state of NDP establishment and the status).
+ * @qos: QoS requirements for this NDP
+ */
+struct nan_ndp {
+	/* for nan_peer ndps list */
+	struct dl_list list;
+	struct nan_peer *peer;
+	bool initiator;
+	u8 ndp_id;
+	u8 init_ndi[ETH_ALEN];
+	u8 resp_ndi[ETH_ALEN];
+
+	struct nan_qos qos;
+};
+
+/*
+ * struct nan_ndp_setup - Holds the state of the NDP setup
+ * @ndp: NDP information
+ * @state: Current state
+ * @status: Current status
+ * @dialog_token: Setup dialog token
+ * @publisher_inst_id: Publish function instance ID
+ * @conf_req: True iff the NDP exchange requires confirm message
+ * @reason: Reject reason. Only valid when status is rejected.
+ */
+struct nan_ndp_setup {
+	struct nan_ndp *ndp;
+	enum nan_ndp_state state;
+	enum nan_ndp_status status;
+	u8 dialog_token;
+	u8 publish_inst_id;
+	bool conf_req;
+	enum nan_reason reason;
+};
+
 /**
  * struct nan_peer - Represents a known NAN peer
  * @list: List node for linking peers
  * @nmi_addr: NMI of the peer
  * @last_seen: Timestamp of the last time this peer was seen
+ * @ndps: List of NDPs associated with this peer
+ * @ndp_setup: Used to hold an NDP object while NDP establishment is in
+ *     progress
  */
 struct nan_peer {
 	struct dl_list list;
 	u8 nmi_addr[ETH_ALEN];
 	struct os_reltime last_seen;
+	struct dl_list ndps;
+
+	struct nan_ndp_setup ndp_setup;
 };
 
 /**

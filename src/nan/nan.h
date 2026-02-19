@@ -29,6 +29,17 @@ struct nan_device_capabilities {
 	u8 capa;
 };
 
+/**
+ * struct nan_qos - NAN QoS requirements
+ * @min_slots: Minimal number of slots
+ * @max_latency: Maximum allowed NAN slots between every two non-contiguous
+ *     NAN Data Link (NDL) Common Resource Blocks (CRB)
+ */
+struct nan_qos {
+	u8 min_slots;
+	u16 max_latency;
+};
+
 struct nan_config {
 	void *cb_ctx;
 
