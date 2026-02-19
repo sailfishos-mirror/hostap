@@ -319,5 +319,6 @@ int nan_add_peer(struct nan_data *nan, const u8 *addr,
 
 bool nan_publish_instance_id_valid(struct nan_data *nan, u8 instance_id,
 				   u8 *service_id);
+void nan_set_cluster_id(struct nan_data *nan, const u8 *cluster_id);
 
 #endif /* NAN_H */

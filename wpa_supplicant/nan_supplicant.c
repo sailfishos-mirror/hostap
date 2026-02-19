@@ -293,6 +293,7 @@ void wpas_nan_cluster_join(struct wpa_supplicant *wpa_s,
 		       " new=%d", MAC2STR(cluster_id), new_cluster);
 
 	nan_de_set_cluster_id(wpa_s->nan_de, cluster_id);
+	nan_set_cluster_id(wpa_s->nan, cluster_id);
 }
 
 

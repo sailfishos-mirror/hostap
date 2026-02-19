@@ -328,6 +328,7 @@ struct nan_peer {
  *     and is used to set ndp_id in &struct nan_ndp.
  * @next_dialog_token: Dialog token for NDP and NDL negotiations. Incremented
  *     for each NDP and NDL request.
+ * @cluster_id: Current cluster ID
  */
 struct nan_data {
 	struct nan_config *cfg;
@@ -336,6 +337,8 @@ struct nan_data {
 
 	u8 ndp_id_counter;
 	u8 next_dialog_token;
+
+	u8 cluster_id[ETH_ALEN];
 };
 
 struct nan_attrs_entry {
