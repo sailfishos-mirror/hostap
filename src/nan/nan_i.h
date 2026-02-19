@@ -453,5 +453,8 @@ struct bitfield * nan_sched_to_bf(struct nan_data *nan, struct dl_list *sched,
 bool nan_sched_covered_by_avail_entry(struct nan_data *nan,
 				      struct nan_avail_entry *avail,
 				      struct bitfield *sched_bf, u8 map_id);
+int nan_sched_covered_by_avail_entries(struct nan_data *nan,
+				       struct dl_list *avail_entries,
+				       const u8 *sched, size_t sched_len);
 
 #endif /* NAN_I_H */

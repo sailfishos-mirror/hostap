@@ -1128,3 +1128,99 @@ bool nan_sched_covered_by_avail_entry(struct nan_data *nan,
 
 	return ret == 1;
 }
+
+
+static int
+nan_sched_bf_covered_by_avail_entries(struct nan_data *nan,
+				      struct dl_list *avail_entries,
+				      const struct bitfield *sched_bf,
+				      u8 map_id)
+{
+	struct nan_avail_entry *avail;
+	struct bitfield *res_bf = NULL;
+	int ret = 0;
+
+	dl_list_for_each(avail, avail_entries, struct nan_avail_entry,
+			 list) {
+		struct bitfield *avail_bf;
+
+		if (avail->map_id != map_id)
+			continue;
+
+		/* Schedule can only be covered by committed/conditional */
+		if (avail->type != NAN_AVAIL_ENTRY_CTRL_TYPE_COMMITTED &&
+		    avail->type != NAN_AVAIL_ENTRY_CTRL_TYPE_COND)
+			continue;
+
+		/* Convert the availability entry to bitfield */
+		avail_bf = nan_tbm_to_bf(nan, &avail->tbm);
+		if (!avail_bf) {
+			ret = -1;
+			goto fail;
+		}
+
+		bitfield_dump(avail_bf, "NAN: Availability entry bitmap");
+		if (!res_bf) {
+			res_bf = avail_bf;
+		} else {
+			struct bitfield *tmp_bf;
+
+			tmp_bf = bitfield_union(res_bf, avail_bf);
+			bitfield_free(avail_bf);
+
+			if (!tmp_bf) {
+				ret = -1;
+				goto fail;
+			}
+
+			bitfield_free(res_bf);
+			res_bf = tmp_bf;
+		}
+	}
+
+	ret = bitfield_is_subset(res_bf, sched_bf);
+fail:
+	wpa_printf(MSG_DEBUG,
+		   "NAN: Is bitfield schedule subset of entries=%d", ret);
+	bitfield_free(res_bf);
+	return ret;
+}
+
+
+/**
+ * nan_sched_covered_by_avail_entries - Check if schedule is covered by the
+ * list of availability attributes
+ *
+ * @nan: NAN module context from nan_init()
+ * @avail_entries: A list of availability entries (see &struct nan_avail_entry)
+ * @sched: An array with 0 or more &struct nan_sched_entry entries
+ * @sched_len: Length of the &sched array
+ * Returns: 1 of schedule is covered by the entries; 0 if not and -1 on error
+ */
+int nan_sched_covered_by_avail_entries(struct nan_data *nan,
+				       struct dl_list *avail_entries,
+				       const u8 *sched, size_t sched_len)
+{
+	struct dl_list sched_entries;
+	struct bitfield *sched_bf;
+	u8 map_id;
+	int ret;
+
+	if (!sched || !sched_len)
+		return 1;
+
+	dl_list_init(&sched_entries);
+	ret = nan_sched_entries_to_avail_entries(nan, &sched_entries,
+						 sched, sched_len);
+
+	sched_bf = nan_sched_to_bf(nan, &sched_entries, &map_id);
+	nan_flush_avail_entries(&sched_entries);
+
+	ret = nan_sched_bf_covered_by_avail_entries(nan, avail_entries,
+						    sched_bf, map_id);
+
+	wpa_printf(MSG_DEBUG, "NAN: NDC schedule is %sa subset of entries",
+		   ret == 1 ? "" : "NOT ");
+	bitfield_free(sched_bf);
+	return ret;
+}
