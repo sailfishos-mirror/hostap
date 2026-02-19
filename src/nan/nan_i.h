@@ -16,6 +16,8 @@
 
 struct nan_config;
 
+#define NAN_INVALID_MAP_ID 0xff
+
 /*
  * enum nan_ndp_state - State of NDP establishment
  * @NAN_NDP_STATE_NONE: No NDP establishment in progress
@@ -123,6 +125,11 @@ enum nan_band_chan_type {
 	NAN_TYPE_BAND,
 	NAN_TYPE_CHANNEL,
 };
+
+/* Default availability entry parameter values */
+#define NAN_AVAIL_ENTRY_DEF_UTIL NAN_AVAIL_ENTRY_CTRL_UTIL_UNKNOWN
+#define NAN_AVAIL_ENTRY_DEF_NSS  2
+#define NAN_AVAIL_ENTRY_DEF_PREF 3
 
 /**
  * struct nan_avail_entry - NAN availability entry
@@ -425,5 +432,13 @@ int nan_chan_to_chan_idx_map(struct nan_data *nan,
 			     u8 op_class, u8 channel, u16 *chan_idx_map);
 int nan_ndl_naf_sent(struct nan_data *nan, struct nan_peer *peer,
 		     enum nan_subtype subtype);
+int nan_ndl_add_avail_attrs(struct nan_data *nan, const struct nan_peer *peer,
+			    struct wpabuf *buf);
+int nan_get_chan_bm(struct nan_data *nan, struct nan_sched_chan *chan,
+		    u8 *op_class, u16 *chan_bm, u16 *pri_chan_bm);
+int nan_add_avail_attrs(struct nan_data *nan, u8 sequence_id,
+			u32 map_ids_bitmap, u8 type_for_conditional,
+			size_t n_chans, struct nan_chan_schedule *chans,
+			struct wpabuf *buf);
 
 #endif /* NAN_I_H */

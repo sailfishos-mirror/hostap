@@ -363,3 +363,262 @@ int nan_chan_to_chan_idx_map(struct nan_data *nan,
 	*chan_idx_map = BIT(ret);
 	return 0;
 }
+
+
+static u16 nan_add_avail_entry(struct nan_data *nan,
+			       struct nan_time_bitmap *tbm,
+			       u8 type, u8 op_class, u16 chan_bm,
+			       u8 prim_chan_bm, struct wpabuf *buf)
+{
+	u16 ctrl;
+	u8 chan_ctrl;
+	u8 *len_ptr;
+	u8 nss = BITS(nan->cfg->dev_capa.n_antennas, NAN_DEV_CAPA_RX_ANT_MASK,
+		      NAN_DEV_CAPA_RX_ANT_POS);
+
+	len_ptr = wpabuf_put(buf, 2);
+
+	/*
+	 * TODO: Need to also add potential entries as otherwise the peer would
+	 * not be able to counter.
+	 */
+	if (type != NAN_AVAIL_ENTRY_CTRL_TYPE_COMMITTED &&
+	    type != NAN_AVAIL_ENTRY_CTRL_TYPE_COND) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Cannot add non committed/conditional entry");
+		return 0;
+	}
+
+	/*
+	 * Add the entry control field
+	 * - usage preference is not set for committed and conditional
+	 * - utilization is max.
+	 */
+	ctrl = type;
+	ctrl |= NAN_AVAIL_ENTRY_DEF_UTIL << NAN_AVAIL_ENTRY_CTRL_UTIL_POS;
+	ctrl |= nss << NAN_AVAIL_ENTRY_CTRL_RX_NSS_POS;
+	ctrl |= NAN_AVAIL_ENTRY_CTRL_TBM_PRESENT;
+	wpabuf_put_le16(buf, ctrl);
+
+	/* Add the time bitmap control field */
+	ctrl = tbm->duration << NAN_TIME_BM_CTRL_BIT_DURATION_POS;
+	ctrl |= tbm->period << NAN_TIME_BM_CTRL_PERIOD_POS;
+	ctrl |= tbm->offset << NAN_TIME_BM_CTRL_START_OFFSET_POS;
+	wpabuf_put_le16(buf, ctrl);
+
+	wpabuf_put_u8(buf, tbm->len);
+	wpabuf_put_data(buf, tbm->bitmap, tbm->len);
+
+	/* Add the channel entry: single contiguous channel entry */
+	chan_ctrl = NAN_BAND_CHAN_CTRL_TYPE;
+	chan_ctrl |= 1 << NAN_BAND_CHAN_CTRL_NUM_ENTRIES_POS;
+	wpabuf_put_u8(buf, chan_ctrl);
+	wpabuf_put_u8(buf, op_class);
+	wpabuf_put_le16(buf, chan_bm);
+	wpabuf_put_u8(buf, prim_chan_bm);
+
+	WPA_PUT_LE16(len_ptr, (u8 *) wpabuf_put(buf, 0) - len_ptr - 2);
+	return (u8 *) wpabuf_put(buf, 0) - len_ptr;
+}
+
+
+int nan_get_chan_bm(struct nan_data *nan, struct nan_sched_chan *chan,
+		    u8 *op_class, u16 *chan_bm, u16 *pri_chan_bm)
+{
+	u8 channel;
+	enum hostapd_hw_mode mode;
+	int ret, sec_channel_offset;
+	int freq_offsset = chan->freq - chan->center_freq1;
+	u32 idx;
+	enum oper_chan_width bandwidth;
+
+	switch (chan->bandwidth) {
+	case 20:
+	case 40:
+	default:
+		bandwidth = CONF_OPER_CHWIDTH_USE_HT;
+		break;
+	case 80:
+		bandwidth = CONF_OPER_CHWIDTH_80MHZ;
+
+		idx = (freq_offsset + 30) / 20;
+		*pri_chan_bm = BIT(idx);
+		break;
+	case 160:
+		if (chan->center_freq2) {
+			bandwidth = CONF_OPER_CHWIDTH_80P80MHZ;
+
+			/* TODO: Need to support auxiliary channel bitmap */
+			idx = (freq_offsset + 30) / 20;
+			*pri_chan_bm = BIT(idx);
+		} else {
+			bandwidth = CONF_OPER_CHWIDTH_160MHZ;
+			idx = (freq_offsset + 70) / 20;
+			*pri_chan_bm = BIT(idx);
+		}
+		break;
+	}
+
+	if (freq_offsset > 0)
+		sec_channel_offset = 1;
+	else if (freq_offsset < 0)
+		sec_channel_offset = -1;
+	else
+		sec_channel_offset = 0;
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN: Get chan bm: freq=%d, center_freq1=%d, bandwidth=%u, sec_channel_offset=%d",
+		   chan->freq, chan->center_freq1, chan->bandwidth,
+		   freq_offsset);
+
+	/* For bandwidths >= 80 need to use the center frequency */
+	mode = ieee80211_freq_to_channel_ext(bandwidth ==
+					     CONF_OPER_CHWIDTH_USE_HT ?
+					     chan->freq : chan->center_freq1,
+					     sec_channel_offset,
+					     bandwidth, op_class, &channel);
+	if (mode == NUM_HOSTAPD_MODES) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Cannot get channel and op_class");
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "NAN: Derived op_class=%u, channel=%u",
+		   *op_class, channel);
+
+	ret = nan_chan_to_chan_idx_map(nan, *op_class, channel, chan_bm);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "NAN: Failed to derive channel bitmap");
+		return -1;
+	}
+
+	return 0;
+}
+
+
+/**
+ * nan_add_avail_attrs - Add NAN availability attributes
+ * @nan: NAN module context from nan_init()
+ * @sequence_id: Sequence ID to be used in the availability attributes
+ * @map_ids_bitmap: Bitmap of map IDs to be included in the availability
+ *	attributes
+ * @type_for_conditional: Type field to be used for conditional entries
+ * @n_chans: Number of channels in chans
+ * @chans: Channel schedules
+ * @buf: Frame buffer to which the attribute would be added
+ * Returns: 0 on success, negative on failure.
+ *
+ * An availability attribute is added for each map (identified by map ID) in the
+ * schedule. All channels with the same map ID are added to the same
+ * availability attribute. Each attribute will hold an availability entry for
+ * committed slots and an availability entry for conditional slots.
+ */
+int nan_add_avail_attrs(struct nan_data *nan, u8 sequence_id,
+			u32 map_ids_bitmap, u8 type_for_conditional,
+			size_t n_chans, struct nan_chan_schedule *chans,
+			struct wpabuf *buf)
+{
+	u8 last_map_id = NAN_INVALID_MAP_ID;
+	u8 *len_ptr = NULL;
+	u8 i;
+
+	wpa_printf(MSG_DEBUG, "NAN: Add availability attrs. n_chans=%zu",
+		   n_chans);
+
+	for (i = 0; i < n_chans; i++) {
+		struct nan_chan_schedule *chan = &chans[i];
+		u8 op_class;
+		u16 chan_bm, pri_chan_bm;
+		int ret;
+
+		if (!chan->conditional.len && !chan->committed.len) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: committed and conditional are empty");
+			continue;
+		}
+
+		ret = nan_get_chan_bm(nan, &chan->chan, &op_class,
+				      &chan_bm, &pri_chan_bm);
+		if (ret)
+			continue;
+
+		/*
+		 * All channels with the same map ID should be added to the same
+		 * availability attribute, so verify that the map IDs are
+		 * sorted.
+		 */
+		if (last_map_id != NAN_INVALID_MAP_ID &&
+		    last_map_id > chan->map_id) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Map IDs not sorted properly");
+			return -1;
+		}
+
+		if (!(map_ids_bitmap & BIT(chan->map_id))) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Skip adding availability for map_id=%u",
+				   chan->map_id);
+			continue;
+		}
+
+		if (last_map_id != chan->map_id) {
+			u16 ctrl;
+
+			if (last_map_id != NAN_INVALID_MAP_ID) {
+				wpa_printf(MSG_DEBUG,
+					   "NAN: Add avail attr done: map_id=%u",
+					   last_map_id);
+
+				WPA_PUT_LE16(len_ptr,
+					     (u8 *) wpabuf_put(buf, 0) -
+					     len_ptr - 2);
+			}
+
+			last_map_id = chan->map_id;
+			map_ids_bitmap &= ~BIT(last_map_id);
+
+			wpa_printf(MSG_DEBUG, "NAN: Add avail attr map_id=%u",
+				   last_map_id);
+
+			wpabuf_put_u8(buf, NAN_ATTR_NAN_AVAILABILITY);
+			len_ptr = wpabuf_put(buf, 2);
+			wpabuf_put_u8(buf, sequence_id);
+
+			ctrl = last_map_id << NAN_AVAIL_CTRL_MAP_ID_POS;
+
+			/*
+			 * The spec states that this bit should be set if the
+			 * committed changed or if conditional is included. Set
+			 * it anyway, as it is not known what information the
+			 * peer has on our schedule.
+			 */
+			ctrl |= NAN_AVAIL_CTRL_COMMITTED_CHANGED;
+			wpabuf_put_le16(buf, ctrl);
+		}
+
+		/* TODO: handle primary channel configuration */
+		if (chan->committed.len)
+			nan_add_avail_entry(nan, &chan->committed,
+					    NAN_AVAIL_ENTRY_CTRL_TYPE_COMMITTED,
+					    op_class, chan_bm, pri_chan_bm,
+					    buf);
+
+		if (chan->conditional.len)
+			nan_add_avail_entry(nan, &chan->conditional,
+					    type_for_conditional,
+					    op_class, chan_bm, 0, buf);
+	}
+
+	if (last_map_id == NAN_INVALID_MAP_ID) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: No valid availability entries added");
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "NAN: Add avail attr done: map_id=%u",
+		   last_map_id);
+
+	WPA_PUT_LE16(len_ptr, (u8 *) wpabuf_put(buf, 0) - len_ptr - 2);
+
+	return 0;
+}

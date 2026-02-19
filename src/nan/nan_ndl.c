@@ -8,6 +8,7 @@
 
 #include "includes.h"
 #include "common.h"
+#include "common/ieee802_11_common.h"
 #include "nan_i.h"
 
 
@@ -883,6 +884,60 @@ int nan_ndl_handle_ndl_attr(struct nan_data *nan, struct nan_peer *peer,
 	default:
 		return -1;
 	}
+}
+
+
+/**
+ * nan_ndl_add_avail_attrs - Add availability attributes
+ * @nan: NAN module context from nan_init()
+ * @peer: NAN peer for NDL establishment
+ * @buf: Frame buffer to which the attribute would be added
+ * Returns: 0 on success, negative on failure
+ *
+ * An availability attribute is added for each map (identified by map ID) in the
+ * NDL schedule. Each attribute holds an availability entry for committed slots
+ * and an availability entry for conditional slots.
+ */
+int nan_ndl_add_avail_attrs(struct nan_data *nan, const struct nan_peer *peer,
+			    struct wpabuf *buf)
+{
+	struct nan_schedule *sched;
+	u8 type_for_conditional = NAN_AVAIL_ENTRY_CTRL_TYPE_COND;
+
+	if (!peer || !peer->ndl)
+		return -1;
+
+	sched = &peer->ndl->sched;
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN: NDL: Add Avail attribute. state=%s, status=%u",
+		   nan_ndl_state_str(peer->ndl->state), peer->ndl->status);
+
+	if (sched->n_chans < 1) {
+		if (peer->ndl->status == NAN_NDL_STATUS_REJECTED) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: NDL: Rejected. Not adding availability attributes");
+			return 0;
+		}
+
+		wpa_printf(MSG_DEBUG,
+			   "NAN: NDL: Cannot build availability without channels");
+		return -1;
+	}
+
+	/* In case the NDL exchange was complete successfully, consider the
+	 * conditional entries as committed, as this is expected by the spec.
+	 */
+	if (peer->ndl->status == NAN_NDL_STATUS_ACCEPTED) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: NDL: Add conditional entry as committed");
+		type_for_conditional = NAN_AVAIL_ENTRY_CTRL_TYPE_COMMITTED;
+	}
+
+	return nan_add_avail_attrs(nan, sched->sequence_id,
+				   sched->map_ids_bitmap,
+				   type_for_conditional,
+				   sched->n_chans, sched->chans, buf);
 }
 
 
