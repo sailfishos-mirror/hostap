@@ -82,6 +82,9 @@ struct nan_ndp {
  * @publisher_inst_id: Publish function instance ID
  * @conf_req: True iff the NDP exchange requires confirm message
  * @reason: Reject reason. Only valid when status is rejected.
+ * @ssi: Service specific information
+ * @ssi_len: Service specific information length
+ * @service_id: Service ID of the service used for NDP setup
  */
 struct nan_ndp_setup {
 	struct nan_ndp *ndp;
@@ -91,6 +94,10 @@ struct nan_ndp_setup {
 	u8 publish_inst_id;
 	bool conf_req;
 	enum nan_reason reason;
+	u8 *ssi;
+	u16 ssi_len;
+
+	u8 service_id[NAN_SERVICE_ID_LEN];
 };
 
 /**
@@ -116,11 +123,18 @@ struct nan_peer {
  * @cfg: Pointer to the NAN configuration structure
  * @nan_started: Flag indicating if NAN has been started
  * @peer_list: List of known peers
+ * @ndp_id_counter: NDP identifier counter. Incremented for each NDP request,
+ *     and is used to set ndp_id in &struct nan_ndp.
+ * @next_dialog_token: Dialog token for NDP and NDL negotiations. Incremented
+ *     for each NDP and NDL request.
  */
 struct nan_data {
 	struct nan_config *cfg;
 	u8 nan_started:1;
 	struct dl_list peer_list;
+
+	u8 ndp_id_counter;
+	u8 next_dialog_token;
 };
 
 struct nan_attrs_entry {
@@ -162,6 +176,20 @@ struct nan_msg {
 	size_t len;
 };
 
+
+/**
+ * nan_get_next_dialog_token - Allocate the next nonzero dialog token
+ *
+ * Wi-Fi Aware Specification v4.0, Tables 82, 86, 105: Dialog Token must be
+ * set to a nonzero value.
+ */
+static inline u8 nan_get_next_dialog_token(struct nan_data *nan)
+{
+	if (++nan->next_dialog_token == 0)
+		nan->next_dialog_token++;
+	return nan->next_dialog_token;
+}
+
 struct nan_peer * nan_get_peer(struct nan_data *nan, const u8 *addr);
 bool nan_is_naf(const struct ieee80211_mgmt *mgmt, size_t len);
 int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
@@ -170,5 +198,19 @@ int nan_parse_naf(struct nan_data *nan, const struct ieee80211_mgmt *mgmt,
 		  size_t len, struct nan_msg *msg);
 void nan_attrs_clear(struct nan_data *nan, struct nan_attrs *attrs);
 void nan_add_dev_capa_attr(struct nan_data *nan, struct wpabuf *buf);
+
+int nan_ndp_setup_req(struct nan_data *nan, struct nan_peer *peer,
+		      struct nan_ndp_params *params);
+int nan_ndp_setup_resp(struct nan_data *nan, struct nan_peer *peer,
+		       struct nan_ndp_params *params);
+int nan_ndp_handle_ndp_attr(struct nan_data *nan, struct nan_peer *peer,
+			    struct nan_msg *msg);
+int nan_ndp_add_ndp_attr(struct nan_data *nan, struct nan_peer *peer,
+			 struct wpabuf *buf);
+void nan_ndp_setup_reset(struct nan_data *nan, struct nan_peer *peer);
+void nan_ndp_setup_failure(struct nan_data *nan, struct nan_peer *peer,
+			   enum nan_reason reason, bool reset_state);
+int nan_ndp_naf_sent(struct nan_data *nan, struct nan_peer *peer,
+		     enum nan_subtype subtype);
 
 #endif /* NAN_I_H */

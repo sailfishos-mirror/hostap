@@ -64,7 +64,7 @@ static void nan_del_peer(struct nan_data *nan, struct nan_peer *peer)
 	if (peer->ndp_setup.ndp) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Peer delete while NDP setup is WIP");
-		os_free(peer->ndp_setup.ndp);
+		nan_ndp_setup_reset(nan, peer);
 	}
 
 	dl_list_del(&peer->list);
@@ -244,4 +244,22 @@ int nan_add_peer(struct nan_data *nan, const u8 *addr,
 
 	os_get_reltime(&peer->last_seen);
 	return 0;
+}
+
+
+/*
+ * nan_publish_instance_id_valid - Check if instance ID is a valid publish ID
+ * @nan: NAN module context from nan_init()
+ * @instance_id: Instance ID to check
+ * @service_id: On return, holds the service ID if the instance ID is valid
+ * Returns: true if there is a local publish service ID with the given instance
+ * ID; false otherwise
+ */
+bool nan_publish_instance_id_valid(struct nan_data *nan, u8 instance_id,
+				   u8 *service_id)
+{
+	/* TODO: Need implement this logic */
+	wpa_printf(MSG_DEBUG,
+		   "NAN: TODO: Publish instance ID validation not implemented");
+	return true;
 }

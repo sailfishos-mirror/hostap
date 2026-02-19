@@ -333,6 +333,7 @@ OBJS += nan_supplicant.o
 OBJS += ../src/nan/nan.o
 OBJS += ../src/common/nan_de.o
 OBJS += ../src/nan/nan_util.o
+OBJS += ../src/nan/nan_ndp.o
 endif
 
 ifdef CONFIG_PR

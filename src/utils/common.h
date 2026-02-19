@@ -462,6 +462,8 @@ void perror(const char *s);
 #define BIT_ULL(x) (1ULL << (x))
 #endif
 
+#define BITS(src, mask, pos) ((src & mask) >> pos)
+
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
