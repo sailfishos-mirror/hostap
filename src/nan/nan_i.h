@@ -160,16 +160,33 @@ struct nan_avail_entry {
 };
 
 /**
+ * struct nan_dev_capa_entry - NAN Device Capability entry
+ *
+ * @list: Used for linking in the device capabilities list
+ *	(in struct nan_peer_info::dev_capa)
+ * @map_id: Map ID of the device capabilities
+ * @capa: Device capabilities as specified by &struct nan_device_capabilities
+ */
+struct nan_dev_capa_entry {
+	struct dl_list list;
+	u8 map_id;
+	struct nan_device_capabilities capa;
+};
+
+/**
  * struct nan_peer_info - NAN peer information
  *
  * @last_seen: Timestamp of the last update of the peer info
  * @seq_id: Sequence id of the last availability update
  * @avail_entries: List of availability entries of the peer
+ * @dev_capa: List of device capabilities of the peer
+ *	(struct nan_dev_capa_entry::list entries)
  */
 struct nan_peer_info {
 	struct os_reltime last_seen;
 	u8 seq_id;
 	struct dl_list avail_entries;
+	struct dl_list dev_capa;
 };
 
 /**
