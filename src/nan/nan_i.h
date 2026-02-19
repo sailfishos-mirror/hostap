@@ -423,5 +423,7 @@ int nan_ndl_add_qos_attr(struct nan_data *nan, const struct nan_peer *peer,
 			 struct wpabuf *buf);
 int nan_chan_to_chan_idx_map(struct nan_data *nan,
 			     u8 op_class, u8 channel, u16 *chan_idx_map);
+int nan_ndl_naf_sent(struct nan_data *nan, struct nan_peer *peer,
+		     enum nan_subtype subtype);
 
 #endif /* NAN_I_H */

@@ -1074,3 +1074,92 @@ int nan_ndl_add_qos_attr(struct nan_data *nan,
 
 	return 0;
 }
+
+
+/**
+ * nan_ndl_naf_sent - Indicate a NAF has been sent
+ * @nan: NAN module context from nan_init()
+ * @peer: The peer with whom the NDL is being setup
+ * @subtype: The NAN OUI subtype
+ *
+ * A notification indicating to the NDL state machine that a NAF was sent, so
+ * the NDL state machine can update its state.
+ *
+ * In case the NDL setup negotiation is successfully done, the final schedule
+ * is applied and the NDL is active. If the negotiation is done and failed, the
+ * NDL state is reset.
+ */
+int nan_ndl_naf_sent(struct nan_data *nan, struct nan_peer *peer,
+		     enum nan_subtype subtype)
+{
+	struct nan_ndl *ndl;
+
+	if (!peer || !peer->ndl)
+		return -1;
+
+	ndl = peer->ndl;
+
+	if (ndl->state == NAN_NDL_STATE_DONE)
+		return 0;
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN: NDL: Tx done with peer=" MACSTR " state=%s, status=%u",
+		   MAC2STR(peer->nmi_addr), nan_ndl_state_str(ndl->state),
+		   ndl->status);
+
+	/* Note: Due to races between the Tx status and Rx path, it is possible
+	 * that the Tx status is received after the peer response was already
+	 * processed (which can result with another frame being sent). In such a
+	 * case the logic above fast-forwards the state, and the transitions
+	 * here need to take this into consideration.
+	 */
+	switch (ndl->state) {
+	case NAN_NDL_STATE_START:
+		if (subtype != NAN_SUBTYPE_DATA_PATH_REQUEST)
+			return 0;
+		if (ndl->status != NAN_NDL_STATUS_CONTINUED) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: NDL: Tx sent: invalid continue status");
+			return -1;
+		}
+		nan_ndl_set_state(nan, ndl, NAN_NDL_STATE_REQ_SENT);
+		return 0;
+	case NAN_NDL_STATE_REQ_RECV:
+		if (subtype != NAN_SUBTYPE_DATA_PATH_RESPONSE)
+			return 0;
+		if (ndl->status == NAN_NDL_STATUS_CONTINUED) {
+			nan_ndl_set_state(nan, ndl, NAN_NDL_STATE_RES_SENT);
+			return 0;
+		}
+		break;
+	case NAN_NDL_STATE_RES_RECV:
+		if (subtype != NAN_SUBTYPE_DATA_PATH_CONFIRM)
+			return 0;
+		if (ndl->status == NAN_NDL_STATUS_CONTINUED) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: NDL: Tx sent: invalid continue status");
+			return -1;
+		}
+		break;
+	case NAN_NDL_STATE_CON_RECV:
+	case NAN_NDL_STATE_REQ_SENT:
+	case NAN_NDL_STATE_RES_SENT:
+	case NAN_NDL_STATE_CON_SENT:
+	case NAN_NDL_STATE_DONE:
+	default:
+		wpa_printf(MSG_DEBUG, "NAN: NDL: Tx sent: unexpected state %d",
+			   ndl->state);
+		return 0;
+	}
+
+	if (ndl->status == NAN_NDL_STATUS_ACCEPTED) {
+		wpa_printf(MSG_DEBUG, "NAN: NDL: Schedule setup success");
+		nan_ndl_set_state(nan, ndl, NAN_NDL_STATE_DONE);
+		return 0;
+	}
+
+	/* NDL is rejected and NAF already sent. Higher layer is expected to
+	 * handle it.
+	 */
+	return 0;
+}
