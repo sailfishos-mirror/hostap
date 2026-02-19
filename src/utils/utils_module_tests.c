@@ -127,9 +127,11 @@ static int printf_encode_decode_tests(void)
 
 static int bitfield_tests(void)
 {
-	struct bitfield *bf;
+	struct bitfield *bf, *bf_a = NULL, *bf_b = NULL, *bf_c = NULL;
 	int i;
 	int errors = 0;
+	u8 data_a[4] = { 0xff, 0x3f, 0x01, 0xf0 };
+	u8 data_b[4] = { 0xff, 0xc0, 0xfe, 0x0f };
 
 	wpa_printf(MSG_INFO, "bitfield tests");
 
@@ -209,6 +211,76 @@ static int bitfield_tests(void)
 	if (bitfield_get_first_zero(bf) != -1)
 		errors++;
 	bitfield_free(bf);
+
+	bf_a = bitfield_alloc_data(data_a, sizeof(data_a));
+	if (!bf_a)
+		goto fail;
+
+	bf_b = bitfield_alloc_data(data_b, sizeof(data_b));
+	if (!bf_b)
+		goto fail;
+
+	bf_c = bitfield_dup(bf_a);
+	if (!bf_c)
+		goto fail;
+
+	/* test intersection */
+	if (bitfield_intersect_in_place(bf_c, bf_b))
+		goto fail;
+
+	for (i = 0; i < 8; i++)
+		if (!bitfield_is_set(bf_c, i))
+			goto fail;
+
+	for (; i < 32; i++)
+		if (bitfield_is_set(bf_c, i))
+			goto fail;
+
+	bitfield_free(bf_c);
+
+	/* test union */
+	bf_c = bitfield_union(bf_a, bf_b);
+	if (!bf_c)
+		goto fail;
+
+	if (!bitfield_intersects(bf_a, bf_c) ||
+	    !bitfield_intersects(bf_b, bf_c) ||
+	    !bitfield_intersects(bf_c, bf_a) ||
+	    !bitfield_intersects(bf_c, bf_b) ||
+	    !bitfield_intersects(bf_a, bf_b))
+		goto fail;
+
+	for (i = 0; i < 32; i++)
+		if (!bitfield_is_set(bf_c, i))
+			goto fail;
+
+	if (!bitfield_is_subset(bf_c, bf_a) ||
+	    !bitfield_is_subset(bf_c, bf_b) ||
+	    bitfield_is_subset(bf_a, bf_c) ||
+	    bitfield_is_subset(bf_b, bf_c) ||
+	    bitfield_is_subset(bf_a, bf_b))
+		goto fail;
+
+	/* test in place union */
+	if (bitfield_union_in_place(bf_a, bf_b))
+		goto fail;
+
+	if (bitfield_size(bf_a) != 32 ||
+	    bitfield_size(bf_b) != 32 ||
+	    bitfield_size(bf_c) != 32)
+		goto fail;
+
+	for (i = 0; i < 32; i++)
+		if (!bitfield_is_set(bf_c, i))
+			goto fail;
+	goto out;
+
+fail:
+	errors++;
+out:
+	bitfield_free(bf_a);
+	bitfield_free(bf_c);
+	bitfield_free(bf_b);
 
 	if (errors) {
 		wpa_printf(MSG_ERROR, "%d bitfield test(s) failed", errors);
