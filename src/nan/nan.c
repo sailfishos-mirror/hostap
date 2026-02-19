@@ -1438,3 +1438,59 @@ void nan_set_cluster_id(struct nan_data *nan, const u8 *cluster_id)
 {
 	os_memcpy(nan->cluster_id, cluster_id, sizeof(nan->cluster_id));
 }
+
+
+/*
+ * nan_tx_status - Notification of the result of a transmitted NAN Action frame
+ * @nan: NAN module context from nan_init()
+ * @dst: Destination address of the transmitted frame
+ * @data: The transmitted frame
+ * @data_len: Length of the transmitted frame in octets
+ * @acked: Whether the frame was acknowledged
+ * Returns: 0 if the frame is a NAF and -1 if not.
+ */
+int nan_tx_status(struct nan_data *nan, const u8 *dst, const u8 *data,
+		  size_t data_len, bool acked)
+{
+	struct nan_peer *peer;
+	const struct ieee80211_mgmt *mgmt = (const struct ieee80211_mgmt *)data;
+	u8 subtype;
+	int ret;
+
+	if (!nan_is_naf(mgmt, data_len) || !dst)
+		return -1;
+
+	wpa_printf(MSG_DEBUG, "NAN: TX status: peer=" MACSTR ", acked=%u",
+		   MAC2STR(dst), acked);
+
+	peer = nan_get_peer(nan, dst);
+	if (!peer) {
+		wpa_printf(MSG_DEBUG, "NAN: TX status: peer not found");
+		return 0;
+	}
+
+	subtype = mgmt->u.action.u.naf.subtype;
+
+	ret = nan_ndp_naf_sent(nan, peer, subtype);
+	ret |= nan_ndl_naf_sent(nan, peer, subtype);
+
+	if (ret || peer->ndp_setup.status == NAN_NDP_STATUS_REJECTED ||
+	    !peer->ndl || peer->ndl->status == NAN_NDL_STATUS_REJECTED) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: TX status: Stopping NDP establishment. ret=%d",
+			   ret);
+
+		if (peer->ndp_setup.ndp)
+			nan_ndp_disconnected(nan, peer, peer->ndp_setup.reason);
+		return 0;
+	}
+
+	/* Both state machines are done */
+	if (peer->ndp_setup.state == NAN_NDP_STATE_DONE &&
+	    peer->ndl->state == NAN_NDL_STATE_DONE) {
+		wpa_printf(MSG_DEBUG, "NAN: TX status: NDP setup done");
+		nan_ndp_connected(nan, peer);
+	}
+
+	return 0;
+}
