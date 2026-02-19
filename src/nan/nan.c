@@ -2014,3 +2014,74 @@ int nan_peer_get_schedule_info(struct nan_data *nan, const u8 *addr,
 
 	return 0;
 }
+
+
+/*
+ * nan_peer_get_pot_avail - Get peer's potential availability entries
+ * @nan: NAN module context from nan_init()
+ * @addr: NAN MAC address of the peer
+ * @pot_avail: On return, holds the potential availability entries.
+ * Returns 0 on success, -1 on failure
+ */
+int nan_peer_get_pot_avail(struct nan_data *nan, const u8 *addr,
+			   struct nan_peer_potential_avail *pot_avail)
+{
+	struct nan_avail_entry *avail;
+	struct nan_peer *peer;
+	u8 i;
+
+	if (!nan || !pot_avail)
+		return -1;
+
+	os_memset(pot_avail, 0, sizeof(*pot_avail));
+
+	peer = nan_get_peer(nan, addr);
+	if (!peer)
+		return -1;
+
+	dl_list_for_each(avail, &peer->info.avail_entries,
+			 struct nan_avail_entry, list) {
+		struct pot_entry *pot;
+
+		if (avail->type != NAN_AVAIL_ENTRY_CTRL_TYPE_POTENTIAL)
+			continue;
+
+		if (pot_avail->n_maps == NAN_MAX_MAPS) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Too many potential maps stored");
+			break;
+		}
+
+		pot = &pot_avail->maps[pot_avail->n_maps++];
+		pot->rx_nss = avail->rx_nss;
+		pot->preference = avail->preference;
+		pot->utilization = avail->utilization;
+		pot->is_band = avail->band_chan_type == NAN_TYPE_BAND;
+
+		for (i = 0; i < avail->n_band_chan; i++, pot->n_band_chan++) {
+			const struct nan_band_chan *band_chan;
+
+			if (pot->n_band_chan == NAN_MAX_CHAN_ENTRIES) {
+				wpa_printf(MSG_DEBUG,
+					   "NAN: Too many band_chan entries stored for potential entry");
+				break;
+			}
+
+			band_chan = &avail->band_chan[i];
+
+			if (pot->is_band) {
+				pot->entries[i].band_id =
+					band_chan->u.band_id;
+			} else {
+				const struct nan_chan_entry *bc_chan;
+
+				bc_chan = &band_chan->u.chan;
+				pot->entries[i].op_class = bc_chan->op_class;
+				pot->entries[i].chan_bitmap =
+					le_to_host16(bc_chan->chan_bitmap);
+			}
+		}
+	}
+
+	return 0;
+}

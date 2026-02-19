@@ -350,6 +350,37 @@ struct nan_peer_schedule {
 	} maps[NAN_MAX_MAPS];
 };
 
+/**
+ * struct nan_peer_potential_avail - NAN peer potential availability
+ * @n_maps: Number of maps
+ * @maps: Array of maps
+ * @is_band: Indicates whether the entries are bands (true) or channels (false)
+ * @preference: Preference value for the availability entry
+ * @utilization: Utilization value for the availability entry
+ * @rx_nss: Number of spatial streams supported by the peer for RX during
+ *     the time indicated by the availability entry
+ * @n_band_chan: Number of band/channel entries
+ * @entries: Array of band/channel entries
+ */
+struct nan_peer_potential_avail {
+	unsigned int n_maps;
+	struct pot_entry {
+		bool is_band;
+		u8 preference;
+		u8 utilization;
+		u8 rx_nss;
+
+		u8 n_band_chan;
+		union pot_band_chan{
+			u8 band_id;
+			struct {
+				u8 op_class;
+				u16 chan_bitmap;
+			};
+		} entries[NAN_MAX_CHAN_ENTRIES];
+	} maps[NAN_MAX_MAPS];
+};
+
 struct nan_config {
 	void *cb_ctx;
 	u8 nmi_addr[ETH_ALEN];
@@ -488,5 +519,9 @@ int nan_peer_get_schedule_info(struct nan_data *nan, const u8 *addr,
 			       struct nan_peer_schedule *sched);
 int nan_peer_dump_sched_to_buf(struct nan_peer_schedule *sched,
 			       char *buf, size_t buflen);
+int nan_peer_get_pot_avail(struct nan_data *nan, const u8 *addr,
+			   struct nan_peer_potential_avail *pot_avail);
+int nan_peer_dump_pot_avail_to_buf(struct nan_peer_potential_avail *pot_avail,
+				   char *buf, size_t buflen);
 
 #endif /* NAN_H */

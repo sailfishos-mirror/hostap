@@ -1588,3 +1588,60 @@ err:
 	wpa_printf(MSG_DEBUG, "NAN: Buffer too small to dump peer schedule");
 	return -1;
 }
+
+
+/**
+ * nan_peer_dump_pot_avail_to_buf - Dump peer potential availability to a text
+ * buffer
+ *
+ * @pot_avail: Peer potential availability
+ * @buf: Output buffer
+ * @buflen: Length of &buf in bytes
+ *
+ * Returns: The number of characters written to the buffer, or -1 on error,
+ * which indicates that the buffer was too small.
+ */
+int nan_peer_dump_pot_avail_to_buf(struct nan_peer_potential_avail *pot_avail,
+				   char *buf, size_t buflen)
+{
+	unsigned int i, j;
+	int ret;
+	char *pos = buf;
+	char *end = buf + buflen;
+
+	for (i = 0; i < pot_avail->n_maps; i++) {
+		struct pot_entry *pot = &pot_avail->maps[i];
+
+		ret = wpa_scnprintf(pos, end - pos,
+				    "entry[%u]: rx_nss=%u pref=%u util=%u\n",
+				    i, pot->rx_nss, pot->preference,
+				    pot->utilization);
+		if (os_snprintf_error(end - pos, ret))
+			goto err;
+		pos += ret;
+
+		for (j = 0; j < pot->n_band_chan; j++) {
+			if (pot->is_band) {
+				ret = wpa_scnprintf(pos, end - pos,
+						    "\tband[%u]: band_id=%u\n",
+						    j, pot->entries[j].band_id);
+			} else {
+				ret = wpa_scnprintf(
+					pos, end - pos,
+					"\tchan[%u]: op_class=%u chan_bitmap=0x%04x\n",
+					j, pot->entries[j].op_class,
+					pot->entries[j].chan_bitmap);
+			}
+			if (os_snprintf_error(end - pos, ret))
+				goto err;
+			pos += ret;
+		}
+	}
+
+	return pos - buf;
+
+err:
+	wpa_printf(MSG_DEBUG,
+		   "NAN: Buffer too small to dump peer potential availability");
+	return -1;
+}
