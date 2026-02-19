@@ -1130,15 +1130,13 @@ bool nan_sched_covered_by_avail_entry(struct nan_data *nan,
 }
 
 
-static int
-nan_sched_bf_covered_by_avail_entries(struct nan_data *nan,
-				      struct dl_list *avail_entries,
-				      const struct bitfield *sched_bf,
-				      u8 map_id)
+static struct bitfield *
+nan_sched_bf_from_avail_and_chan(struct nan_data *nan,
+				 const struct dl_list *avail_entries,
+				 u8 map_id, u8 op_class, u16 cbm)
 {
 	struct nan_avail_entry *avail;
 	struct bitfield *res_bf = NULL;
-	int ret = 0;
 
 	dl_list_for_each(avail, avail_entries, struct nan_avail_entry,
 			 list) {
@@ -1152,12 +1150,18 @@ nan_sched_bf_covered_by_avail_entries(struct nan_data *nan,
 		    avail->type != NAN_AVAIL_ENTRY_CTRL_TYPE_COND)
 			continue;
 
+		/* Now check channel, if it is given */
+		if (op_class && cbm &&
+		    (avail->n_band_chan < 1 ||
+		     avail->band_chan_type != NAN_TYPE_CHANNEL ||
+		     avail->band_chan[0].u.chan.op_class != op_class ||
+		     !(avail->band_chan[0].u.chan.chan_bitmap & cbm)))
+			continue;
+
 		/* Convert the availability entry to bitfield */
 		avail_bf = nan_tbm_to_bf(nan, &avail->tbm);
-		if (!avail_bf) {
-			ret = -1;
+		if (!avail_bf)
 			goto fail;
-		}
 
 		bitfield_dump(avail_bf, "NAN: Availability entry bitmap");
 		if (!res_bf) {
@@ -1168,22 +1172,19 @@ nan_sched_bf_covered_by_avail_entries(struct nan_data *nan,
 			tmp_bf = bitfield_union(res_bf, avail_bf);
 			bitfield_free(avail_bf);
 
-			if (!tmp_bf) {
-				ret = -1;
+			if (!tmp_bf)
 				goto fail;
-			}
 
 			bitfield_free(res_bf);
 			res_bf = tmp_bf;
 		}
 	}
 
-	ret = bitfield_is_subset(res_bf, sched_bf);
+	return res_bf;
+
 fail:
-	wpa_printf(MSG_DEBUG,
-		   "NAN: Is bitfield schedule subset of entries=%d", ret);
 	bitfield_free(res_bf);
-	return ret;
+	return NULL;
 }
 
 
@@ -1195,19 +1196,19 @@ fail:
  * @avail_entries: A list of availability entries (see &struct nan_avail_entry)
  * @sched: An array with 0 or more &struct nan_sched_entry entries
  * @sched_len: Length of the &sched array
- * Returns: 1 of schedule is covered by the entries; 0 if not and -1 on error
+ * Returns: true if schedule is covered by the entries; otherwise false.
  */
-int nan_sched_covered_by_avail_entries(struct nan_data *nan,
-				       struct dl_list *avail_entries,
-				       const u8 *sched, size_t sched_len)
+bool nan_sched_covered_by_avail_entries(struct nan_data *nan,
+					struct dl_list *avail_entries,
+					const u8 *sched, size_t sched_len)
 {
 	struct dl_list sched_entries;
-	struct bitfield *sched_bf;
+	struct bitfield *sched_bf, *avail_bf;
 	u8 map_id;
-	int ret;
+	bool ret = false;
 
 	if (!sched || !sched_len)
-		return 1;
+		return true;
 
 	dl_list_init(&sched_entries);
 	ret = nan_sched_entries_to_avail_entries(nan, &sched_entries,
@@ -1216,11 +1217,209 @@ int nan_sched_covered_by_avail_entries(struct nan_data *nan,
 	sched_bf = nan_sched_to_bf(nan, &sched_entries, &map_id);
 	nan_flush_avail_entries(&sched_entries);
 
-	ret = nan_sched_bf_covered_by_avail_entries(nan, avail_entries,
-						    sched_bf, map_id);
+	avail_bf = nan_sched_bf_from_avail_and_chan(nan, avail_entries,
+						    map_id, 0, 0);
+	if (avail_bf)
+		ret = bitfield_is_subset(avail_bf, sched_bf) ? true : false;
 
-	wpa_printf(MSG_DEBUG, "NAN: NDC schedule is %sa subset of entries",
-		   ret == 1 ? "" : "NOT ");
+	wpa_printf(MSG_DEBUG, "NAN: Schedule is %sa subset of entries",
+		   ret ? "" : "NOT ");
+
+	bitfield_free(avail_bf);
 	bitfield_free(sched_bf);
+
 	return ret;
+}
+
+
+/**
+ * nan_sched_bf_covered_by_avail_entries_and_chan - Check if schedule is covered
+ * by the list of availability attributes matching the channel configurations
+ *
+ * @nan: NAN module context from nan_init()
+ * @avail_entries: A list of availability entries. See &struct nan_avail_entry
+ * @sched_bf: the bitfield representing the schedule
+ * @map_id: Map ID associated with the schedule
+ * @op_class: Operating class to match against
+ * @cbm: Channel bitmap to match against
+ * Returns: true of schedule is covered by the entries; otherwise false
+ */
+bool nan_sched_bf_covered_by_avail_entries_and_chan(
+	struct nan_data *nan, const struct dl_list *avail_entries,
+	struct bitfield *sched_bf, u8 map_id, u8 op_class, u16 cbm)
+{
+	struct bitfield *avail_bf;
+	bool ret = false;
+
+	/*
+	 * Build a schedule bitfield from all the availability entries matching
+	 * the map ID and channel configuration.
+	 */
+	avail_bf = nan_sched_bf_from_avail_and_chan(nan, avail_entries,
+						    map_id, op_class, cbm);
+
+	/*
+	 * If there is such a schedule, verify that it is a superset of the
+	 * given schedule.
+	 */
+	if (avail_bf && bitfield_is_subset(avail_bf, sched_bf))
+		ret = true;
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN: Is schedule covered by entries and chan=%u", ret);
+
+	bitfield_free(avail_bf);
+	return ret;
+}
+
+
+static int nan_get_control_channel(struct nan_data *nan, u8 op_class,
+				   u16 cbm, u16 pri_cbm)
+{
+	const struct oper_class_map *op = get_oper_class(NULL, op_class);
+	int freq = 0, idx;
+	u8 chan_id;
+
+	if (!op || op_class > 130)
+		return -1;
+
+	idx = ffs(cbm) - 1;
+	if (idx < 0) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: No channel found in chan_bitmap 0x%04x for oper_class %u",
+			   cbm, op_class);
+		return -1;
+	}
+
+	chan_id = op_class_idx_to_chan(op, idx);
+	if (!chan_id) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: No channel found for oper_class %u idx %u",
+			   op_class, idx);
+		return -1;
+	}
+
+	freq = ieee80211_chan_to_freq(NULL, op_class, chan_id);
+
+	/*
+	 * For operating classes with bandwidth < 80 MHz, the frequency is the
+	 * control channel frequency. For operating classes with
+	 * bandwidth >= 80 MHz, the frequency is the center frequency of the
+	 * primary segment, so we need to derive the control channel frequency
+	 * from the primary channel bitmap.
+	 */
+	if (op->bw == BW20 || op->bw == BW40 ||
+	    op->bw == BW40PLUS || op->bw == BW40MINUS)
+		return freq;
+
+	if (!pri_cbm) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: No primary channel bitmap provided for oper_class %u",
+			   op_class);
+		return -1;
+	}
+
+	idx = ffs(pri_cbm) - 1;
+
+	if (op->bw == BW80 || op->bw == BW80P80)
+		return freq - 30 + idx * 20;
+
+	if (op->bw == BW160)
+		return freq - 70 + idx * 20;
+
+	return -1;
+}
+
+
+/**
+ * nan_avail_entries_to_bf - Convert availability entries that match the given
+ * channel configuration to a bitfield.
+ *
+ * @nan: NAN module context from nan_init()
+ * @avail_entries: A list of availability entries. See &struct nan_avail_entry
+ * @op_class: Operating class to match against
+ * @cbm: Channel bitmap to match against
+ * @pri_cbm: Primary channel bitmap to match against
+ * Returns: NULL on error or no match; otherwise returns a bitfield describing
+ * all the available slots.
+ */
+struct bitfield * nan_avail_entries_to_bf(struct nan_data *nan,
+					  const struct dl_list *avail_entries,
+					  u8 op_class, u16 cbm, u16 pri_cbm)
+{
+	struct nan_avail_entry *avail;
+	struct bitfield *res_bf = NULL;
+
+	dl_list_for_each(avail, avail_entries, struct nan_avail_entry,
+			 list) {
+		struct bitfield *avail_bf;
+
+		/* Schedule can only be covered by committed/conditional. */
+		if (avail->type != NAN_AVAIL_ENTRY_CTRL_TYPE_COMMITTED &&
+		    avail->type != NAN_AVAIL_ENTRY_CTRL_TYPE_COND)
+			continue;
+
+		/*
+		 * Committed/conditional entries should have only a single
+		 * channel entry.
+		 */
+		if (avail->n_band_chan != 1 ||
+		    avail->band_chan_type != NAN_TYPE_CHANNEL)
+			continue;
+
+		/*
+		 * Check that the availability entry channel matches. If it does
+		 * not match, check if the channels are compatible, i.e., have
+		 * the same control channel.
+		 */
+		if (avail->band_chan[0].u.chan.op_class != op_class ||
+		    avail->band_chan[0].u.chan.chan_bitmap != cbm ||
+		    avail->band_chan[0].u.chan.pri_chan_bitmap != pri_cbm) {
+			int freq1, freq2;
+			u16 chan_bitmap, pri_chan_bitmap;
+
+			freq1 = nan_get_control_channel(nan, op_class,
+							cbm, pri_cbm);
+
+			chan_bitmap = le_to_host16(
+				avail->band_chan[0].u.chan.chan_bitmap);
+			pri_chan_bitmap = le_to_host16(
+				avail->band_chan[0].u.chan.pri_chan_bitmap);
+			freq2 = nan_get_control_channel(
+				nan, avail->band_chan[0].u.chan.op_class,
+				chan_bitmap, pri_chan_bitmap);
+
+			if (freq2 == -1 || freq1 != freq2)
+				continue;
+
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Availability entry channel is compatible. Control channel freq=%d MHz",
+				   freq1);
+		}
+
+		/* Convert the availability entry to a bitfield */
+		avail_bf = nan_tbm_to_bf(nan, &avail->tbm);
+		if (!avail_bf)
+			goto fail;
+
+		if (!res_bf) {
+			res_bf = avail_bf;
+		} else {
+			struct bitfield *tmp_bf;
+
+			tmp_bf = bitfield_union(res_bf, avail_bf);
+			if (!tmp_bf)
+				goto fail;
+
+			bitfield_free(res_bf);
+			bitfield_free(avail_bf);
+			res_bf = tmp_bf;
+		}
+	}
+
+	return res_bf;
+
+fail:
+	bitfield_free(res_bf);
+	return NULL;
 }

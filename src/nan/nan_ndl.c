@@ -8,6 +8,7 @@
 
 #include "includes.h"
 #include "common.h"
+#include "utils/bitfield.h"
 #include "common/ieee802_11_common.h"
 #include "nan_i.h"
 
@@ -223,11 +224,449 @@ static int nan_ndl_validate_peer_avail(struct nan_data *nan,
 }
 
 
-static enum nan_ndl_status nan_ndl_res_status(struct nan_data *nan,
-					      struct nan_peer *peer)
+/**
+ * nan_ndl_convert_chan_sched_to_bf - Convert channel schedule to bitfield
+ * and get the channel information.
+ *
+ * @nan: NAN module context from nan_init()
+ * @chan: Channel schedule to convert
+ * @avail_bf: On successful return holds the availability bitmap of the given
+ *     channel schedule
+ * @map_id: On successful return holds the map ID for the schedule
+ * @op_class: On successful return holds the operating class for the schedule
+ *     with the peer
+ * @cbm: On successful return holds the channel bitmap for the operating class
+ * @pcbm: On successful return holds the primary channel bitmap for the
+ *     channel in case of bandwidth greater than 40 MHz
+ * Returns: 0 on success; -1 on failure
+ */
+static int nan_ndl_convert_chan_sched_to_bf(struct nan_data *nan,
+					    struct nan_chan_schedule *chan,
+					    struct bitfield **avail_bf,
+					    u8 *map_id, u8 *op_class,
+					    u16 *cbm, u16 *pcbm)
 {
-	/* TODO: properly set the status */
-	return NAN_NDL_STATUS_ACCEPTED;
+	struct bitfield *committed_bf, *conditional_bf;
+	int ret;
+
+	*op_class = 0;
+	*cbm = 0;
+	*pcbm = 0;
+	*map_id = chan->map_id;
+
+	ret = nan_get_chan_bm(nan, &chan->chan, op_class, cbm, pcbm);
+	if (ret) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: NDL: Failed to convert channel info");
+		return -1;
+	}
+
+	committed_bf = nan_tbm_to_bf(nan, &chan->committed);
+	if (!committed_bf) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: NDL: Failed to build committed bitfield");
+		return -1;
+	}
+
+	conditional_bf = nan_tbm_to_bf(nan, &chan->conditional);
+	if (!conditional_bf) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: NDL: Failed to build conditional bitfield");
+		bitfield_free(committed_bf);
+		return -1;
+	}
+
+	*avail_bf = bitfield_union(committed_bf, conditional_bf);
+	bitfield_free(committed_bf);
+	bitfield_free(conditional_bf);
+
+	if (!*avail_bf) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: NDL: Failed to unify committed and conditional bitfields");
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "NAN: NDL: map_id=%u, op_class=%u, cbm=0x%x",
+		   *map_id, *op_class, *cbm);
+	return 0;
+}
+
+
+/**
+ * enum nan_ndl_ver - Verdict of comparing local availability to given schedule
+ * @NAN_NDL_VER_SCHED_SUBSET_OF_LOCAL: The schedule is a subset of the local one
+ * @NAN_NDL_VER_SCHED_SUPERSET_OF_LOCAL: The schedule is a superset of the local
+ *     one
+ * @NAN_NDL_VER_SCHED_IDENTICAL_OF_LOCAL: The schedule is identical to the local
+ * @NAN_NDL_VER_SCHED_NONE: None of the above. This means that there was no
+ *     match or an error occurred.
+ */
+enum nan_ndl_ver {
+	NAN_NDL_VER_SCHED_SUBSET_OF_LOCAL,
+	NAN_NDL_VER_SCHED_SUPERSET_OF_LOCAL,
+	NAN_NDL_VER_SCHED_IDENTICAL_OF_LOCAL,
+	NAN_NDL_VER_SCHED_NONE,
+};
+
+
+/*
+ * nan_ndl_match_sched_vs_common - Compare the given schedule to the common
+ * availability of the local device and the peer device, comparing channel
+ * configuration and bitmap.
+ *
+ * @nan: NAN module context from nan_init()
+ * @avail_entries: Peer availability entries
+ * @sched: A byte array with 0 or more &struct nan_sched_entry entries
+ * @sched_len: Length of the &sched array
+ * @common_bf: Bitfield representing the intersection of local and peer
+ *     availability
+ * @op_class: Local operating class
+ * @cbm: Local channel bitmap
+ *
+ * Returns one of enum nan_ndl_ver. In case of on an error
+ * NAN_NDL_VER_SCHED_NONE is returned.
+ *
+ * The function first verifies that the given schedule is covered by the peer
+ * availability. Then, the function verifies that the schedule is covered by
+ * the common availability between local and peer.
+ *
+ * The function can (and should be used) to check the schedule constraints of
+ * an NDC schedule and/or immutable schedule.
+ *
+ * Note: In case that &sched is NULL or &sched_len is 0, returns
+ * NAN_NDL_VER_SCHED_IDENTICAL_OF_LOCAL, meaning no constraints.
+ */
+static enum nan_ndl_ver
+nan_ndl_match_sched_vs_common(struct nan_data *nan,
+			      struct dl_list *avail_entries,
+			      const u8 *sched, size_t sched_len,
+			      const struct bitfield *common_bf,
+			      u8 op_class, u16 cbm)
+{
+	struct dl_list sched_entries;
+	struct bitfield *sched_bf;
+	u8 map_id;
+	enum nan_ndl_ver verdict;
+	int ret;
+
+	/* No constraints */
+	if (!sched || !sched_len)
+		return NAN_NDL_VER_SCHED_IDENTICAL_OF_LOCAL;
+
+	/* Convert the schedule entries to availability entries  */
+	ret = nan_sched_entries_to_avail_entries(nan, &sched_entries,
+						 sched, sched_len);
+	if (ret)
+		return NAN_NDL_VER_SCHED_NONE;
+
+	/* Convert the schedule availability entries to map ID and bitfield */
+	sched_bf = nan_sched_to_bf(nan, &sched_entries, &map_id);
+	nan_flush_avail_entries(&sched_entries);
+
+	/*
+	 * Now that the schedule is represented as a bitfield and the map ID is
+	 * obtained, compare these against the peer availability entries and
+	 * channel configuration. A successful match means that the schedule is
+	 * covered by the peer availability entries for the given channel.
+	 */
+	ret = nan_sched_bf_covered_by_avail_entries_and_chan(
+		nan, avail_entries, sched_bf, map_id, op_class, cbm);
+	if (ret) {
+		int ret2;
+
+		/*
+		 * After validating the schedule against the peer availability,
+		 * match the peer availability with the local one.
+		 */
+		ret = bitfield_is_subset(common_bf, sched_bf);
+		ret2 = bitfield_is_subset(sched_bf, common_bf);
+
+		if (ret < 0 || ret2 < 0)
+			verdict = NAN_NDL_VER_SCHED_NONE;
+		else if (ret == 1 && ret2 == 1)
+			verdict = NAN_NDL_VER_SCHED_IDENTICAL_OF_LOCAL;
+		else if (ret == 1)
+			verdict = NAN_NDL_VER_SCHED_SUBSET_OF_LOCAL;
+		else
+			verdict = NAN_NDL_VER_SCHED_SUPERSET_OF_LOCAL;
+	} else {
+		verdict = NAN_NDL_VER_SCHED_NONE;
+	}
+
+	bitfield_free(sched_bf);
+	return verdict;
+}
+
+
+static enum nan_ndl_status nan_ndl_determine_status(struct nan_data *nan,
+						    struct nan_peer *peer,
+						    bool can_counter,
+						    enum nan_reason *reason)
+{
+	struct nan_schedule *sched = &peer->ndl->sched;
+	struct bitfield *common_bf = NULL, *ndc_bf = NULL, *track_ndc_bf = NULL;
+	enum nan_ndl_ver verdict;
+	size_t size, max_latency, i;
+	u16 crbs;
+	int ret;
+
+	*reason = NAN_REASON_RESERVED;
+
+	ndc_bf = nan_tbm_to_bf(nan, &sched->ndc);
+	if (!ndc_bf) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: NDL: Failed to build NDC bitfield from schedule");
+
+		*reason = NAN_REASON_UNSPECIFIED_REASON;
+		return NAN_NDL_STATUS_REJECTED;
+	}
+
+	track_ndc_bf = bitfield_alloc(bitfield_size(ndc_bf));
+	if (!track_ndc_bf) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: NDL: Failed to allocate bitfield for tracking NDC");
+
+		bitfield_free(ndc_bf);
+		*reason = NAN_REASON_UNSPECIFIED_REASON;
+		return NAN_NDL_STATUS_REJECTED;
+	}
+
+	/*
+	 * Iterate over all the channels included in the local schedule. For
+	 * each channel, convert the committed and conditional slots to a
+	 * bitfield object and extract the operating class and channel bitmap.
+	 *
+	 * Using the operating class and channel bitmap find the peer
+	 * availability on that channel and intersect it with the local one:
+	 *
+	 * - Accumulate the intersection of the NDC bitmap with the bitmap of
+	 *   all channels with the same map ID as the NDC, so that whether the
+	 *   NDC is covered by the local availability can be verified later.
+	 * - Accumulate the intersection of local and peer availability for
+	 *   all channels, so that the QoS requirements can be verified later.
+	 */
+	wpa_printf(MSG_DEBUG, "NAN: NDL: n_chans=%u, ndc_map_id=%u",
+		   sched->n_chans, sched->ndc_map_id);
+
+	for (i = 0; i < sched->n_chans; i++) {
+		struct bitfield *own_chan_bf = NULL, *peer_chan_bf = NULL;
+		u16 cbm, pri_cbm;
+		u8 map_id, op_class;
+
+		/* Convert the schedule for the current channel to bitfield */
+		ret = nan_ndl_convert_chan_sched_to_bf(nan, &sched->chans[i],
+						       &own_chan_bf, &map_id,
+						       &op_class, &cbm,
+						       &pri_cbm);
+		if (ret) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: NDL: Failed to convert chan sched to bitfield");
+
+			*reason = NAN_REASON_UNSPECIFIED_REASON;
+			ret = NAN_NDL_STATUS_REJECTED;
+			goto out;
+		}
+
+		if (sched->ndc_map_id == map_id) {
+			struct bitfield *tmp = bitfield_dup(ndc_bf);
+
+			if (tmp) {
+				bitfield_intersect_in_place(tmp, own_chan_bf);
+				bitfield_union_in_place(track_ndc_bf, tmp);
+				bitfield_free(tmp);
+			}
+		}
+
+		/* Get the peer availability for the current channel */
+		peer_chan_bf = nan_avail_entries_to_bf(
+			nan, &peer->info.avail_entries,
+			op_class, cbm, pri_cbm);
+		if (!peer_chan_bf) {
+			bitfield_free(own_chan_bf);
+			continue;
+		}
+
+		ret = bitfield_intersect_in_place(own_chan_bf, peer_chan_bf);
+		bitfield_free(peer_chan_bf);
+		peer_chan_bf = NULL;
+
+		if (ret < 0) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: NDL: Failed to intersect own and peer chan bitfields");
+
+			bitfield_free(own_chan_bf);
+
+			*reason = NAN_REASON_INVALID_AVAILABILITY;
+			ret = NAN_NDL_STATUS_REJECTED;
+			goto out;
+		}
+
+		/*
+		 * Accumulate schedule common for the local and peer device, so
+		 * it can later be used to verify QoS requirements, etc.
+		 */
+		if (common_bf) {
+			ret = bitfield_union_in_place(common_bf, own_chan_bf);
+			if (ret) {
+				wpa_printf(MSG_DEBUG,
+					   "NAN: NDL: Failed to unify own chan bitfields");
+
+				bitfield_free(own_chan_bf);
+
+				*reason = NAN_REASON_UNSPECIFIED_REASON;
+				ret = NAN_NDL_STATUS_REJECTED;
+				goto out;
+			}
+		} else {
+			common_bf = bitfield_dup(own_chan_bf);
+			if (!common_bf) {
+				wpa_printf(MSG_DEBUG,
+					   "NAN: NDL: Failed to dup own chan bitfield");
+
+				bitfield_free(own_chan_bf);
+
+				*reason = NAN_REASON_UNSPECIFIED_REASON;
+				ret = NAN_NDL_STATUS_REJECTED;
+				goto out;
+			}
+		}
+
+		bitfield_free(own_chan_bf);
+		own_chan_bf = NULL;
+	}
+
+	if (!common_bf) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: NDL: No common availability between local and peer");
+
+		*reason = NAN_REASON_INVALID_AVAILABILITY;
+		ret = NAN_NDL_STATUS_CONTINUED;
+		goto out;
+	}
+
+	/*
+	 * Verify that the schedule NDC bitmap is covered by the local
+	 * availability for the map used for the NDC.
+	 */
+	if (!bitfield_is_subset(ndc_bf, track_ndc_bf)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: NDL: NDC bitmap is not covered by local availability on NDC channel");
+
+		*reason = NAN_REASON_UNSPECIFIED_REASON;
+		ret = NAN_NDL_STATUS_REJECTED;
+		goto out;
+	}
+
+	bitfield_free(ndc_bf);
+	ndc_bf = track_ndc_bf;
+	track_ndc_bf = NULL;
+
+	/*
+	 * In case the peer included an immutable schedule, the immutable
+	 * schedule must be covered by the common schedule. If not, reject.
+	 */
+	verdict = nan_ndl_match_sched_vs_common(nan,
+						&peer->info.avail_entries,
+						peer->ndl->immut_sched,
+						peer->ndl->immut_sched_len,
+						common_bf, 0, 0);
+	if (verdict != NAN_NDL_VER_SCHED_IDENTICAL_OF_LOCAL &&
+	    verdict != NAN_NDL_VER_SCHED_SUBSET_OF_LOCAL) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Schedule does not cover immutable. Reject");
+
+		*reason = NAN_REASON_IMMUTABLE_UNACCEPTABLE;
+		ret = NAN_NDL_STATUS_REJECTED;
+		goto out;
+	}
+
+	/*
+	 * In case the peer included an NDC, check if it is identical to
+	 * the locally generated one.
+	 *
+	 * Note: The list of peer availability entries needs to be iterated
+	 * again, as the NDC map ID must also be matched.
+	 */
+	verdict = nan_ndl_match_sched_vs_common(nan, &peer->info.avail_entries,
+						peer->ndl->ndc_sched,
+						peer->ndl->ndc_sched_len,
+						ndc_bf, 0, 0);
+	if (verdict != NAN_NDL_VER_SCHED_IDENTICAL_OF_LOCAL) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Response NDC does not match req NDC");
+
+		*reason = NAN_REASON_INVALID_AVAILABILITY;
+		ret = NAN_NDL_STATUS_CONTINUED;
+		goto out;
+	}
+
+	/* No QoS requirements. Accept */
+	if (peer->ndl->peer_qos.min_slots == NAN_QOS_MIN_SLOTS_NO_PREF &&
+	    peer->ndl->peer_qos.max_latency == NAN_QOS_MAX_LATENCY_NO_PREF) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: No QoS requirements from Peer. Accept");
+
+		ret = NAN_NDL_STATUS_ACCEPTED;
+		goto out;
+	}
+
+	size = bitfield_size(common_bf);
+	wpa_printf(MSG_DEBUG, "NAN: size of avail intersection map=%zu", size);
+
+	/*
+	 * The common map covers an entire 8192 TU period with 16 TU slots. For
+	 * minimal time slots need to only consider the first 32 slots.
+	 */
+	for (i = 0, crbs = 0, max_latency = 0; i < size; i++) {
+		if (bitfield_is_set(common_bf, i)) {
+			if (i < 32)
+				crbs++;
+
+			max_latency = 0;
+		} else if (peer->ndl->peer_qos.max_latency !=
+			   NAN_QOS_MAX_LATENCY_NO_PREF) {
+			max_latency++;
+			if (max_latency > peer->ndl->peer_qos.max_latency) {
+				wpa_printf(MSG_DEBUG,
+					   "NAN: Failed to meet max latency");
+
+				*reason = NAN_REASON_QOS_UNACCEPTABLE;
+				ret = NAN_NDL_STATUS_CONTINUED;
+				goto out;
+			}
+		}
+	}
+
+	if (peer->ndl->peer_qos.min_slots != NAN_QOS_MIN_SLOTS_NO_PREF &&
+	    peer->ndl->peer_qos.min_slots >= crbs) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Failed to meet min slots");
+
+		*reason = NAN_REASON_QOS_UNACCEPTABLE;
+		ret = NAN_NDL_STATUS_CONTINUED;
+		goto out;
+	}
+
+	ret = NAN_NDL_STATUS_ACCEPTED;
+out:
+	bitfield_free(common_bf);
+	bitfield_free(ndc_bf);
+	bitfield_free(track_ndc_bf);
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN: NDL: Response status=%s (%u)",
+		   ret == NAN_NDL_STATUS_ACCEPTED ? "ACCEPTED" :
+		   ret == NAN_NDL_STATUS_CONTINUED ? "CONTINUED" :
+		   "REJECTED",
+		   ret);
+
+	if (ret == NAN_NDL_STATUS_CONTINUED && !can_counter) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Cannot counter, change verdict to REJECTED");
+		ret = NAN_NDL_STATUS_REJECTED;
+	}
+
+	return ret;
 }
 
 
@@ -329,7 +768,12 @@ int nan_ndl_setup(struct nan_data *nan, struct nan_peer *peer,
 		nan_ndl_set_state(nan, ndl, NAN_NDL_STATE_START);
 		ndl->status = NAN_NDL_STATUS_CONTINUED;
 	} else {
-		ndl->status = nan_ndl_res_status(nan, peer);
+		ndl->status = nan_ndl_determine_status(nan, peer,
+						       ndl->state ==
+						       NAN_NDL_STATE_REQ_RECV,
+						       &reason);
+		if (ndl->status == NAN_NDL_STATUS_REJECTED)
+			goto out_fail;
 	}
 
 	ndl->setup_reason = NAN_NDL_SETUP_REASON_NDP;
