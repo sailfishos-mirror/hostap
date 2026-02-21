@@ -110,6 +110,7 @@ uml_issue_tests = ["eht_connect_invalid_link",
                    "fst_session_oom",
                    "authsrv_oom",
                    "gas_failures",
+                   "prefer_ht40",
                    "ieee8021x_reauth_wep"]
 
 # Test cases that depend on dumping full process memory
