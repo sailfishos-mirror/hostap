@@ -1566,6 +1566,11 @@ static int pr_prepare_pasn_pr_elem(struct pr_data *pr, struct wpabuf *extra_ies,
 		pr_get_ntb_capabilities(pr, &ntb_caps);
 		pr_buf_add_ntb_capa_info(buf, &ntb_caps);
 		pr_copy_channels(&op_channels, &ntb_caps.channels, false);
+	} else {
+		wpa_printf(MSG_INFO, "PR: Unsupported ranging_type 0x%x",
+			   ranging_type);
+		wpabuf_free(buf);
+		return -1;
 	}
 
 	os_memset(&op_mode, 0, sizeof(struct operation_mode));
