@@ -261,11 +261,20 @@ def vm_next_step(_vm, scr, test_queue):
             scr.addstr("shutting down")
         logger.info("VM[%d] shutting down" % _vm['idx'])
         return
+    if _vm['max_tests'] and _vm['started_tests'] >= _vm['max_tests']:
+        _vm['proc'].stdin.write(b'\n')
+        _vm['proc'].stdin.flush()
+        if _vm['idx'] < status_line:
+            scr.addstr("shutting down for VM restart")
+        logger.info("VM[%d] shutting down for VM restart" % _vm['idx'])
+        _vm['restart'] = True
+        return
     (name, count) = test_queue.pop(0)
     _vm['current_name'] = name
     _vm['current_count'] = count
     _vm['proc'].stdin.write(name.encode() + b'\n')
     _vm['proc'].stdin.flush()
+    _vm['started_tests'] += 1
     if _vm['idx'] < status_line:
         scr.addstr(name)
     logger.debug("VM[%d] start test %s" % (_vm['idx'], name))
@@ -322,7 +331,14 @@ def vm_terminated(_vm, scr, sel, test_queue):
         for i in range(num_servers):
             if vm[i]['proc']:
                 num_vm += 1
-        if len(test_queue) > num_vm:
+        if _vm['restart']:
+            if _vm['idx'] < status_line:
+                scr.addstr("restarting VM")
+            logger.info("VM[%d] restarting VM" % _vm['idx'])
+            updated = True
+            _vm['started_tests'] = 0
+            _vm['cmd'] = _vm['orig_cmd']
+        elif len(test_queue) > num_vm:
             if _vm['idx'] < status_line:
                 scr.addstr("unexpected exit")
             logger.info("VM[%d] unexpected exit" % _vm['idx'])
@@ -565,6 +581,9 @@ def main():
                    help="enable telnet server inside VMs, specify the base port here")
     p.add_argument('--nocurses', dest='nocurses', action='store_const',
                    const=True, default=False, help="Don't use curses for output")
+    p.add_argument('--max-tests', dest='maxtests',
+                   metavar='<maximum number of tests per VM>', type=int,
+                   help="limit the number of test cases to be executed per a VM instance")
     p.add_argument('params', nargs='*')
     args = p.parse_args()
 
@@ -669,6 +688,7 @@ def main():
         vm[i]['starting'] = False
         vm[i]['started'] = False
         vm[i]['cmd'] = cmd
+        vm[i]['orig_cmd'] = cmd
         vm[i]['proc'] = None
         vm[i]['out'] = ""
         vm[i]['pending'] = ""
@@ -679,6 +699,10 @@ def main():
         vm[i]['current_name'] = None
         vm[i]['last_stdout'] = None
         vm[i]['killed'] = False
+        vm[i]['max_tests'] = args.maxtests if args.maxtests else None
+        vm[i]['started_tests'] = 0
+        vm[i]['restart'] = False
+
     print('')
 
     if not args.nocurses:
