@@ -616,3 +616,42 @@ def test_eppke_authentication_pmkid_in_assoc(dev, apdev):
         run_eppke_sae_ext_key(dev, apdev, 19)
     finally:
         dev[0].set("sae_pmkid_in_assoc", "0")
+
+def test_eppke_reassoc_without_deauth(dev, apdev):
+    """STA reassociating back to same AP after EPPKE authentication without deauthentication"""
+    check_eppke_capab(dev[0])
+    ssid = "test-eppke-authentication"
+    password = '1234567890'
+    params = hostapd.wpa3_params(ssid=ssid, password=password)
+    params['wpa_key_mgmt'] = 'SAE-EXT-KEY EPPKE'
+    params['assoc_frame_encryption'] = '1'
+    params['pmksa_caching_privacy'] = '1'
+    params['sae_pwe'] = '1'
+    params['pasn_groups'] = "19"
+    params['sae_groups'] = "19"
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    try:
+        dev[0].set("sae_groups", "19")
+        dev[0].set("sae_pwe", "1")
+        dev[0].connect(ssid, sae_password=password, scan_freq="2412",
+                       key_mgmt="SAE-EXT-KEY EPPKE", ieee80211w="2",
+                       beacon_prot="1", pairwise="CCMP")
+        hapd.wait_sta();
+
+        # Discard deauthentication in hostapd to simulate reassociation without
+        # disconnection.
+        hapd.set("ext_mgmt_frame_handling", "1")
+        dev[0].request("DISCONNECT")
+        dev[0].wait_disconnected(timeout=10)
+        ev = hapd.wait_event(["MGMT-RX"], timeout=1)
+        if ev is None:
+            raise Exception("Deauthentication frame RX not reported")
+        hapd.set("ext_mgmt_frame_handling", "0")
+
+        dev[0].request("REASSOCIATE")
+        dev[0].wait_connected(timeout=20, error="Timeout on re-connection")
+        hapd.wait_sta()
+    finally:
+        dev[0].set("sae_groups", "")
+        dev[0].set("sae_pwe", "0")
