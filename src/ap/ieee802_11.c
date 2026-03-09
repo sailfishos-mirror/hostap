@@ -7423,6 +7423,15 @@ static void handle_assoc(struct hostapd_data *hapd,
 	}
 #endif /* CONFIG_FILS */
 
+#ifdef CONFIG_TESTING_OPTIONS
+	if (hapd->conf->association_response_status_code >= 0) {
+		wpa_printf(MSG_DEBUG,
+			   "TESTING: Forcing association response status code to %d",
+			   hapd->conf->association_response_status_code);
+		resp = hapd->conf->association_response_status_code;
+	}
+#endif /* CONFIG_TESTING_OPTIONS */
+
 	if (resp >= 0)
 		reply_res = send_assoc_resp(hapd,
 					    mld_addrs_not_translated ?

@@ -709,6 +709,7 @@ struct hostapd_bss_config {
 	bool eapol_key_reserved_random;
 	int test_assoc_comeback_type;
 	struct wpabuf *presp_elements;
+	int association_response_status_code;
 
 #ifdef CONFIG_IEEE80211BE
 	u16 eht_oper_puncturing_override;

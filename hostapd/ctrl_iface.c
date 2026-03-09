@@ -1217,6 +1217,16 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
 		hapd->ext_mgmt_frame_handling = atoi(value);
 	} else if (os_strcasecmp(cmd, "ext_eapol_frame_io") == 0) {
 		hapd->ext_eapol_frame_io = atoi(value);
+	} else if (os_strcasecmp(cmd, "association_response_status_code") == 0)
+	{
+		if (os_strcasecmp(value, "disable") == 0)
+			hapd->conf->association_response_status_code = -1;
+		else
+			hapd->conf->association_response_status_code =
+				atoi(value);
+		wpa_printf(MSG_DEBUG,
+			   "TESTING: association_response_status_code=%d",
+			   hapd->conf->association_response_status_code);
 	} else if (os_strcasecmp(cmd, "force_backlog_bytes") == 0) {
 		hapd->force_backlog_bytes = atoi(value);
 #ifdef CONFIG_DPP
