@@ -1694,6 +1694,9 @@ setup_mld:
 		wpa_printf(MSG_ERROR, "IEEE 802.1X initialization failed.");
 		return -1;
 	}
+#ifdef CONFIG_IEEE8021X_AUTH
+	hapd->send_eap_req = ieee80211_send_eap_req;
+#endif /* CONFIG_IEEE8021X_AUTH */
 
 	if (conf->wpa && hostapd_setup_wpa(hapd))
 		return -1;

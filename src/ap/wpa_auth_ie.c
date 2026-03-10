@@ -481,6 +481,35 @@ static int wpa_write_rsne_override_2(struct wpa_auth_config *conf, u8 *buf,
 }
 
 
+#ifdef CONFIG_IEEE8021X_AUTH
+int wpa_write_802_1x_rsne(struct wpa_authenticator *wpa_auth, u8 *buf,
+			  size_t len, const u8 *pmkid, int akmp,
+			  int pairwise_cipher, int group_cipher,
+			  int group_mgmt_cipher, enum mfp_options mfp)
+{
+	struct rsn_ie_hdr *hdr;
+	u8 *pos;
+	struct wpa_auth_config *conf = &wpa_auth->conf;
+
+	hdr = (struct rsn_ie_hdr *) buf;
+	hdr->elem_id = WLAN_EID_RSN;
+	WPA_PUT_LE16(hdr->version, RSN_VERSION);
+	pos = (u8 *) (hdr + 1);
+
+	pos = rsne_write_data(buf, len, pos, group_cipher,
+			      pairwise_cipher, akmp,
+			      wpa_own_rsn_capab(conf, conf->ieee80211w),
+			      pmkid, mfp, group_mgmt_cipher);
+	if (!pos)
+		return -1;
+
+	hdr->len = pos - buf - 2;
+
+	return pos - buf;
+}
+#endif /* CONFIG_IEEE8021X_AUTH */
+
+
 static u32 rsnxe_capab(struct wpa_auth_config *conf, int key_mgmt)
 {
 	u32 capab = 0;

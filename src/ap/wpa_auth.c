@@ -8206,3 +8206,27 @@ bool wpa_auth_get_first_sta_seen(struct wpa_authenticator *wpa_auth,
 	group = wpa_select_vlan_wpa_group(wpa_auth->group, vlan_id);
 	return group->first_sta_seen;
 }
+
+#ifdef CONFIG_IEEE8021X_AUTH
+int wpa_auth_802_1x_get_msk(struct wpa_authenticator *wpa_auth,
+			     const u8 *addr, u8 *msk, size_t *len)
+{
+	return wpa_auth_get_msk(wpa_auth, addr, msk, len);
+}
+
+
+int wpa_auth_802_1x_set_key(struct wpa_authenticator *wpa_auth,
+			    enum wpa_alg alg, const u8 *addr,
+			    u8 *key, size_t key_len)
+{
+
+	return wpa_auth_set_key(wpa_auth, 0, alg, addr, 0, key,
+				key_len, KEY_FLAG_PAIRWISE_RX_TX);
+
+}
+
+bool wpa_auth_ap_support_secure_ltf(struct wpa_authenticator *wpa_auth)
+{
+	return wpa_auth->conf.secure_ltf;
+}
+#endif /* CONFIG_IEEE8021X_AUTH */

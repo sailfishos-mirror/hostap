@@ -35,6 +35,7 @@ struct ieee80211_ht_capabilities;
 struct full_dynamic_vlan;
 enum wps_event;
 union wps_event_data;
+struct rsn_pmksa_cache_entry;
 #ifdef CONFIG_MESH
 struct mesh_conf;
 #endif /* CONFIG_MESH */
@@ -328,6 +329,13 @@ struct hostapd_data {
 			   const u8 *p2p_dev_addr, const u8 *psk,
 			   size_t psk_len);
 	void *new_psk_cb_ctx;
+
+#ifdef CONFIG_IEEE8021X_AUTH
+	void (*send_eap_req)(struct hostapd_data *hapd, struct sta_info *sta,
+			     u8 type, u16 auth_transaction, u16 status,
+			     struct rsn_pmksa_cache_entry *cached_pmk,
+			     const u8 *eap_req, size_t eap_req_len);
+#endif /* CONFIG_IEEE8021X_AUTH */
 
 	/* channel switch parameters */
 	struct hostapd_freq_params cs_freq_params;

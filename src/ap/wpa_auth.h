@@ -746,4 +746,15 @@ void wpa_auth_set_sae_pw_id(struct wpa_state_machine *sm,
 			    const struct wpabuf *pw_id,
 			    unsigned int counter);
 
+int wpa_auth_802_1x_get_msk(struct wpa_authenticator *wpa_auth,
+			     const u8 *addr, u8 *msk, size_t *len);
+int wpa_auth_802_1x_set_key(struct wpa_authenticator *wpa_auth,
+			    enum wpa_alg alg, const u8 *addr,
+			    u8 *key, size_t key_len);
+bool wpa_auth_ap_support_secure_ltf(struct wpa_authenticator *wpa_auth);
+int wpa_write_802_1x_rsne(struct wpa_authenticator *wpa_auth, u8 *buf,
+			  size_t len, const u8 *pmkid, int akmp,
+			  int pairwise_cipher, int group_cipher,
+			  int group_mgmt_cipher, enum mfp_options mfp);
+
 #endif /* WPA_AUTH_H */

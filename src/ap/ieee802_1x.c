@@ -2297,8 +2297,10 @@ static void ieee802_1x_rekey(void *eloop_ctx, void *timeout_ctx)
 static void ieee802_1x_eapol_send(void *ctx, void *sta_ctx, u8 type,
 				  const u8 *data, size_t datalen)
 {
-#ifdef CONFIG_WPS
+	struct hostapd_data *hapd = ctx;
 	struct sta_info *sta = sta_ctx;
+
+#ifdef CONFIG_WPS
 
 	if ((sta->flags & (WLAN_STA_WPS | WLAN_STA_MAYBE_WPS)) ==
 	    WLAN_STA_MAYBE_WPS) {
@@ -2321,7 +2323,16 @@ static void ieee802_1x_eapol_send(void *ctx, void *sta_ctx, u8 type,
 	}
 #endif /* CONFIG_WPS */
 
-	ieee802_1x_send(ctx, sta_ctx, type, data, datalen);
+#ifdef CONFIG_IEEE8021X_AUTH
+	if (sta->epp_sta && hapd->send_eap_req) {
+		hapd->send_eap_req(hapd, sta, type,
+				   sta->eap_auth_data.auth_transaction + 1,
+				   WLAN_STATUS_SUCCESS, NULL, data, datalen);
+		return;
+	}
+#endif /* CONFIG_IEEE8021X_AUTH */
+
+	ieee802_1x_send(hapd, sta, type, data, datalen);
 }
 
 
