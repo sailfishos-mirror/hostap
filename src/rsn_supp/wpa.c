@@ -7779,3 +7779,12 @@ bool wpa_sm_pmksa_privacy_supported(struct wpa_sm *sm)
 {
 	return sm && sm->pmksa_privacy;
 }
+
+
+#ifdef CONFIG_IEEE8021X_AUTH
+void wpa_sm_set_802_1x_auth_caps(struct wpa_sm *sm, u64 flags2)
+{
+	sm->eap_over_auth_frame =
+		!!(flags2 & WPA_DRIVER_FLAGS2_802_1X_AUTH);
+}
+#endif /* CONFIG_IEEE8021X_AUTH */

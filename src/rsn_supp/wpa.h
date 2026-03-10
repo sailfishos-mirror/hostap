@@ -702,4 +702,6 @@ int wpa_sm_install_mlo_group_keys(struct wpa_sm *sm, const u8 *key_data,
 				  size_t key_data_len, u16 added_links_bitmap);
 bool wpa_sm_pmksa_privacy_supported(struct wpa_sm *sm);
 
+void wpa_sm_set_802_1x_auth_caps(struct wpa_sm *sm, u64 flags2);
+
 #endif /* WPA_H */

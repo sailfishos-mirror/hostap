@@ -337,6 +337,12 @@ int wpa_gen_rsnxe(struct wpa_sm *sm, u8 *rsnxe, size_t rsnxe_len)
 	if (sm->pmksa_privacy)
 		capab |= BIT(WLAN_RSNX_CAPAB_PMKSA_CACHING_PRIVACY);
 #endif /* CONFIG_PMKSA_PRIVACY */
+#ifdef CONFIG_IEEE8021X_AUTH
+	if (wpa_key_mgmt_wpa_ieee8021x(sm->key_mgmt &
+				       ~WPA_KEY_MGMT_IEEE8021X) &&
+	     sm->eap_over_auth_frame)
+		capab |= BIT(WLAN_RSNX_CAPAB_802_1X_IN_AUTH_FRAMES);
+#endif /* CONFIG_IEEE8021X_AUTH */
 
 	if (!capab)
 		return 0; /* no supported extended RSN capabilities */
