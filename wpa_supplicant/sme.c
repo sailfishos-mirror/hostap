@@ -22,6 +22,8 @@
 #include "common/sae.h"
 #include "common/dpp.h"
 #include "crypto/random.h"
+#include "crypto/sha256.h"
+#include "crypto/sha384.h"
 #include "rsn_supp/wpa.h"
 #include "rsn_supp/pmksa_cache.h"
 #include "rsn_supp/wpa_ie.h"
@@ -2658,6 +2660,107 @@ static int sme_validate_basic_mle(const struct ieee802_11_elems *elems,
 
 #ifdef CONFIG_IEEE8021X_AUTH
 
+static int sme_validate_802_1x_auth_mic(struct wpa_supplicant *wpa_s,
+					const u8 *frame_data,
+					size_t frame_data_len,
+					const struct wpa_ptk *ptk)
+{
+	const u8 *aa = wpa_s->valid_links ? wpa_s->ap_mld_addr :
+		wpa_s->pending_bssid;
+	const u8 *spa = wpa_s->own_addr;
+	const u8 *ap_rsne, *ap_rsnxe, *mic_elem;
+	size_t ap_rsne_len, ap_rsnxe_len, mic_len, data_len;
+	u8 calc_mic[SHA384_MAC_LEN];
+	u8 *data;
+	u8 *pos;
+	struct wpa_bss *bss;
+	int ret = -1;
+	size_t mic_field_off;
+
+	if (!ptk || !ptk->kck_len || !frame_data || !frame_data_len)
+		return -1;
+
+	/* Get AP RSNE and RSNXE from Beacon/Probe Response frame */
+	bss = wpa_bss_get_bssid(wpa_s, wpa_s->pending_bssid);
+	if (!bss)
+		return -1;
+
+	ap_rsne = wpa_bss_get_rsne(wpa_s, bss, wpa_s->current_ssid, false);
+	ap_rsnxe = wpa_bss_get_rsnxe(wpa_s, bss, wpa_s->current_ssid, false);
+	if (!ap_rsne || !ap_rsnxe)
+		return -1;
+
+	ap_rsne_len = 2 + ap_rsne[1];
+	ap_rsnxe_len = 2 + ap_rsnxe[1];
+
+	mic_elem = get_ie(frame_data, frame_data_len, WLAN_EID_MIC);
+	if (!mic_elem) {
+		wpa_msg(wpa_s, MSG_INFO,
+			"IEEE 802.1X: No MIC element in Authentication frame");
+		return -1;
+	}
+
+	/* Determine MIC length based on key management */
+	mic_len = wpa_key_mgmt_sha384(wpa_s->key_mgmt) ? 24 : 16;
+	if (mic_elem[1] != mic_len) {
+		wpa_msg(wpa_s, MSG_INFO,
+			"IEEE 802.1X: MIC length mismatch (%u != %zu)",
+			mic_elem[1], mic_len);
+		return -1;
+	}
+
+	/* Build data for MIC calculation:
+	   AA || SPA || AP RSNE || AP RSNXE || Frame Data */
+	data_len = ETH_ALEN + ETH_ALEN + ap_rsne_len + ap_rsnxe_len +
+		frame_data_len;
+	data = os_malloc(data_len);
+	if (!data)
+		return -1;
+
+	pos = data;
+	os_memcpy(pos, aa, ETH_ALEN);
+	pos += ETH_ALEN;
+	os_memcpy(pos, spa, ETH_ALEN);
+	pos += ETH_ALEN;
+	os_memcpy(pos, ap_rsne, ap_rsne_len);
+	pos += ap_rsne_len;
+	os_memcpy(pos, ap_rsnxe, ap_rsnxe_len);
+	pos += ap_rsnxe_len;
+	os_memcpy(pos, frame_data, frame_data_len);
+
+	/* Clear the MIC field */
+	mic_field_off = (size_t) (mic_elem - frame_data) + 2;
+	if (mic_field_off + mic_len > frame_data_len)
+		goto out;
+	os_memset(pos + mic_field_off, 0, mic_len);
+
+	/* Calculate MIC */
+	if (wpa_key_mgmt_sha384(wpa_s->key_mgmt)) {
+		if (hmac_sha384(ptk->kck, ptk->kck_len, data, data_len,
+				calc_mic) < 0)
+			goto out;
+	} else {
+		if (hmac_sha256(ptk->kck, ptk->kck_len, data, data_len,
+				calc_mic) < 0)
+			goto out;
+	}
+
+	/* Verify MIC */
+	if (os_memcmp_const(calc_mic, mic_elem + 2, mic_len) != 0) {
+		wpa_msg(wpa_s, MSG_INFO,
+			"IEEE 802.1X: Invalid MIC in Authentication frame");
+		goto out;
+	}
+
+	wpa_printf(MSG_DEBUG, "IEEE 802.1X: MIC verified successfully");
+	ret = 0;
+
+out:
+	bin_clear_free(data, data_len);
+	return ret;
+}
+
+
 static int sme_validate_8021x_auth_elems(struct wpa_supplicant *wpa_s,
 					 const struct ieee802_11_elems *elems,
 					 struct wpabuf *pdu)
@@ -2960,6 +3063,15 @@ static void sme_process_802_1x_auth_response(struct wpa_supplicant *wpa_s,
 			/* Clear DHss after successful PTK derivation */
 			wpabuf_clear_free(wpa_s->auth_1x->dhss);
 			wpa_s->auth_1x->dhss = NULL;
+
+			if (sme_validate_802_1x_auth_mic(
+				    wpa_s, data->auth.frame_body,
+				    data->auth.frame_body_len, &ptk) < 0) {
+				wpa_msg(wpa_s, MSG_INFO,
+					"IEEE 802.1X: MIC validation failed");
+				forced_memzero(&ptk, sizeof(ptk));
+				goto fail;
+			}
 
 			forced_memzero(&ptk, sizeof(ptk));
 		}
