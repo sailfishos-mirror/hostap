@@ -484,6 +484,14 @@ static int wpa_supplicant_get_pmk(struct wpa_sm *sm,
 	if (abort_cached && wpa_key_mgmt_wpa_ieee8021x(sm->key_mgmt) &&
 	    !wpa_key_mgmt_suite_b(sm->key_mgmt) &&
 	    !wpa_key_mgmt_ft(sm->key_mgmt)) {
+#ifdef CONFIG_IEEE8021X_AUTH
+		if (eapol_sm_get_eap_over_auth_frame(sm->eapol)) {
+			wpa_printf(MSG_DEBUG,
+				   "RSN: EAP over auth frame - skip EAPOL-Start");
+			return 0;
+		}
+#endif /* CONFIG_IEEE8021X_AUTH */
+
 		/* Send EAPOL-Start to trigger full EAP authentication. */
 		u8 *buf;
 		size_t buflen;

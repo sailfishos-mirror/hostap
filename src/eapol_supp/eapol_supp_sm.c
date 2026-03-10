@@ -2339,6 +2339,14 @@ void eapol_sm_set_eap_over_auth_frame(struct eapol_sm *sm, bool active)
 }
 
 
+bool eapol_sm_get_eap_over_auth_frame(struct eapol_sm *sm)
+{
+	if (!sm)
+		return false;
+	return sm->eap_over_auth_frame;
+}
+
+
 struct wpabuf * eapol_sm_get_eapol_pdu(struct eapol_sm *sm, u8 type)
 {
 	struct wpabuf *buf = NULL, *out = NULL;
