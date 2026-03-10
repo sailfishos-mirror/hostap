@@ -2843,6 +2843,9 @@ static const struct parse_data ssid_fields[] = {
 #ifdef CONFIG_PMKSA_PRIVACY
 	{ INT_RANGE(pmksa_privacy, 0, 1)},
 #endif /* CONFIG_PMKSA_PRIVACY */
+#ifdef CONFIG_IEEE8021X_AUTH
+	{ INT_RANGE(eap_over_auth_frame, 0, 1)},
+#endif /* CONFIG_IEEE8021X_AUTH */
 	{ INT_RANGE(drop_unicast_ip_in_l2_multicast, 0, 1)},
 	{ INT_RANGE(always_use_proxy_arp, 0, 2)},
 };

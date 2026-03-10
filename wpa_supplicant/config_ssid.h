@@ -1355,6 +1355,17 @@ struct wpa_ssid {
 	 */
 	int pmksa_privacy;
 
+#ifdef CONFIG_IEEE8021X_AUTH
+	/**
+	 * eap_over_auth_frame - IEEE 802.1X authentication in Authentication
+	 * frames
+	 * 0 = Disabled (i.e., use EAP in EAPOL frames) (default)
+	 * 1 = Enabled (i.e., use EAP in Authentication frames and encrypt
+	 *	associations frames)
+	 */
+	int eap_over_auth_frame;
+#endif /* CONFIG_IEEE8021X_AUTH */
+
 	/**
 	 * drop_unicast_ip_in_l2_multicast - Drop unicast IP packets in L2
 	 *	multicast frames in all networks, not just Passpoint non-DGAF
