@@ -2507,14 +2507,17 @@ void ieee80211_send_eap_req(struct hostapd_data *hapd, struct sta_info *sta,
 		u8 msk[2 * PMK_LEN] = { 0 };
 		size_t _len = 2 * PMK_LEN;
 		size_t pmk_len, kdk_len;
+		bool is_ml = ap_sta_is_mld(hapd, sta);
 		enum wpa_alg alg =
 			wpa_cipher_to_alg(sta->eap_auth_data.cipher);
 		size_t key_len =
 			wpa_cipher_key_len(sta->eap_auth_data.cipher);
 		const u8 *aa = hapd->own_addr;
+		struct rsn_pmksa_cache *pmksa =
+			wpa_auth_get_pmksa_cache(hapd->wpa_auth, is_ml);
 
 #ifdef CONFIG_IEEE80211BE
-		if (ap_sta_is_mld(hapd, sta))
+		if (is_ml)
 			aa = hapd->mld->mld_addr;
 #endif /* CONFIG_IEEE80211BE */
 
@@ -2576,6 +2579,15 @@ void ieee80211_send_eap_req(struct hostapd_data *hapd, struct sta_info *sta,
 		/* Delete DHss after successful PTK derivation */
 		wpabuf_clear_free(sta->eap_auth_data.dhss);
 		sta->eap_auth_data.dhss = NULL;
+
+		/* TODO: Fill session_timeout? */
+		wpa_hexdump_key(MSG_DEBUG, "IEEE802.1X: Cache PMK",
+				msk, pmk_len);
+		pmksa_cache_auth_add(pmksa, msk, pmk_len, NULL,
+				     sta->eap_auth_data.ptk.kck,
+				     sta->eap_auth_data.ptk.kck_len,
+				     aa, sta->addr, 0,
+				     sta->eapol_sm, sta->eap_auth_data.akm);
 	}
 
 	reply = prepare_802_1x_auth_resp(hapd, sta, auth_transaction, status,
