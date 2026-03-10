@@ -4763,7 +4763,8 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		struct rsn_pmksa_cache_entry *e;
 
 		e = pmksa_cache_get(t, addr, NULL, NULL, 0, wpa_s->key_mgmt);
-		if (e && e->auth_alg == WLAN_AUTH_EPPKE) {
+		if (e && (e->auth_alg == WLAN_AUTH_EPPKE ||
+			  e->auth_alg == WLAN_AUTH_802_1X)) {
 			rsn_pmkid_privacy(wpa_s->pmkid_anonce,
 					  wpa_s->pmkid_snonce,
 					  wpa_s->key_mgmt, e->pmk_len,

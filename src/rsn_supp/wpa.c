@@ -429,13 +429,20 @@ static int wpa_supplicant_get_pmk(struct wpa_sm *sm,
 			if (sm->proto == WPA_PROTO_RSN &&
 			    !wpa_key_mgmt_suite_b(sm->key_mgmt) &&
 			    !wpa_key_mgmt_ft(sm->key_mgmt)) {
+				u16 auth_alg = 0;
+
+#ifdef CONFIG_IEEE8021X_AUTH
+				if (eapol_sm_get_eap_over_auth_frame(sm->eapol))
+					auth_alg = WLAN_AUTH_802_1X;
+#endif /* CONFIG_IEEE8021X_AUTH */
+
 				sa = pmksa_cache_add(sm->pmksa,
 						     sm->pmk, pmk_len, NULL,
 						     NULL, 0,
 						     src_addr, sm->own_addr,
 						     sm->network_ctx,
 						     sm->key_mgmt,
-						     fils_cache_id, 0);
+						     fils_cache_id, auth_alg);
 			}
 			if (!sm->cur_pmksa && pmkid &&
 			    pmksa_cache_get(sm->pmksa, src_addr, sm->own_addr,
