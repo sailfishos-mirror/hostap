@@ -535,6 +535,12 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 
 	wpabuf_free(sta->sae_pw_id);
 
+#ifdef CONFIG_IEEE8021X_AUTH
+	crypto_ecdh_deinit(sta->eap_auth_data.ecdh);
+	wpabuf_clear_free(sta->eap_auth_data.dhss);
+	os_free(sta->eap_auth_data.rsnxe);
+#endif /* CONFIG_IEEE8021X_AUTH */
+
 	os_free(sta);
 }
 

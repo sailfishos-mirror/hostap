@@ -1136,6 +1136,9 @@ void ieee802_1x_receive(struct hostapd_data *hapd, const u8 *sa, const u8 *buf,
 		   (unsigned long) len, MAC2STR(sa), encrypted);
 	sta = ap_get_sta(hapd, sa);
 	if (!sta || (!(sta->flags & (WLAN_STA_ASSOC | WLAN_STA_PREAUTH)) &&
+#ifdef CONFIG_IEEE8021X_AUTH
+		     !sta->epp_sta &&
+#endif /* CONFIG_IEEE8021X_AUTH */
 		     !(hapd->iface->drv_flags & WPA_DRIVER_FLAGS_WIRED))) {
 		wpa_printf(MSG_DEBUG,
 			   "IEEE 802.1X data frame from not associated/Pre-authenticating STA");
@@ -3121,3 +3124,13 @@ static bool ieee802_1x_finished(struct hostapd_data *hapd,
 
 	return false;
 }
+
+
+#ifdef CONFIG_IEEE8021X_AUTH
+void ieee802_1x_eapol_sm_set_port_enabled(struct eapol_state_machine *sm,
+					  bool value)
+{
+	if (sm && sm->eap_if)
+		sm->eap_if->portEnabled = value;
+}
+#endif /* CONFIG_IEEE8021X_AUTH */
