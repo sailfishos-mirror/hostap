@@ -829,4 +829,10 @@ bool rsn_is_snonce_cookie(const u8 *snonce);
 int rsn_cipher_suite_to_wpa_cipher(u32 cipher);
 int rsn_key_mgmt_to_wpa_akm(u32 akm_suite);
 
+int wpa_auth_802_1x_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const u8 *spa,
+			       const u8 *aa, const u8 *snonce, const u8 *anonce,
+			       int akmp, int cipher, const u8 *dhss,
+			       size_t dhss_len, struct wpa_ptk *ptk,
+			       size_t kdk_len);
+
 #endif /* WPA_COMMON_H */

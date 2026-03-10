@@ -1828,6 +1828,20 @@ int wpa_ltf_keyseed(struct wpa_ptk *ptk, int akmp, int cipher)
 }
 
 
+#ifdef CONFIG_IEEE8021X_AUTH
+int wpa_auth_802_1x_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const u8 *spa,
+			       const u8 *aa, const u8 *snonce, const u8 *anonce,
+			       int akmp, int cipher, const u8 *dhss,
+			       size_t dhss_len, struct wpa_ptk *ptk,
+			       size_t kdk_len)
+{
+	return wpa_pmk_to_ptk(pmk, pmk_len, "Pairwise key expansion",
+			      spa, aa, snonce, anonce, ptk, akmp,
+			      cipher, dhss, dhss_len, kdk_len);
+}
+#endif /* CONFIG_IEEE8021X_AUTH */
+
+
 /**
  * pasn_mic - Calculate PASN MIC
  * @alg: Selected hash algorithm from pasn_pmk_to_ptk()
