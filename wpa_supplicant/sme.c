@@ -47,6 +47,8 @@ static void sme_auth_timer(void *eloop_ctx, void *timeout_ctx);
 static void sme_assoc_timer(void *eloop_ctx, void *timeout_ctx);
 static void sme_obss_scan_timeout(void *eloop_ctx, void *timeout_ctx);
 static void sme_stop_sa_query(struct wpa_supplicant *wpa_s);
+static int sme_validate_basic_mle(const struct ieee802_11_elems *elems,
+				  const u8 *addr);
 
 
 #ifdef CONFIG_SAE
@@ -617,7 +619,6 @@ static int wpas_sme_ml_auth(struct wpa_supplicant *wpa_s,
 			    int ie_offset)
 {
 	struct ieee802_11_elems elems;
-	const u8 *mld_addr;
 	u16 status_code = data->auth.status_code;
 
 	if (!wpa_s->valid_links)
@@ -642,19 +643,7 @@ static int wpas_sme_ml_auth(struct wpa_supplicant *wpa_s,
 		return 0;
 	}
 
-	mld_addr = get_basic_mle_mld_addr(elems.basic_mle, elems.basic_mle_len);
-	if (!mld_addr)
-		return -1;
-
-	wpa_printf(MSG_DEBUG, "MLD: mld_address=" MACSTR, MAC2STR(mld_addr));
-
-	if (!ether_addr_equal(wpa_s->ap_mld_addr, mld_addr)) {
-		wpa_printf(MSG_DEBUG, "MLD: Unexpected MLD address (expected "
-			   MACSTR ")", MAC2STR(wpa_s->ap_mld_addr));
-		return -1;
-	}
-
-	return 0;
+	return sme_validate_basic_mle(&elems, wpa_s->ap_mld_addr);
 }
 
 
@@ -2078,7 +2067,6 @@ static int sme_external_ml_auth(struct wpa_supplicant *wpa_s,
 				u16 status_code)
 {
 	struct ieee802_11_elems elems;
-	const u8 *mld_addr;
 
 	if (ieee802_11_parse_elems(data + ie_offset, len - ie_offset,
 				   &elems, 0) == ParseFailed) {
@@ -2098,22 +2086,7 @@ static int sme_external_ml_auth(struct wpa_supplicant *wpa_s,
 		return 0;
 	}
 
-	mld_addr = get_basic_mle_mld_addr(elems.basic_mle, elems.basic_mle_len);
-	if (!mld_addr) {
-		wpa_printf(MSG_DEBUG, "MLD: No MLD address in ML element");
-		return -1;
-	}
-
-	wpa_printf(MSG_DEBUG, "MLD: mld_address=" MACSTR, MAC2STR(mld_addr));
-
-	if (!ether_addr_equal(wpa_s->sme.ext_auth_ap_mld_addr, mld_addr)) {
-		wpa_printf(MSG_DEBUG, "MLD: Unexpected MLD address (expected "
-			   MACSTR ")",
-			   MAC2STR(wpa_s->sme.ext_auth_ap_mld_addr));
-		return -1;
-	}
-
-	return 0;
+	return sme_validate_basic_mle(&elems, wpa_s->sme.ext_auth_ap_mld_addr);
 }
 
 
@@ -2496,8 +2469,6 @@ void sme_external_auth_mgmt_rx(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_SAE */
 
 
-#ifdef CONFIG_IEEE8021X_AUTH
-
 static int sme_validate_basic_mle(const struct ieee802_11_elems *elems,
 				  const u8 *addr)
 {
@@ -2533,6 +2504,8 @@ static int sme_validate_basic_mle(const struct ieee802_11_elems *elems,
 	return 0;
 }
 
+
+#ifdef CONFIG_IEEE8021X_AUTH
 
 static int sme_parse_802_1x_auth_frame(struct wpa_supplicant *wpa_s,
 				       const u8 *ies, size_t ies_len,
