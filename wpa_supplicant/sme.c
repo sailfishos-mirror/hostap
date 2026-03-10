@@ -2496,6 +2496,167 @@ void sme_external_auth_mgmt_rx(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_SAE */
 
 
+#ifdef CONFIG_IEEE8021X_AUTH
+
+static int sme_parse_802_1x_auth_frame(struct wpa_supplicant *wpa_s,
+				       const u8 *ies, size_t ies_len,
+				       struct ieee802_11_elems *elems,
+				       struct wpabuf **pdu)
+{
+	const u8 *pos = ies, *end = ies + ies_len;
+	u16 encap_len;
+
+	*pdu = NULL;
+
+	if (end - pos < 2) {
+		wpa_msg(wpa_s, MSG_INFO,
+			"IEEE 802.1X: Authentication frame too short for the Encapsulation Length field");
+		return -1;
+	}
+
+	encap_len = WPA_GET_LE16(pos);
+	pos += 2;
+
+	if (encap_len) {
+		if (end - pos < encap_len) {
+			wpa_msg(wpa_s, MSG_INFO,
+				"IEEE 802.1X: Encapsulated data exceeds frame length");
+			return -1;
+		}
+
+		*pdu = wpabuf_alloc_copy(pos, encap_len);
+		if (!*pdu) {
+			wpa_msg(wpa_s, MSG_INFO,
+				"IEEE 802.1X: Failed to allocate EAPOL PDU buffer");
+			return -1;
+		}
+
+		pos += encap_len;
+	}
+
+	if (ieee802_11_parse_elems(pos, end - pos, elems, 0) < 0) {
+		wpa_msg(wpa_s, MSG_INFO,
+			"IEEE 802.1X: Failed to parse Authentication frame elements");
+		wpabuf_free(*pdu);
+		*pdu = NULL;
+		return -1;
+	}
+
+	return 0;
+}
+
+
+static void sme_process_802_1x_auth_response(struct wpa_supplicant *wpa_s,
+					     union wpa_event_data *data)
+{
+	struct ieee802_11_elems elems;
+	struct wpabuf *pdu = NULL;
+	bool validation_failed = false;
+
+	if (!wpa_s->auth_1x) {
+		wpa_msg(wpa_s, MSG_INFO,
+			"IEEE 802.1X: No authentication data, cannot process response");
+		return;
+	}
+
+	if (data->auth.status_code != WLAN_STATUS_SUCCESS &&
+	    data->auth.status_code != WLAN_STATUS_802_1_X_AUTH_SUCCESS) {
+		wpa_msg(wpa_s, MSG_INFO,
+			"IEEE 802.1X: Authentication failed (status=%u)",
+			data->auth.status_code);
+		goto fail;
+	}
+
+	if (data->auth.auth_transaction != wpa_s->auth_1x->auth_trans + 1) {
+		wpa_msg(wpa_s, MSG_INFO,
+			"IEEE 802.1X: Unexpected transaction number (received=%u, expected=%u) - discard",
+			data->auth.auth_transaction,
+			wpa_s->auth_1x->auth_trans + 1);
+		return;
+	}
+
+	wpa_s->auth_1x->auth_trans = data->auth.auth_transaction;
+
+	if (sme_parse_802_1x_auth_frame(wpa_s, data->auth.ies,
+					data->auth.ies_len, &elems, &pdu) < 0) {
+		wpa_msg(wpa_s, MSG_INFO,
+			"IEEE 802.1X: Failed to parse Authentication frame");
+		return;
+	}
+
+	if (data->auth.auth_transaction == 2) {
+		if (!elems.akm_suite_selector ||
+		    elems.akm_suite_selector_len != 4 ||
+		    WPA_GET_BE32(elems.akm_suite_selector) !=
+		    wpa_akm_to_suite(wpa_s->key_mgmt)) {
+			wpa_msg(wpa_s, MSG_INFO,
+				"IEEE 802.1X: Invalid/missing AKM Suite Selector");
+			wpa_s->auth_1x->status = WLAN_STATUS_AKMP_NOT_VALID;
+			sme_send_authentication(wpa_s, wpa_s->current_bss,
+						wpa_s->current_ssid, 0);
+			goto cleanup;
+		}
+	}
+
+	if (!pdu) {
+		wpa_msg(wpa_s, MSG_INFO, "IEEE 802.1X: Missing EAPOL PDU");
+		goto fail;
+	}
+
+	eapol_sm_rx_eapol(wpa_s->eapol, wpa_s->pending_bssid,
+			  wpabuf_head(pdu), wpabuf_len(pdu),
+			  FRAME_ENCRYPTION_UNKNOWN);
+
+	if (eapol_sm_get_failure(wpa_s->eapol)) {
+		wpa_msg(wpa_s, MSG_INFO,
+			"IEEE 802.1X: EAP authentication failed");
+		goto fail;
+	}
+
+	if (eapol_sm_get_success(wpa_s->eapol) &&
+	    data->auth.status_code != WLAN_STATUS_802_1_X_AUTH_SUCCESS) {
+		wpa_msg(wpa_s, MSG_INFO,
+			"IEEE 802.1X: Invalid status code in EAP-Success Authentication frame");
+		goto fail;
+	}
+
+	if (data->auth.status_code == WLAN_STATUS_802_1_X_AUTH_SUCCESS) {
+		wpa_msg(wpa_s, MSG_INFO,
+			"IEEE 802.1X: Authentication successful");
+
+		eapol_sm_set_eap_over_auth_frame(wpa_s->eapol, false);
+
+		sme_associate(wpa_s, wpa_s->current_ssid->mode,
+			      data->auth.peer, data->auth.auth_type);
+		sme_802_1x_auth_data_free(wpa_s);
+		goto cleanup;
+	}
+
+	if (data->auth.status_code == WLAN_STATUS_SUCCESS) {
+		wpa_printf(MSG_DEBUG,
+			   "IEEE 802.1X: Authentication in progress, sending next frame");
+		sme_send_authentication(wpa_s, wpa_s->current_bss,
+					wpa_s->current_ssid, 0);
+		goto cleanup;
+	}
+
+fail:
+	wpa_msg(wpa_s, MSG_INFO, "IEEE 802.1X: Authentication failed");
+	validation_failed = true;
+
+cleanup:
+	wpabuf_free(pdu);
+
+	if (validation_failed) {
+		sme_802_1x_auth_data_free(wpa_s);
+		wpas_connection_failed(wpa_s, wpa_s->pending_bssid, NULL);
+		wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
+	}
+}
+
+#endif /* CONFIG_IEEE8021X_AUTH */
+
+
 void sme_event_auth(struct wpa_supplicant *wpa_s, union wpa_event_data *data)
 {
 	struct wpa_ssid *ssid = wpa_s->current_ssid;
@@ -2530,6 +2691,13 @@ void sme_event_auth(struct wpa_supplicant *wpa_s, union wpa_event_data *data)
 		    data->auth.ies, data->auth.ies_len);
 
 	eloop_cancel_timeout(sme_auth_timer, wpa_s, NULL);
+
+#ifdef CONFIG_IEEE8021X_AUTH
+	if (data->auth.auth_type == WLAN_AUTH_802_1X) {
+		sme_process_802_1x_auth_response(wpa_s, data);
+		return;
+	}
+#endif /* CONFIG_IEEE8021X_AUTH */
 
 #ifdef CONFIG_ENC_ASSOC
 	if (data->auth.auth_type == WLAN_AUTH_EPPKE) {
