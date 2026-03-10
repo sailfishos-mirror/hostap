@@ -79,6 +79,7 @@ struct eap_over_auth_data {
 	u8 snonce[WPA_NONCE_LEN];
 	u8 anonce[WPA_NONCE_LEN];
 	u8 *rsnxe;
+	u8 pmk[PMK_LEN_MAX];
 	size_t pmk_len;
 	struct wpa_ptk ptk;
 	size_t rsnxe_len;

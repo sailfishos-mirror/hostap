@@ -4188,11 +4188,37 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 	ieee802_1x_new_station(hapd, sta);
 
 #ifdef CONFIG_ENC_ASSOC
-		if (ap_sta_is_epp(sta) && sta->wpa_sm && sta->pasn) {
-			wpa_store_eppke_pmk_ptk_sm(sta->wpa_sm,
-						   &sta->pasn->ptk,
-						   sta->pasn->pmk,
-						   sta->pasn->pmk_len);
+		if (ap_sta_is_epp(sta) && sta->wpa_sm) {
+			const struct wpa_ptk *ptk;
+			const u8 *pmk;
+			size_t pmk_len;
+
+			switch (sta->auth_alg) {
+			case WLAN_AUTH_EPPKE:
+				if (!sta->pasn) {
+					wpa_printf(MSG_INFO,
+						   "EPP: Missing PASN data");
+					return;
+				}
+				ptk = &sta->pasn->ptk;
+				pmk = sta->pasn->pmk;
+				pmk_len = sta->pasn->pmk_len;
+				break;
+#ifdef CONFIG_IEEE8021X_AUTH
+			case WLAN_AUTH_802_1X:
+				ptk = &sta->eap_auth_data.ptk;
+				pmk = sta->eap_auth_data.pmk;
+				pmk_len = sta->eap_auth_data.pmk_len;
+				break;
+#endif /* CONFIG_IEEE8021X_AUTH */
+			default:
+				wpa_printf(MSG_INFO,
+					   "EPP: Unsupported auth alg=%d for an EPP station",
+					   sta->auth_alg);
+				return;
+			}
+			wpa_store_eppke_pmk_ptk_sm(sta->wpa_sm, ptk, pmk,
+						   pmk_len);
 			wpa_auth_set_ptk_rekey_timer(sta->wpa_sm);
 		}
 #endif /* CONFIG_ENC_ASSOC */

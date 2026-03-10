@@ -2613,6 +2613,7 @@ void ieee80211_send_eap_req(struct hostapd_data *hapd, struct sta_info *sta,
 			pmk_len = PMK_LEN;
 
 		sta->eap_auth_data.pmk_len = pmk_len;
+		os_memcpy(sta->eap_auth_data.pmk, msk, pmk_len);
 
 		if (hapd->conf->force_kdk_derivation ||
 		    (wpa_auth_ap_support_secure_ltf(hapd->wpa_auth) &&
