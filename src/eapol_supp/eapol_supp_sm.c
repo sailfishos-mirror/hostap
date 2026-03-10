@@ -264,6 +264,17 @@ SM_STATE(SUPP_PAE, CONNECTING)
 		sm->SUPP_PAE_state == SUPP_PAE_HELD;
 	SM_ENTRY(SUPP_PAE, CONNECTING);
 
+#ifdef CONFIG_IEEE8021X_AUTH
+	if (sm->eap_over_auth_frame) {
+		sm->eapTriggerStart = false;
+		sm->eapolEap = false;
+
+		if (sm->startWhen == 0)
+			sm->startWhen = 1;
+		return;
+	}
+#endif /* CONFIG_IEEE8021X_AUTH */
+
 	if (sm->eapTriggerStart)
 		send_start = 1;
 	if (sm->ctx->preauth)
