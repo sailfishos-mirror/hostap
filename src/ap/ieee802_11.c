@@ -5255,6 +5255,9 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 #ifdef CONFIG_PMKSA_PRIVACY
 	bool derive_next_pmkid = true;
 #endif /* CONFIG_PMKSA_PRIVACY */
+#ifdef CONFIG_IEEE8021X_AUTH
+	bool mic_check = true;
+#endif /* CONFIG_IEEE8021X_AUTH */
 #ifdef CONFIG_SAE
 	bool epp_sta = false;
 
@@ -5394,6 +5397,71 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		sta->p2p_ie = NULL;
 	}
 #endif /* CONFIG_P2P */
+
+#ifdef CONFIG_IEEE8021X_AUTH
+	/* Per IEEE 802.11bi/D4.0, 12.16.6 ((Re)Association Request/Response
+	 * frame encryption), if IEEE 802.1X is used and FT protocol is not
+	 * used, the EPP non-AP STA shall include a MIC element in the
+	 * (Re)Association Request frame.
+	 * Skip MIC validation on partner AP MLD links.
+	 */
+#ifdef CONFIG_IEEE80211BE
+	if (ap_sta_is_mld(hapd, sta) &&
+	    hapd->mld_link_id != sta->mld_assoc_link_id)
+		mic_check = false;
+#endif /* CONFIG_IEEE80211BE */
+	if (ap_sta_is_epp(sta) && sta->auth_alg == WLAN_AUTH_802_1X &&
+	    mic_check) {
+		const u8 *data;
+		u8 mic_len, data_buf[500], mic[WPA_1X_MAX_MIC_LEN];
+		const u8 *aa = hapd->own_addr;
+		size_t data_len = 0;
+		int ret;
+
+		if (!elems->mic) {
+			wpa_printf(MSG_DEBUG, "802.1X: Missing MIC element");
+			resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
+			goto out;
+		}
+
+		if (wpa_key_mgmt_sha384(sta->eap_auth_data.akm))
+			mic_len = SHA384_MAC_LEN / 2;
+		else
+			mic_len = SHA256_MAC_LEN / 2;
+
+		if (mic_len != elems->mic_len) {
+			wpa_printf(MSG_DEBUG, "802.1X: Invalid MIC len: %u",
+				   elems->mic_len);
+			resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
+			goto out;
+		}
+
+#ifdef CONFIG_IEEE80211BE
+		if (ap_sta_is_mld(hapd, sta))
+			aa = hapd->mld->mld_addr;
+#endif /* CONFIG_IEEE80211BE */
+
+		os_memcpy(data_buf, elems->rsn_ie - 2, elems->rsn_ie_len + 2);
+		data_len += 2 + elems->rsn_ie_len;
+		os_memcpy(data_buf + data_len, elems->rsnxe - 2,
+			  elems->rsnxe_len + 2);
+		data_len += 2 + elems->rsnxe_len;
+
+		data = data_buf;
+		ret = wpa_auth_8021x_mic(sta->eap_auth_data.akm,
+					 sta->eap_auth_data.ptk.kck,
+					 sta->eap_auth_data.ptk.kck_len, aa,
+					 sta->addr, data, data_len,
+					 NULL, 0, mic);
+		wpa_hexdump_key(MSG_DEBUG, "802.1X: Frame MIC",
+				elems->mic, elems->mic_len);
+		if (ret || os_memcmp(mic, elems->mic, mic_len) != 0) {
+			wpa_printf(MSG_INFO, "802.1X: Failed MIC verification");
+			resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
+			goto out;
+		}
+	}
+#endif /* CONFIG_IEEE8021X_AUTH */
 
 	/* Link Reconfiguration Request frame for add link operation will not
 	 * have RSN and other security IEs. So, skip the checks.
