@@ -174,6 +174,7 @@ else
   ifdef CONFIG_LIBNL_TINY
     DRV_LIBS += -lnl-tiny
     DRV_CFLAGS += $(shell $(PKG_CONFIG) --cflags libnl-tiny)
+    DRV_CFLAGS += -D_GNU_SOURCE
   else
     ifndef CONFIG_OSX
       DRV_LIBS += -lnl
