@@ -5911,13 +5911,20 @@ void wpa_sm_update_replay_ctr(struct wpa_sm *sm, const u8 *replay_ctr)
 
 void wpa_sm_pmksa_cache_flush(struct wpa_sm *sm, void *network_ctx)
 {
-	pmksa_cache_flush(sm->pmksa, network_ctx, NULL, 0, false);
+	pmksa_cache_flush(sm->pmksa, network_ctx, NULL, 0, false, NULL);
+}
+
+
+void wpa_sm_pmksa_cache_flush_addr(struct wpa_sm *sm, void *network_ctx,
+				   const u8 *addr)
+{
+	pmksa_cache_flush(sm->pmksa, network_ctx, NULL, 0, false, addr);
 }
 
 
 void wpa_sm_external_pmksa_cache_flush(struct wpa_sm *sm, void *network_ctx)
 {
-	pmksa_cache_flush(sm->pmksa, network_ctx, NULL, 0, true);
+	pmksa_cache_flush(sm->pmksa, network_ctx, NULL, 0, true, NULL);
 }
 
 

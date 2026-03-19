@@ -3389,12 +3389,22 @@ void sme_event_assoc_reject(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_SAE
 	if (wpa_s->sme.sae_pmksa_caching && wpa_s->current_ssid &&
 	    wpa_key_mgmt_sae(wpa_s->current_ssid->key_mgmt)) {
+		struct wpa_bss *bss = wpa_s->current_bss;
+		const u8 *aa;
+
 		wpa_dbg(wpa_s, MSG_DEBUG,
 			"PMKSA caching attempt rejected - drop PMKSA cache entry and fall back to SAE authentication");
 		wpa_sm_aborted_cached(wpa_s->wpa);
-		wpa_sm_pmksa_cache_flush(wpa_s->wpa, wpa_s->current_ssid);
+		if (wpa_s->valid_links)
+			aa = wpa_s->ap_mld_addr;
+		else if (bss)
+			aa = bss->bssid;
+		else
+			aa = NULL;
+
+		wpa_sm_pmksa_cache_flush_addr(wpa_s->wpa, wpa_s->current_ssid,
+					      aa);
 		if (wpa_s->current_bss) {
-			struct wpa_bss *bss = wpa_s->current_bss;
 			struct wpa_ssid *ssid = wpa_s->current_ssid;
 
 			wpa_drv_deauthenticate(wpa_s, bssid,

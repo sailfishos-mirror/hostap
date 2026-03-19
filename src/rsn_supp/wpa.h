@@ -273,6 +273,8 @@ int wpa_sm_has_ptk_installed(struct wpa_sm *sm);
 void wpa_sm_update_replay_ctr(struct wpa_sm *sm, const u8 *replay_ctr);
 
 void wpa_sm_pmksa_cache_flush(struct wpa_sm *sm, void *network_ctx);
+void wpa_sm_pmksa_cache_flush_addr(struct wpa_sm *sm, void *network_ctx,
+				   const u8 *addr);
 void wpa_sm_external_pmksa_cache_flush(struct wpa_sm *sm, void *network_ctx);
 
 int wpa_sm_get_p2p_ip_addr(struct wpa_sm *sm, u8 *buf);
@@ -497,6 +499,12 @@ static inline void wpa_sm_update_replay_ctr(struct wpa_sm *sm,
 
 static inline void wpa_sm_external_pmksa_cache_flush(struct wpa_sm *sm,
 						     void *network_ctx)
+{
+}
+
+static inline void wpa_sm_external_pmksa_cache_flush_addr(struct wpa_sm *sm,
+							  void *network_ctx,
+							  const u8 *addr)
 {
 }
 

@@ -374,7 +374,7 @@ pmksa_cache_add_entry(struct rsn_pmksa_cache *pmksa,
 			if (!pos->opportunistic)
 				pmksa_cache_flush(pmksa, entry->network_ctx,
 						  pos->pmk, pos->pmk_len,
-						  false);
+						  false, NULL);
 			pmksa_cache_free_entry(pmksa, pos, PMKSA_REPLACE);
 			break;
 		}
@@ -449,9 +449,11 @@ pmksa_cache_add_entry(struct rsn_pmksa_cache *pmksa,
  * @pmk_len: PMK length
  * @external_only: Flush only PMKSA cache entries configured by external
  * applications
+ * @addr: AA to match or %NULL to match all addresses
  */
 void pmksa_cache_flush(struct rsn_pmksa_cache *pmksa, void *network_ctx,
-		       const u8 *pmk, size_t pmk_len, bool external_only)
+		       const u8 *pmk, size_t pmk_len, bool external_only,
+		       const u8 *addr)
 {
 	struct rsn_pmksa_cache_entry *entry, *prev = NULL, *tmp;
 	int removed = 0;

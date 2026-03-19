@@ -83,7 +83,7 @@ int pasn_initiator_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
 
 void pasn_initiator_pmksa_cache_flush(struct rsn_pmksa_cache *pmksa)
 {
-	return pmksa_cache_flush(pmksa, NULL, NULL, 0, false);
+	return pmksa_cache_flush(pmksa, NULL, NULL, 0, false, NULL);
 }
 
 
