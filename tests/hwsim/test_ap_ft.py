@@ -140,7 +140,7 @@ def run_roams(dev, apdev, hapd0, hapd1, ssid, passphrase, over_ds=False,
               roam_with_reassoc=False, also_non_ft=False, only_one_way=False,
               wait_before_roam=0, return_after_initial=False, ieee80211w="1",
               sae_transition=False, beacon_prot=False, sae_ext_key=False,
-              check_ssid=False):
+              check_ssid=False, gtk_rekey=False):
     logger.info("Connect to first AP")
 
     copts = {}
@@ -221,7 +221,10 @@ def run_roams(dev, apdev, hapd0, hapd1, ssid, passphrase, over_ds=False,
             hwsim_utils.test_connectivity_iface(dev, hapd1ap, conndev)
         else:
             hwsim_utils.test_connectivity(dev, hapd1ap)
-
+    if gtk_rekey:
+        ev = dev.wait_event(["RSN: Group rekeying completed"], timeout=2)
+        if ev is None:
+            raise Exception("GTK rekey timed out after initial association")
     if return_after_initial:
         return ap2['bssid']
 
@@ -263,6 +266,10 @@ def run_roams(dev, apdev, hapd0, hapd1, ssid, passphrase, over_ds=False,
             else:
                 hwsim_utils.test_connectivity(dev, hapd2ap)
 
+        if gtk_rekey:
+            ev = dev.wait_event(["RSN: Group rekeying completed"], timeout=2)
+            if ev is None:
+                raise Exception("GTK rekey timed out with Target AP")
         dev.dump_monitor()
         hapd1ap.dump_monitor()
         hapd2ap.dump_monitor()
@@ -1132,7 +1139,8 @@ def start_ft_sae(dev, apdev, wpa_ptk_rekey=None, sae_pwe=None,
                  rsne_override=None, rsnxe_override=None,
                  no_beacon_rsnxe2=False, ext_key_id=False,
                  skip_prune_assoc=False, ft_rsnxe_used=False,
-                 sae_transition=False, ext_key=False, sae_groups=None):
+                 sae_transition=False, ext_key=False, sae_groups=None,
+                 wpa_gtk_rekey=None):
     check_sae_capab(dev)
     ssid = "test-ft"
     passphrase = "12345678"
@@ -1143,6 +1151,8 @@ def start_ft_sae(dev, apdev, wpa_ptk_rekey=None, sae_pwe=None,
     params['wpa_key_mgmt'] = key_mgmt
     if wpa_ptk_rekey:
         params['wpa_ptk_rekey'] = str(wpa_ptk_rekey)
+    if wpa_gtk_rekey:
+        params['wpa_group_rekey'] = str(wpa_gtk_rekey)
     if sae_pwe is not None:
         params['sae_pwe'] = sae_pwe
     if rsne_override:
@@ -1163,6 +1173,8 @@ def start_ft_sae(dev, apdev, wpa_ptk_rekey=None, sae_pwe=None,
         params['wpa_key_mgmt'] = key_mgmt
     if wpa_ptk_rekey:
         params['wpa_ptk_rekey'] = str(wpa_ptk_rekey)
+    if wpa_gtk_rekey:
+        params['wpa_group_rekey'] = str(wpa_gtk_rekey)
     if sae_pwe is not None:
         params['sae_pwe'] = sae_pwe
     if rsne_override:
@@ -1595,6 +1607,26 @@ def test_ap_ft_sae_ext_key_19(dev, apdev):
     run_roams(dev[0], apdev, hapd0, hapd1, "test-ft", "12345678", sae=True,
               sae_ext_key=True)
     dev[0].set("sae_groups", "")
+
+def run_ap_ft_sae_ext_key_gtk_rekey(dev, apdev, sae_group):
+    """WPA2-FT-SAE-EXT-KEY AP with GTK Rekey"""
+    hapd0, hapd1 = start_ft_sae(dev[0], apdev, ext_key=True,
+                                sae_groups=str(sae_group), wpa_gtk_rekey=1)
+    dev[0].set("sae_groups", str(sae_group))
+    run_roams(dev[0], apdev, hapd0, hapd1, "test-ft", "12345678", sae=True,
+              sae_ext_key=True, gtk_rekey=True)
+
+def test_ap_ft_sae_ext_key_gtk_rekey_group_19(dev, apdev):
+    """WPA2-FT-SAE-EXT-KEY AP with GTK Rekey(group 19)"""
+    run_ap_ft_sae_ext_key_gtk_rekey(dev, apdev, 19)
+
+def test_ap_ft_sae_ext_key_gtk_rekey_group_20(dev, apdev):
+    """WPA2-FT-SAE-EXT-KEY AP with GTK Rekey(group 20)"""
+    run_ap_ft_sae_ext_key_gtk_rekey(dev, apdev, 20)
+
+def test_ap_ft_sae_ext_key_gtk_rekey_group_21(dev, apdev):
+    """WPA2-FT-SAE-EXT-KEY AP with GTK Rekey(group 21)"""
+    run_ap_ft_sae_ext_key_gtk_rekey(dev, apdev, 21)
 
 def test_ap_ft_sae_ext_key_20(dev, apdev):
     """WPA2-FT-SAE-EXT-KEY AP (group 20)"""
