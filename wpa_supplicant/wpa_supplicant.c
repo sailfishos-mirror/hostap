@@ -10262,7 +10262,8 @@ void wpas_configure_frame_filters(struct wpa_supplicant *wpa_s)
 	proxy_arp_capa = wpa_bss_ext_capab(bss, WLAN_EXT_CAPAB_PROXY_ARP);
 
 	if ((hs20 && proxy_arp_capa) ||
-	    wpa_s->current_ssid->always_use_proxy_arp == 2 ||
+	    (wpa_s->current_ssid &&
+	     wpa_s->current_ssid->always_use_proxy_arp == 2) ||
 	    (proxy_arp_capa && wpa_s->current_ssid &&
 	     wpa_s->current_ssid->always_use_proxy_arp == 1))
 		filter |= WPA_DATA_FRAME_FILTER_FLAG_ARP |
