@@ -864,3 +864,51 @@ def test_ieee8021x_auth_alg_eap_tls_gtk_rekey(dev, apdev):
     ev = dev[0].wait_event(["RSN: Group rekeying completed"], timeout=11)
     if ev is None:
         raise Exception("GTK rekey timed out")
+
+def test_ieee8021x_auth_protocol_eap_tls_pmksa_not_found_by_ap(dev, apdev):
+    """IEEE 802.1X authentication with PMKSA caching fallback when AP does not recognize PMKID"""
+    ssid = "test-ieee8021x-pmksa-fallback"
+
+    params = hostapd.wpa2_eap_params(ssid=ssid)
+    params["wpa_key_mgmt"] = "WPA-EAP-SHA256"
+    params["eap_using_authentication_frames"] = "1"
+    params["assoc_frame_encryption"] = "1"
+    params["ieee80211w"] = "2"
+
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    # First connection to establish PMKSA cache
+    dev[0].connect(ssid,
+                   key_mgmt="WPA-EAP-SHA256",
+                   ieee80211w="2",
+                   eap="TLS",
+                   identity="tls user",
+                   ca_cert="auth_serv/ca.pem",
+                   client_cert="auth_serv/user.pem",
+                   private_key="auth_serv/user.key",
+                   scan_freq="2412",
+                   eap_over_auth_frame="1")
+
+    hapd.wait_sta()
+
+    # Disconnect
+    dev[0].request("DISCONNECT")
+    dev[0].wait_disconnected()
+
+    # Flush AP's PMKSA cache to simulate AP not recognizing the PMKID
+    hapd.request("PMKSA_FLUSH")
+
+    hapd.dump_monitor()
+    dev[0].dump_monitor()
+
+    # Reconnect - wpa_supplicant will try PMKSA caching but AP won't recognize
+    # it, triggering fallback to full EAP authentication
+    dev[0].request("RECONNECT")
+    dev[0].wait_connected(timeout=15,
+                          error="Reconnect with PMKSA fallback timed out")
+
+    hapd.wait_sta()
+    sta = hapd.get_sta(dev[0].own_addr())
+
+    if sta["AKMSuiteSelector"] != '00-0f-ac-5':
+        raise Exception("Incorrect AKMSuiteSelector after PMKSA fallback")
