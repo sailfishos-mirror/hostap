@@ -979,8 +979,8 @@ static void wpas_pasn_store_comeback_data(struct wpa_supplicant *wpa_s,
 	if (!peer)
 		return;
 
-	os_free(peer->comeback);
-	peer->comeback = os_zalloc(wpabuf_len(comeback));
+	wpas_pasn_free_peer_comeback(peer);
+	peer->comeback = os_memdup(wpabuf_head(comeback), wpabuf_len(comeback));
 	if (!peer->comeback) {
 		wpa_printf(MSG_ERROR,
 			   "PASN: Mem alloc failed for comeback data");
@@ -988,7 +988,6 @@ static void wpas_pasn_store_comeback_data(struct wpa_supplicant *wpa_s,
 	}
 
 	peer->comeback_len = wpabuf_len(comeback);
-	os_memcpy(peer->comeback, wpabuf_head_u8(comeback), peer->comeback_len);
 	peer->comeback_after = comeback_after;
 }
 
