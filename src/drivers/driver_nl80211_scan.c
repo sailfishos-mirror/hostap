@@ -76,12 +76,13 @@ static int get_noise_for_scan_results(struct nl_msg *msg, void *arg)
 
 
 static int nl80211_get_noise_for_scan_results(
-	struct wpa_driver_nl80211_data *drv, struct nl80211_noise_info *info)
+	struct i802_bss *bss, struct nl80211_noise_info *info)
 {
+	struct wpa_driver_nl80211_data *drv = bss->drv;
 	struct nl_msg *msg;
 
 	os_memset(info, 0, sizeof(*info));
-	msg = nl80211_drv_msg(drv, NLM_F_DUMP, NL80211_CMD_GET_SURVEY);
+	msg = nl80211_bss_msg(bss, NLM_F_DUMP, NL80211_CMD_GET_SURVEY);
 	return send_and_recv_resp(drv, msg, get_noise_for_scan_results, info);
 }
 
@@ -1015,8 +1016,9 @@ static void nl80211_update_scan_res_noise(struct wpa_scan_res *res,
 
 
 static struct wpa_scan_results *
-nl80211_get_scan_results(struct wpa_driver_nl80211_data *drv, const u8 *bssid)
+nl80211_get_scan_results(struct i802_bss *bss, const u8 *bssid)
 {
+	struct wpa_driver_nl80211_data *drv = bss->drv;
 	struct nl_msg *msg;
 	struct wpa_scan_results *res;
 	int ret;
@@ -1027,7 +1029,7 @@ try_again:
 	res = os_zalloc(sizeof(*res));
 	if (res == NULL)
 		return NULL;
-	if (!(msg = nl80211_cmd_msg(drv->first_bss, NLM_F_DUMP,
+	if (!(msg = nl80211_cmd_msg(bss, NLM_F_DUMP,
 				    NL80211_CMD_GET_SCAN))) {
 		wpa_scan_results_free(res);
 		return NULL;
@@ -1054,7 +1056,7 @@ try_again:
 
 		wpa_printf(MSG_DEBUG, "nl80211: Received scan results (%lu "
 			   "BSSes)", (unsigned long) res->num);
-		if (nl80211_get_noise_for_scan_results(drv, &info) == 0) {
+		if (nl80211_get_noise_for_scan_results(bss, &info) == 0) {
 			size_t i;
 
 			for (i = 0; i < res->num; ++i)
@@ -1083,7 +1085,7 @@ struct wpa_scan_results * wpa_driver_nl80211_get_scan_results(void *priv,
 	struct wpa_driver_nl80211_data *drv = bss->drv;
 	struct wpa_scan_results *res;
 
-	res = nl80211_get_scan_results(drv, bssid);
+	res = nl80211_get_scan_results(bss, bssid);
 	if (res)
 		wpa_driver_nl80211_check_bss_status(drv, res);
 	return res;
