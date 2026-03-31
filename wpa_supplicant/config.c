@@ -3562,6 +3562,11 @@ int wpa_config_set(struct wpa_ssid *ssid, const char *var, const char *value,
 			sae_deinit_pt(ssid->pt);
 			ssid->pt = NULL;
 		}
+		if (os_strcmp(var, "sae_password_id_change") == 0 &&
+		    !ssid->sae_password_id_change) {
+			wpabuf_array_free(ssid->alt_sae_password_ids);
+			ssid->alt_sae_password_ids = NULL;
+		}
 #endif /* CONFIG_SAE */
 		break;
 	}
