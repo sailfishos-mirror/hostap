@@ -874,6 +874,8 @@ sme_eppke_sae_derive_pt(struct wpa_ssid *ssid, int group)
 {
 	const char *password = ssid->sae_password;
 	int groups[2] = { group, 0 };
+	const u8 *password_id = NULL;
+	size_t password_id_len = 0;
 
 	if (!password)
 		password = ssid->passphrase;
@@ -883,11 +885,27 @@ sme_eppke_sae_derive_pt(struct wpa_ssid *ssid, int group)
 		return NULL;
 	}
 
+	/* Prefer an alternative (changing) password identifier if available */
+	if (ssid->alt_sae_password_ids && ssid->alt_sae_password_ids->num) {
+		unsigned int idx =
+			os_random() % ssid->alt_sae_password_ids->num;
+		struct wpabuf *id = ssid->alt_sae_password_ids->buf[idx];
+
+		password_id = wpabuf_head(id);
+		password_id_len = wpabuf_len(id);
+		wpa_hexdump(MSG_DEBUG,
+			    "EPPKE: Prepare PT for alternative password ID",
+			    password_id, password_id_len);
+		ssid->alt_sae_passwords_ids_idx = idx;
+		ssid->alt_sae_passwords_ids_used = true;
+	} else if (ssid->sae_password_id) {
+		password_id = (const u8 *) ssid->sae_password_id;
+		password_id_len = os_strlen(ssid->sae_password_id);
+	}
+
 	return sae_derive_pt(groups, ssid->ssid, ssid->ssid_len,
 			     (const u8 *) password, os_strlen(password),
-			     (const u8 *) ssid->sae_password_id,
-			     ssid->sae_password_id ?
-			     os_strlen(ssid->sae_password_id) : 0);
+			     password_id, password_id_len);
 }
 
 
@@ -928,7 +946,7 @@ static int wpas_eppke_initialize(struct wpa_supplicant *wpa_s,
 	struct pasn_data *pasn;
 	const u8 *ap_rsne, *ap_rsnxe;
 	u8 ap_rsne_len, ap_rsnxe_len;
-	u32 capab = 0;
+	u64 capab = 0;
 	int group;
 	bool derive_kdk;
 	u8 rsne[80];
@@ -1020,6 +1038,16 @@ static int wpas_eppke_initialize(struct wpa_supplicant *wpa_s,
 		}
 		pasn->sae.state = SAE_NOTHING;
 		pasn->sae.send_confirm = 0;
+
+		/*
+		 * Advertise support for changing password identifiers if
+		 * configured.
+		 */
+		if (ssid->sae_password_id && ssid->sae_password_id_change) {
+			capab |= BIT_ULL(WLAN_RSNX_CAPAB_SAE_PW_ID_CHANGE);
+			wpa_sm_set_param(wpa_s->wpa,
+					 WPA_PARAM_SAE_PW_ID_CHANGE, 1);
+		}
 #endif /* CONFIG_SAE */
 	} else {
 		wpa_msg(wpa_s, MSG_INFO,
@@ -3294,6 +3322,42 @@ void sme_event_auth(struct wpa_supplicant *wpa_s, union wpa_event_data *data)
 		int res;
 		enum wpa_alg alg;
 		struct ptksa_cache_entry *entry;
+
+		/*
+		 * Handle unknown password identifier rejection for EPPKE:
+		 * remove the rejected alternative password identifier and
+		 * report the event.
+		 */
+		if (data->auth.status_code ==
+		    WLAN_STATUS_UNKNOWN_PASSWORD_IDENTIFIER) {
+			const u8 *bssid = wpa_s->pending_bssid;
+
+			if (ssid->alt_sae_password_ids &&
+			    ssid->alt_sae_passwords_ids_used) {
+				wpa_printf(MSG_DEBUG,
+					   "EPPKE: Remove alternative password identifier (idx=%u) due to rejection",
+					   ssid->alt_sae_passwords_ids_idx);
+				wpabuf_array_remove(
+					ssid->alt_sae_password_ids,
+					ssid->alt_sae_passwords_ids_idx);
+
+#ifndef CONFIG_NO_CONFIG_WRITE
+				if (wpa_s->conf->update_config &&
+				    wpa_config_write(wpa_s->confname,
+						     wpa_s->conf))
+					wpa_printf(MSG_DEBUG,
+						   "EPPKE: Failed to update configuration");
+#endif /* CONFIG_NO_CONFIG_WRITE */
+			}
+
+			wpa_msg(wpa_s, MSG_INFO,
+				WPA_EVENT_SAE_UNKNOWN_PASSWORD_IDENTIFIER
+				MACSTR, MAC2STR(bssid));
+			wpas_connection_failed(wpa_s, wpa_s->pending_bssid,
+					       NULL);
+			wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
+			return;
+		}
 
 		res = wpas_parse_pasn_frame(pasn, data->auth.auth_type,
 					    data->auth.auth_transaction,

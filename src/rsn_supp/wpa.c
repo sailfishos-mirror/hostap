@@ -7783,6 +7783,13 @@ int process_encrypted_assoc_resp(struct wpa_sm *sm, int valid_links,
 	     process_key_delivery_ml(sm, &kde, valid_links) < 0))
 		goto fail;
 
+	/* Process SAE Password Identifiers KDE if present in the encrypted
+	 * (Re)Association Response frame (EPPKE path). */
+	if (kde.sae_pw_ids && wpa_key_mgmt_sae(sm->key_mgmt) &&
+	    sm->sae_pw_id_change)
+		wpa_sm_sae_pw_id_change(sm, kde.sae_pw_ids,
+					kde.sae_pw_ids_len);
+
 	wpa_sm_set_rekey_offload(sm);
 
 	wpa_printf(MSG_DEBUG, "ENC_ASSOC: Association completed successfully");
