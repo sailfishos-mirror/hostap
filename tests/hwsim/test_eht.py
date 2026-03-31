@@ -1475,6 +1475,23 @@ def test_eht_ap_mld_proto(dev, apdev):
         hdr = "00000000" + bssid0 + mld_addr + bssid0 + "1000"
         send_check(hapd0, hdr + assocreq_start + mle + assocreq_end)
 
+        # Invalid link ID in Per-STA Profile
+        hapd0.note("Invalid link ID in Per-STA Profile")
+        addr0 = "021122334450"
+        addr1 = "021122334451"
+        mld_addr = "02112233445f"
+        hdr = "b0003a01" + bssid0 + addr0 + bssid0 + "1000"
+        mle = "ff0a6b000007" + mld_addr
+        auth = hdr + "0000" + "0100" + "0000" + mle
+        send_check(hapd0, auth)
+
+        mle = "ff716b000109" + mld_addr + "0000"
+        # Link Info - Per-STA Profile
+        mle += "0063" + "3f00" + "07" + addr1
+        mle += "3004" + "010802040b160c121824" + "32043048606c" + "2d1afe131bffff000000000000000000000100000000000000000000" + "ff16230178c81a400000bfce0000000000000000fafffaff" + "ff126c07007c0000feffff7f0100888888880000"
+        hdr = "00000000" + bssid0 + mld_addr + bssid0 + "1000"
+        send_check(hapd0, hdr + assocreq_start + mle + assocreq_end)
+
 def _5ghz_chanwidth_to_bw(op):
     return {
         0: "40",
