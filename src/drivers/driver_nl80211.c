@@ -2791,6 +2791,15 @@ static int nl80211_mgmt_subscribe_non_ap(struct i802_bss *bss)
 				       (u8 *) "\x03\x00", 2, false);
 	}
 
+#ifdef CONFIG_ENC_ASSOC
+	if ((drv->capa.flags2 & WPA_DRIVER_FLAGS2_EPPKE) &&
+	    !(drv->capa.flags & WPA_DRIVER_FLAGS_SME)) {
+		/* register for EPPKE Authentication frames */
+		nl80211_register_frame(bss, bss->nl_mgmt, type,
+				       (const u8 *) "\x09\x00", 2, false);
+	}
+#endif /* CONFIG_ENC_ASSOC */
+
 #ifdef CONFIG_PASN
 	/* register for PASN Authentication frames */
 	if (nl80211_register_frame(bss, bss->nl_mgmt, type,
