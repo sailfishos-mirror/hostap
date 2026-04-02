@@ -200,7 +200,7 @@ static void hostapd_cli_msg_cb(char *msg, size_t len)
 
 static int _wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd, int print)
 {
-	char buf[4096];
+	char buf[8192];
 	size_t len;
 	int ret;
 

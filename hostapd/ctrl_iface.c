@@ -4604,7 +4604,7 @@ static void hostapd_ctrl_iface_receive(int sock, void *eloop_ctx,
 	struct sockaddr_storage from;
 	socklen_t fromlen = sizeof(from);
 	char *reply, *pos = buf;
-	const int reply_size = 4096;
+	const int reply_size = 8192;
 	int reply_len;
 	int level = MSG_DEBUG;
 #ifdef CONFIG_CTRL_IFACE_UDP
@@ -4783,7 +4783,7 @@ static void hostapd_mld_ctrl_iface_receive(int sock, void *eloop_ctx,
 	struct sockaddr_storage from;
 	socklen_t fromlen = sizeof(from);
 	char *reply, *pos = buf;
-	const size_t reply_size = 4096;
+	const size_t reply_size = 8192;
 	int reply_len;
 	int level = MSG_DEBUG;
 
@@ -5711,7 +5711,7 @@ static void hostapd_global_ctrl_iface_receive(int sock, void *eloop_ctx,
 	socklen_t fromlen = sizeof(from);
 	char *reply;
 	int reply_len;
-	const int reply_size = 4096;
+	const int reply_size = 8192;
 #ifdef CONFIG_CTRL_IFACE_UDP
 	unsigned char lcookie[CTRL_IFACE_COOKIE_LEN];
 #endif /* CONFIG_CTRL_IFACE_UDP */
