@@ -616,3 +616,32 @@ def test_eppke_authentication_pmkid_in_assoc(dev, apdev):
         run_eppke_sae_ext_key(dev, apdev, 19)
     finally:
         dev[0].set("sae_pmkid_in_assoc", "0")
+
+def test_eppke_fallback_no_sae_ext_key_in_ap_rsne(dev, apdev):
+    """EPPKE fallback to SAE: AP does not advertise SAE-EXT-KEY in its RSNE"""
+    check_eppke_capab(dev[0])
+    ssid = "test-eppke-fb-no-sae-ext-key"
+    passphrase = '1234567890'
+    params = hostapd.wpa3_params(ssid=ssid,
+				 password = passphrase)
+    # AP advertises EPPKE but only SAE (not SAE-EXT-KEY) as the base AKM.
+    params['wpa_key_mgmt'] = params['wpa_key_mgmt'] + ' ' + 'EPPKE'
+    params['assoc_frame_encryption'] = '1'
+    params['pmksa_caching_privacy'] = '1'
+    params['sae_pwe'] = '2'
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    try:
+        dev[0].set("sae_groups", "")
+        dev[0].set("sae_pwe", "1")
+        dev[0].connect(ssid, sae_password=passphrase, scan_freq="2412",
+                       key_mgmt="SAE SAE-EXT-KEY EPPKE", ieee80211w="2",
+                       beacon_prot="1", pairwise="CCMP")
+        hapd.wait_sta();
+        sta = hapd.get_sta(dev[0].own_addr())
+        # Must fall back to SAE (auth_alg=3), not EPPKE (auth_alg=9).
+        if sta["AKMSuiteSelector"] != '00-0f-ac-8' or sta["auth_alg"] != '3':
+            raise Exception("Incorrect Auth Algo/AKMSuiteSelector value")
+    finally:
+        dev[0].set("sae_groups", "")
+        dev[0].set("sae_pwe", "0")
