@@ -972,8 +972,9 @@ static void wpas_eppke_initialize(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_PMKSA_PRIVACY */
 	pasn->derive_kek = true;
 
+	if (0) {
 #ifdef CONFIG_SAE
-	if (wpa_key_mgmt_sae_ext_key(ssid->key_mgmt)) {
+	} else if (wpa_key_mgmt_sae_ext_key(ssid->key_mgmt)) {
 		capab |= BIT(WLAN_RSNX_CAPAB_SAE_H2E);
 		if (!ieee802_11_rsnx_capab(ap_rsnxe, WLAN_RSNX_CAPAB_SAE_H2E)) {
 			wpa_printf(MSG_DEBUG,
@@ -989,12 +990,12 @@ static void wpas_eppke_initialize(struct wpa_supplicant *wpa_s,
 		}
 		pasn->sae.state = SAE_NOTHING;
 		pasn->sae.send_confirm = 0;
+#endif /* CONFIG_SAE */
 	} else {
 		wpa_msg(wpa_s, MSG_INFO,
 			"EPPKE: Suitable base AKM not enabled in local configuration");
 		return;
 	}
-#endif /* CONFIG_SAE */
 
 	derive_kdk = (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_STA) &&
 		ieee802_11_rsnx_capab(ap_rsnxe, WLAN_RSNX_CAPAB_SECURE_LTF);
