@@ -936,6 +936,9 @@ static const struct json_test_data json_test_cases[] = {
 	{ "{\"t\":truetrue}", NULL },
 	{ "\"test\"", "[1:STRING:]" },
 	{ "123", "[1:NUMBER:]" },
+	{ "4.5", "[1:DOUBLE:]" },
+	{ "-6.7e-3", "[1:DOUBLE:]" },
+	{ "8.9e4", "[1:DOUBLE:]" },
 	{ "true", "[1:BOOLEAN:]" },
 	{ "false", "[1:BOOLEAN:]" },
 	{ "null", "[1:NULL:]" },
@@ -963,13 +966,16 @@ static int json_tests(void)
 	unsigned int i;
 	struct json_token *root;
 	char buf[1000];
+	static const char *dval[] = { "-6.78e-2", "8.9e3" };
+	double exp_dval[] = { -6.78e-2, 8.9e3 };
+	int res;
 
 	wpa_printf(MSG_INFO, "JSON tests");
 
 	for (i = 0; i < ARRAY_SIZE(json_test_cases); i++) {
 		const struct json_test_data *test = &json_test_cases[i];
-		int res = 0;
 
+		res = 0;
 		root = json_parse(test->json, os_strlen(test->json));
 		if ((root && !test->tree) || (!root && test->tree)) {
 			wpa_printf(MSG_INFO, "JSON test %u failed", i);
@@ -987,6 +993,21 @@ static int json_tests(void)
 		if (res < 0)
 			return -1;
 
+	}
+
+	for (i = 0; i < ARRAY_SIZE(dval); i++) {
+		root = json_parse(dval[i], os_strlen(dval[i]));
+		if (!root) {
+			wpa_printf(MSG_INFO, "JSON test dval %u failed", i);
+			return -1;
+		}
+		if (root->type != JSON_DOUBLE || root->dnumber != exp_dval[i]) {
+			wpa_printf(MSG_INFO, "JSON test dval %u failed", i);
+			res = -1;
+		}
+		json_free(root);
+		if (res < 0)
+			return -1;
 	}
 #endif /* CONFIG_JSON */
 	return 0;
