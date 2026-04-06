@@ -795,7 +795,7 @@ static void radius_close_auth_socket(struct radius_client_data *radius)
 {
 	if (radius->auth_sock >= 0) {
 #ifdef CONFIG_RADIUS_TLS
-		if (radius->conf->auth_server->tls)
+		if (radius->auth_tls)
 			eloop_unregister_sock(radius->auth_sock,
 					      EVENT_TYPE_WRITE);
 #endif /* CONFIG_RADIUS_TLS */
@@ -810,7 +810,7 @@ static void radius_close_acct_socket(struct radius_client_data *radius)
 {
 	if (radius->acct_sock >= 0) {
 #ifdef CONFIG_RADIUS_TLS
-		if (radius->conf->acct_server->tls)
+		if (radius->acct_tls)
 			eloop_unregister_sock(radius->acct_sock,
 					      EVENT_TYPE_WRITE);
 #endif /* CONFIG_RADIUS_TLS */
