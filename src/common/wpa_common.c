@@ -1908,8 +1908,11 @@ int wpa_auth_8021x_mic(int akmp, const u8 *kck, size_t kck_len, const u8 *addr1,
 
 	wpa_hexdump_key(MSG_DEBUG, "MIC: KCK", kck, kck_len);
 
-	wpa_hexdump_key(MSG_MSGDUMP, "802.1X: MIC: frame", frame, frame_len);
-	os_memcpy(buf + 2 * ETH_ALEN + data_len, frame, frame_len);
+	if (frame) {
+		wpa_hexdump_key(MSG_MSGDUMP, "802.1X: MIC: frame",
+				frame, frame_len);
+		os_memcpy(buf + 2 * ETH_ALEN + data_len, frame, frame_len);
+	}
 
 	wpa_hexdump_key(MSG_DEBUG, "MIC: buf", buf, buf_len);
 	if (wpa_key_mgmt_sha384(akmp)) {
