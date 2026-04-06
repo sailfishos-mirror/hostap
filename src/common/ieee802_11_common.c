@@ -3237,20 +3237,27 @@ bool ieee802_11_rsnx_capab_len(const u8 *rsnxe, size_t rsnxe_len,
 {
 	const u8 *end;
 	size_t flen, i;
-	u32 capabs = 0;
+	u64 capabs = 0;
 
 	if (!rsnxe || rsnxe_len == 0)
 		return false;
+
+	if (capab > 63) {
+		wpa_printf(MSG_INFO, "%s: Unsupported capab=%u",
+			   __func__, capab);
+		return false;
+	}
+
 	end = rsnxe + rsnxe_len;
 	flen = (rsnxe[0] & 0x0f) + 1;
 	if (rsnxe + flen > end)
 		return false;
-	if (flen > 4)
-		flen = 4;
+	if (flen > 8)
+		flen = 8;
 	for (i = 0; i < flen; i++)
-		capabs |= (u32) rsnxe[i] << (8 * i);
+		capabs |= (u64) rsnxe[i] << (8 * i);
 
-	return !!(capabs & BIT(capab));
+	return !!(capabs & BIT_ULL(capab));
 }
 
 
