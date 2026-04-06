@@ -4405,6 +4405,7 @@ int crypto_csr_set_name(struct crypto_csr *csr, enum crypto_csr_name type,
 {
 	X509_NAME *n;
 	int nid;
+	int ret = -1;
 
 	switch (type) {
 	case CSR_NAME_CN:
@@ -4426,7 +4427,7 @@ int crypto_csr_set_name(struct crypto_csr *csr, enum crypto_csr_name type,
 		return -1;
 	}
 
-	n = X509_REQ_get_subject_name((X509_REQ *) csr);
+	n = X509_NAME_new();
 	if (!n)
 		return -1;
 
@@ -4434,15 +4435,21 @@ int crypto_csr_set_name(struct crypto_csr *csr, enum crypto_csr_name type,
 	if (!X509_NAME_add_entry_by_NID(n, nid, MBSTRING_UTF8,
 					(unsigned char *) name,
 					os_strlen(name), -1, 0))
-		return -1;
+		goto fail;
 #else
 	if (!X509_NAME_add_entry_by_NID(n, nid, MBSTRING_UTF8,
 					(const unsigned char *) name,
 					os_strlen(name), -1, 0))
-		return -1;
+		goto fail;
 #endif
 
-	return 0;
+	if (X509_REQ_set_subject_name((X509_REQ *) csr, n) != 1)
+		goto fail;
+
+	ret = 0;
+fail:
+	X509_NAME_free(n);
+	return ret;
 }
 
 
