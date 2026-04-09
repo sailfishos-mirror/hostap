@@ -2587,6 +2587,11 @@ void ieee80211_send_eap_req(struct hostapd_data *hapd, struct sta_info *sta,
 		struct rsn_pmksa_cache *pmksa =
 			wpa_auth_get_pmksa_cache(hapd->wpa_auth, is_ml);
 		struct rsn_pmksa_cache_entry *entry;
+#ifdef CONFIG_TESTING_OPTIONS
+		bool force_kdk = hapd->conf->force_kdk_derivation;
+#else /* CONFIG_TESTING_OPTIONS */
+		bool force_kdk = false;
+#endif /* CONFIG_TESTING_OPTIONS */
 
 #ifdef CONFIG_IEEE80211BE
 		if (is_ml)
@@ -2616,7 +2621,7 @@ void ieee80211_send_eap_req(struct hostapd_data *hapd, struct sta_info *sta,
 		sta->eap_auth_data.pmk_len = pmk_len;
 		os_memcpy(sta->eap_auth_data.pmk, msk, pmk_len);
 
-		if (hapd->conf->force_kdk_derivation ||
+		if (force_kdk ||
 		    (wpa_auth_ap_support_secure_ltf(hapd->wpa_auth) &&
 		     ieee802_11_rsnx_capab(sta->eap_auth_data.rsnxe,
 					   WLAN_RSNX_CAPAB_SECURE_LTF)))
@@ -2760,6 +2765,11 @@ static void handle_auth_802_1x(struct hostapd_data *hapd, struct sta_info *sta,
 			const u8 *aa;
 			enum wpa_alg alg;
 			size_t key_len, kdk_len;
+#ifdef CONFIG_TESTING_OPTIONS
+			bool force_kdk = hapd->conf->force_kdk_derivation;
+#else /* CONFIG_TESTING_OPTIONS */
+			bool force_kdk = false;
+#endif /* CONFIG_TESTING_OPTIONS */
 
 			wpa_hexdump(MSG_DEBUG, "RSNE: STA PMKID",
 				    &data.pmkid[i * PMKID_LEN], PMKID_LEN);
@@ -2791,7 +2801,7 @@ static void handle_auth_802_1x(struct hostapd_data *hapd, struct sta_info *sta,
 				return;
 			}
 
-			if (hapd->conf->force_kdk_derivation ||
+			if (force_kdk ||
 			    (wpa_auth_ap_support_secure_ltf(hapd->wpa_auth) &&
 			     ieee802_11_rsnx_capab(sta->eap_auth_data.rsnxe,
 						   WLAN_RSNX_CAPAB_SECURE_LTF)))
