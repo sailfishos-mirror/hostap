@@ -2461,8 +2461,8 @@ static int wpa_tdls_process_tpk_m2(struct wpa_sm *sm, const u8 *src_addr,
 		    kde.lnkid, kde.lnkid_len);
 	lnkid = (struct wpa_tdls_lnkid *) kde.lnkid;
 
-	if (!ether_addr_equal(sm->bssid,
-			      wpa_tdls_get_link_bssid(sm, peer->mld_link_id))) {
+	if (!ether_addr_equal(wpa_tdls_get_link_bssid(sm, peer->mld_link_id),
+			      lnkid->bssid)) {
 		wpa_printf(MSG_INFO, "TDLS: TPK M2 from different BSS");
 		status = WLAN_STATUS_NOT_IN_SAME_BSS;
 		goto error;
