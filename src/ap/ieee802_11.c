@@ -6185,6 +6185,8 @@ void ieee80211_ml_build_assoc_resp(struct hostapd_data *hapd,
 				   struct mld_link_info *link,
 				   struct sta_info *sta)
 {
+	struct hostapd_data *assoc_hapd;
+	struct sta_info *assoc_sta;
 	u8 buf[EHT_ML_MAX_STA_PROF_LEN];
 	u8 *p = buf;
 	size_t buflen = sizeof(buf);
@@ -6225,6 +6227,45 @@ void ieee80211_ml_build_assoc_resp(struct hostapd_data *hapd,
 	}
 
 	p = hostapd_eid_ext_capab(hapd, p, false);
+
+
+	assoc_sta = hostapd_ml_get_assoc_sta(hapd, sta, &assoc_hapd);
+	if (assoc_sta && hapd != assoc_hapd) {
+		const u8 *rsnxe, *assoc_rsnxe;
+		u8 ie_count = 0, non_inherit_ie[2];
+
+		rsnxe = hostapd_wpa_ie(hapd, WLAN_EID_RSNX);
+		assoc_rsnxe = hostapd_wpa_ie(assoc_hapd, WLAN_EID_RSNX);
+
+		if (assoc_hapd->conf->rsn_override_omit_rsnxe)
+			goto omit_rsnxe;
+
+		if (assoc_rsnxe && !rsnxe)
+			non_inherit_ie[ie_count++] = WLAN_EID_RSNX;
+
+		if ((!assoc_rsnxe && rsnxe) ||
+		    (rsnxe && assoc_rsnxe &&
+		     (rsnxe[1] != assoc_rsnxe[1] ||
+		      os_memcmp(rsnxe, assoc_rsnxe, 2 + rsnxe[1]) != 0))) {
+			size_t rsnx_ie_len;
+
+			rsnx_ie_len = 2 + rsnxe[1];
+			if ((size_t) (buf + buflen - p) >= rsnx_ie_len) {
+				os_memcpy(p, rsnxe, rsnx_ie_len);
+				p += rsnx_ie_len;
+			}
+		}
+		if (ie_count) {
+			*p++ = WLAN_EID_EXTENSION;
+			*p++ = 2 + ie_count + 1;
+			*p++ = WLAN_EID_EXT_NON_INHERITANCE;
+			*p++ = ie_count;
+			os_memcpy(p, non_inherit_ie, ie_count);
+			p += ie_count;
+			*p++ = 0; /* No Element ID Extension List */
+		}
+omit_rsnxe:
+	}
 
 #ifdef CONFIG_IEEE80211BN
 	if (hostapd_is_uhr_enabled(hapd)) {
