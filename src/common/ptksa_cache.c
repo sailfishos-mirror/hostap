@@ -39,12 +39,21 @@ static void ptksa_cache_expire(void *eloop_ctx, void *timeout_ctx)
 	struct ptksa_cache *ptksa = eloop_ctx;
 	struct ptksa_cache_entry *e, *next;
 	struct os_reltime now;
+	struct dl_list expired;
 
 	if (!ptksa)
 		return;
 
 	os_get_reltime(&now);
+	dl_list_init(&expired);
 
+	/*
+	 * Move expired entries from the main ptksa list to a temporary
+	 * 'expired' list. This prevents issues if the callback (e->cb)
+	 * triggers operations like ptksa_cache_flush(), which would iterate
+	 * over ptksa->ptksa. By removing entries first, flush operations
+	 * will not double-process or double-free these entries.
+	 */
 	dl_list_for_each_safe(e, next, &ptksa->ptksa,
 			      struct ptksa_cache_entry, list) {
 		if (e->expiration > now.sec)
@@ -53,10 +62,17 @@ static void ptksa_cache_expire(void *eloop_ctx, void *timeout_ctx)
 		wpa_printf(MSG_DEBUG, "Expired PTKSA cache entry for " MACSTR,
 			   MAC2STR(e->addr));
 
+		dl_list_del(&e->list);
+		ptksa->n_ptksa--;
+		dl_list_add_tail(&expired, &e->list);
+	}
+
+	dl_list_for_each_safe(e, next, &expired,
+			      struct ptksa_cache_entry, list) {
+		dl_list_del(&e->list);
 		if (e->cb && e->ctx)
 			e->cb(e);
-		else
-			ptksa_cache_free_entry(ptksa, e);
+		bin_clear_free(e, sizeof(*e));
 	}
 
 	ptksa_cache_set_expiration(ptksa);
