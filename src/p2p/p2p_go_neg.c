@@ -792,12 +792,22 @@ void p2p_check_pref_chan(struct p2p_data *p2p, int go,
 		size, txt);
 
 	/*
-	 * Check if peer's preference of operating channel is in
-	 * our preferred channel list.
+	 * Check if peer's preference of operating channel is in our preferred
+	 * channel list. When local device is GO and assisted DFS is active,
+	 * also treat the locally connected DFS frequency as a match candidate.
+	 * The loop scans pref_freq_list[] from the highest to the lowest driver
+	 * priority and breaks on the first allowed match, so the DFS channel
+	 * wins over the peer's oper_freq only when the driver ranks it at a
+	 * lower index (higher preference). If the peer's channel appears first
+	 * in the list it wins instead, which is correct because the driver
+	 * explicitly prefers it over the DFS channel in that case.
 	 */
 	for (i = 0; i < size; i++) {
-		if (p2p->pref_freq_list[i].freq ==
-		    (unsigned int) dev->oper_freq &&
+		if ((p2p->pref_freq_list[i].freq ==
+		     (unsigned int) dev->oper_freq ||
+		     (go && p2p->dfs_ap_connected &&
+		      p2p->pref_freq_list[i].freq ==
+		      (unsigned int) p2p->sta_connected_freq)) &&
 		    p2p_pref_freq_allowed(&p2p->pref_freq_list[i], go))
 			break;
 	}
