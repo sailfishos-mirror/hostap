@@ -2230,4 +2230,7 @@ static inline bool wpas_is_nan_iface(struct wpa_supplicant *wpa_s)
 #endif /* CONFIG_NAN */
 }
 
+bool wpas_eppke_ap_capable(struct wpa_supplicant *wpa_s,
+			   struct wpa_bss *bss, bool unauth_eppke);
+
 #endif /* WPA_SUPPLICANT_I_H */

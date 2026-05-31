@@ -922,43 +922,6 @@ static void sme_add_assoc_req_ie(struct wpa_supplicant *wpa_s,
 
 #ifdef CONFIG_ENC_ASSOC
 
-static bool wpas_eppke_ap_capable(struct wpa_supplicant *wpa_s,
-				  struct wpa_bss *bss, bool unauth_eppke)
-{
-	const u8 *ap_rsnxe;
-
-	if (!(wpa_s->drv_flags2 &
-	      WPA_DRIVER_FLAGS2_ASSOCIATION_FRAME_ENCRYPTION)) {
-		wpa_printf(MSG_DEBUG,
-			   "EPPKE: Driver does not support association frame encryption");
-		return false;
-	}
-
-	ap_rsnxe = wpa_bss_get_rsnxe(wpa_s, bss, NULL, false);
-
-	if (!ieee802_11_rsnx_capab(ap_rsnxe, WLAN_RSNX_CAPAB_KEK_IN_PASN)) {
-		wpa_printf(MSG_DEBUG, "EPPKE: AP does not support KEK_IN_PASN");
-		return false;
-	}
-
-	if (!ieee802_11_rsnx_capab(ap_rsnxe,
-				   WLAN_RSNX_CAPAB_ASSOC_FRAME_ENCRYPTION)) {
-		wpa_printf(MSG_DEBUG,
-			   "EPPKE: AP does not support association frame encryption");
-		return false;
-	}
-
-	if (unauth_eppke &&
-	    !ieee802_11_rsnx_capab(ap_rsnxe, WLAN_RSNX_CAPAB_UNAUTH_EPPKE)) {
-		wpa_printf(MSG_DEBUG,
-			   "EPPKE: AP does not support unauthenticated EPPKE");
-		return false;
-	}
-
-	return true;
-}
-
-
 static int wpas_eppke_initialize(struct wpa_supplicant *wpa_s,
 				 struct wpa_bss *bss,
 				 struct wpa_ssid *ssid)
