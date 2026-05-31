@@ -3835,6 +3835,7 @@ static bool wpas_set_802_1x_auth_alg(struct wpa_supplicant *wpa_s,
 
 
 #ifdef CONFIG_ENC_ASSOC
+
 bool wpas_eppke_ap_capable(struct wpa_supplicant *wpa_s,
 				  struct wpa_bss *bss, bool unauth_eppke)
 {
@@ -3870,6 +3871,62 @@ bool wpas_eppke_ap_capable(struct wpa_supplicant *wpa_s,
 
 	return true;
 }
+
+
+static bool wpas_set_eppke_auth_alg(struct wpa_supplicant *wpa_s,
+				    struct wpa_bss *bss,
+				    struct wpa_ssid *ssid,
+				    struct wpa_driver_associate_params *params)
+{
+	const u8 *rsn;
+	struct wpa_ie_data ied;
+
+	if (!wpa_key_mgmt_eppke(ssid->key_mgmt) ||
+	    !(wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_EPPKE))
+		return false;
+
+	params->eppke_supported = true;
+
+	if (!bss)
+		return false;
+
+	rsn = wpa_bss_get_rsne(wpa_s, bss, ssid, false);
+	if (!rsn) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"EPPKE: Target BSS does not advertise RSN");
+		return false;
+	}
+
+	if (wpa_parse_wpa_ie(rsn, 2 + rsn[1], &ied)) {
+		wpa_printf(MSG_DEBUG, "EPPKE: Failed parsing RSNE data");
+		return false;
+	}
+
+	if (!(ied.key_mgmt & WPA_KEY_MGMT_EPPKE)) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"EPPKE: Target BSS does not advertise EPPKE AKM");
+		return false;
+	}
+
+	if (!wpa_key_mgmt_eppke(wpa_s->key_mgmt) &&
+	    !wpa_key_mgmt_sae_ext_key(wpa_s->key_mgmt)) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"EPPKE: Negotiated AKM is not an EPPKE Authentication AKM");
+		return false;
+	}
+
+	if (!wpas_eppke_ap_capable(wpa_s, bss,
+				   !!wpa_key_mgmt_eppke(wpa_s->key_mgmt))) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"EPPKE: Target BSS does not indicate support for EPPKE");
+		return false;
+	}
+
+	wpa_dbg(wpa_s, MSG_DEBUG, "Using EPPKE Authentication");
+
+	return true;
+}
+
 #endif /* CONFIG_ENC_ASSOC */
 
 
@@ -4042,6 +4099,11 @@ static u8 * wpas_populate_assoc_ies(
 	if (wpas_set_802_1x_auth_alg(wpa_s, bss, ssid, params))
 		algs = WPA_AUTH_ALG_802_1X;
 #endif /* CONFIG_IEEE8021X_AUTH */
+
+#ifdef CONFIG_ENC_ASSOC
+	if (wpas_set_eppke_auth_alg(wpa_s, bss, ssid, params))
+		algs = WPA_AUTH_ALG_EPPKE;
+#endif /* CONFIG_ENC_ASSOC */
 
 	wpa_dbg(wpa_s, MSG_DEBUG, "Automatic auth_alg selection: 0x%x", algs);
 	if (ssid->auth_alg) {
@@ -4987,19 +5049,6 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 			params.passphrase = ssid->passphrase;
 		}
 	}
-
-#ifdef CONFIG_ENC_ASSOC
-	if (wpa_key_mgmt_eppke(ssid->key_mgmt) &&
-	    wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_EPPKE) {
-		params.eppke_supported = true;
-		if (wpa_key_mgmt_sae_ext_key(params.key_mgmt_suite) ||
-		    wpa_key_mgmt_sae_ext_key(params.allowed_key_mgmts) ||
-		    wpa_key_mgmt_eppke(params.key_mgmt_suite)) {
-			wpa_dbg(wpa_s, MSG_DEBUG, "EPPKE authentication");
-			params.auth_alg = WPA_AUTH_ALG_EPPKE;
-		}
-	}
-#endif /* CONFIG_ENC_ASSOC */
 
 	if ((wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_OKC_PMKID_IN_ASSOC) &&
 	    (ssid->proactive_key_caching < 0 ? wpa_s->conf->okc :
