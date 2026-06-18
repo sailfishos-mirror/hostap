@@ -3735,10 +3735,25 @@ static void wpas_parse_connection_info(struct wpa_supplicant *wpa_s,
 	if (req_mlbuf && resp_mlbuf) {
 		int i;
 
-		for_each_link(wpa_s->valid_links, i)
-			wpas_parse_connection_info_link(wpa_s, i,
-							&req_elems, &resp_elems,
-							req_mlbuf, resp_mlbuf);
+		for_each_link(wpa_s->valid_links, i) {
+			struct wpabuf *req_copy, *resp_copy;
+
+			/*
+			 * ieee802_11_parse_link_profile() may defragment the
+			 * Multi-Link element subelements in-place, modifying
+			 * the buffer contents. Parse a fresh copy for each link
+			 * so that one link's defragmentation does not corrupt
+			 * the buffer used when parsing the remaining links.
+			 */
+			req_copy = wpabuf_dup(req_mlbuf);
+			resp_copy = wpabuf_dup(resp_mlbuf);
+			if (req_copy && resp_copy)
+				wpas_parse_connection_info_link(
+					wpa_s, i, &req_elems, &resp_elems,
+					req_copy, resp_copy);
+			wpabuf_free(req_copy);
+			wpabuf_free(resp_copy);
+		}
 	}
 	wpabuf_free(req_mlbuf);
 	wpabuf_free(resp_mlbuf);
