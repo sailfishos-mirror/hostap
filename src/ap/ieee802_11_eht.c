@@ -713,6 +713,10 @@ size_t hostapd_eid_eht_basic_ml_len(struct hostapd_data *hapd,
 	if (include_mld_id)
 		len++;
 
+	/* Enhanced Critical Updates Information */
+	if (hostapd_is_uhr_enabled(hapd))
+		len++;
+
 	if (!info)
 		goto out;
 
@@ -737,6 +741,10 @@ size_t hostapd_eid_eht_basic_ml_len(struct hostapd_data *hapd,
 		/* BSS Parameters Change Count (1) for (Re)Association Response
 		 * frames */
 		if (include_bpcc)
+			sta_prof_len++;
+
+		/* Enhanced Critical Updates Information */
+		if (include_bpcc && hostapd_is_uhr_enabled(hapd))
 			sta_prof_len++;
 
 		/* Per-STA Profile Subelement(1), Length (1) */
@@ -836,7 +844,8 @@ static u8 * hostapd_eid_eht_reconf_ml(struct hostapd_data *hapd, u8 *eid)
 }
 
 
-static size_t hostapd_eid_eht_ml_len(struct mld_info *info,
+static size_t hostapd_eid_eht_ml_len(struct hostapd_data *hapd,
+				     struct mld_info *info,
 				     bool include_mld_id, bool include_bpcc)
 {
 	size_t len = 0;
@@ -844,6 +853,10 @@ static size_t hostapd_eid_eht_ml_len(struct mld_info *info,
 	u8 link_id;
 
 	if (include_mld_id)
+		eht_ml_len++;
+
+	/* Enhanced Critical Updates Information (1) in common info */
+	if (hostapd_is_uhr_enabled(hapd))
 		eht_ml_len++;
 
 	for (link_id = 0; info && link_id < ARRAY_SIZE(info->links);
@@ -860,6 +873,11 @@ static size_t hostapd_eid_eht_ml_len(struct mld_info *info,
 		/* BSS Parameters Change Count (1) for (Re)Association Response
 		 * frames */
 		if (include_bpcc)
+			sta_len++;
+
+		/* Enhanced Critical Updates Information (1) in per-STA profile
+		 */
+		if (include_bpcc && hostapd_is_uhr_enabled(hapd))
 			sta_len++;
 
 		/* Element data and (fragmentation) headers */
@@ -910,7 +928,7 @@ size_t hostapd_eid_eht_ml_beacon_len(struct hostapd_data *hapd,
 				     struct mld_info *info,
 				     bool include_mld_id)
 {
-	return hostapd_eid_eht_ml_len(info, include_mld_id, false);
+	return hostapd_eid_eht_ml_len(hapd, info, include_mld_id, false);
 }
 
 
@@ -1991,7 +2009,7 @@ hostapd_send_link_reconf_resp(struct hostapd_data *hapd,
 		 * once mac80211 is fixed to match the standard (or this comment
 		 * be removed if the standard is modified to match
 		 * implementation). */
-		mle_len = hostapd_eid_eht_ml_len(&mld, false, true);
+		mle_len = hostapd_eid_eht_ml_len(hapd, &mld, false, true);
 		len += mle_len;
 	}
 
