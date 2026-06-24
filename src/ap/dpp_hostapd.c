@@ -934,6 +934,7 @@ int hostapd_dpp_auth_init(struct hostapd_data *hapd, const char *cmd)
 #endif /* CONFIG_DPP2 */
 		hostapd_drv_send_action_cancel_wait(hapd);
 		dpp_auth_deinit(hapd->dpp_auth);
+		hapd->dpp_auth = NULL;
 	}
 
 	auth = dpp_auth_init(hapd->iface->interfaces->dpp, hapd->msg_ctx,
