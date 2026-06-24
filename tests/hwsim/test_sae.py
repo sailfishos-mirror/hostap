@@ -3834,3 +3834,14 @@ def test_sae_pmksa_caching_ap_lost_entry(dev, apdev):
     hapd.request("PMKSA_FLUSH");
     dev[0].request("RECONNECT")
     dev[0].wait_connected(timeout=15, error="Reconnect timed out")
+
+def test_sae_alt_sae_password_id_config(dev, apdev):
+    """Configuration of alternative SAE password identifiers"""
+    check_sae_capab(dev[0])
+    id = dev[0].connect("test-sae", sae_password="12345678",
+                        sae_password_id="pw id", key_mgmt="SAE",
+                        only_add_network=True)
+    dev[0].set_network(id, "alt_sae_password_ids", "001122334455")
+    dev[0].set_network(id, "alt_sae_password_ids", "001122334466")
+    dev[0].set_network(id, "alt_sae_password_ids", "")
+    dev[0].set_network(id, "alt_sae_password_ids", "001122334477")
