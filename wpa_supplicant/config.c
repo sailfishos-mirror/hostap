@@ -737,6 +737,7 @@ static int wpa_config_parse_alt_sae_password_ids(const struct parse_data *data,
 
 	if (!value[0]) {
 		wpabuf_array_free(ssid->alt_sae_password_ids);
+		ssid->alt_sae_password_ids = NULL;
 		return 0;
 	}
 
