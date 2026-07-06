@@ -8,8 +8,10 @@ from remotehost import remote_compatible
 import binascii
 try:
     from Cryptodome.Cipher import AES
+    from Cryptodome.Hash import CMAC
 except ImportError:
     from Crypto.Cipher import AES
+    from Crypto.Hash import CMAC
 import hashlib
 import hmac
 import logging
@@ -1458,7 +1460,27 @@ def sha1_prf(key, label, data, outlen):
             outlen = 0
     return res
 
-def pmk_to_ptk(pmk, addr1, addr2, nonce1, nonce2):
+def sha256_prf(key, label, data, outlen):
+    res = b''
+    counter = 1
+    bits = outlen * 8
+    while outlen > 0:
+        m = hmac.new(key, digestmod=hashlib.sha256)
+        m.update(struct.pack('<H', counter))
+        m.update(label.encode())
+        m.update(data)
+        m.update(struct.pack('<H', bits))
+        counter += 1
+        hash = m.digest()
+        if outlen > len(hash):
+            res += hash
+            outlen -= len(hash)
+        else:
+            res += hash[0:outlen]
+            outlen = 0
+    return res
+
+def pmk_to_ptk(pmk, addr1, addr2, nonce1, nonce2, sha256=False):
     if addr1 < addr2:
         data = binascii.unhexlify(addr1.replace(':', '')) + binascii.unhexlify(addr2.replace(':', ''))
     else:
@@ -1468,7 +1490,10 @@ def pmk_to_ptk(pmk, addr1, addr2, nonce1, nonce2):
     else:
         data += nonce2 + nonce1
     label = "Pairwise key expansion"
-    ptk = sha1_prf(pmk, label, data, 48)
+    if sha256:
+        ptk = sha256_prf(pmk, label, data, 48)
+    else:
+        ptk = sha1_prf(pmk, label, data, 48)
     kck = ptk[0:16]
     kek = ptk[16:32]
     return (ptk, kck, kek)
@@ -1477,6 +1502,13 @@ def eapol_key_mic(kck, msg):
     msg['rsn_key_mic'] = binascii.unhexlify('00000000000000000000000000000000')
     data = build_eapol(msg)
     m = hmac.new(kck, data, hashlib.sha1)
+    msg['rsn_key_mic'] = m.digest()[0:16]
+
+def eapol_key_mic_cmac(kck, msg):
+    msg['rsn_key_mic'] = binascii.unhexlify('00000000000000000000000000000000')
+    data = build_eapol(msg)
+    m = CMAC.new(kck, ciphermod=AES)
+    m.update(data)
     msg['rsn_key_mic'] = m.digest()[0:16]
 
 def rsn_eapol_key_set(msg, key_info, key_len, nonce, data):
@@ -1791,14 +1823,15 @@ def test_ap_wpa2_psk_ext_eapol_key_info(dev, apdev):
     hapd.wait_sta(timeout=15)
     dev[0].request("DISCONNECT")
 
-def build_eapol_key_1_4(anonce, replay_counter=1, key_data=b'', key_len=16):
+def build_eapol_key_1_4(anonce, replay_counter=1, key_data=b'', key_len=16,
+                        key_info=0x8a):
     msg = {}
     msg['version'] = 2
     msg['type'] = 3
     msg['length'] = 95 + len(key_data)
 
     msg['descr_type'] = 2
-    msg['rsn_key_info'] = 0x8a
+    msg['rsn_key_info'] = key_info
     msg['rsn_key_len'] = key_len
     msg['rsn_replay_counter'] = struct.pack('>Q', replay_counter)
     msg['rsn_key_nonce'] = anonce
@@ -1811,7 +1844,8 @@ def build_eapol_key_1_4(anonce, replay_counter=1, key_data=b'', key_len=16):
     return msg
 
 def build_eapol_key_3_4(anonce, kck, key_data, replay_counter=2,
-                        key_info=0x13ca, extra_len=0, descr_type=2, key_len=16):
+                        key_info=0x13ca, extra_len=0, descr_type=2, key_len=16,
+                        cmac=False):
     msg = {}
     msg['version'] = 2
     msg['type'] = 3
@@ -1827,7 +1861,10 @@ def build_eapol_key_3_4(anonce, kck, key_data, replay_counter=2,
     msg['rsn_key_id'] = binascii.unhexlify('0000000000000000')
     msg['rsn_key_data_len'] = len(key_data)
     msg['rsn_key_data'] = key_data
-    eapol_key_mic(kck, msg)
+    if cmac:
+        eapol_key_mic_cmac(kck, msg)
+    else:
+        eapol_key_mic(kck, msg)
     return msg
 
 def aes_wrap(kek, plain):

@@ -19,7 +19,7 @@ import hwsim_utils
 import hostapd
 from wpasupplicant import WpaSupplicant
 from utils import *
-from test_ap_psk import find_wpas_process, read_process_memory, verify_not_present, get_key_locations
+from test_ap_psk import find_wpas_process, read_process_memory, verify_not_present, get_key_locations, recv_eapol, build_eapol_key_1_4, build_eapol, send_eapol, pmk_to_ptk, aes_wrap, pad_key_data, build_eapol_key_3_4
 
 @remote_compatible
 def test_sae(dev, apdev):
@@ -4029,3 +4029,202 @@ def _run_sae_proto_pw_id_change(dev, apdev, id_in_use=False,
     hapd.set("ext_mgmt_frame_handling", "0")
 
     dev[0].wait_connected()
+
+def test_sae_pmksa_caching_two_ess(dev, apdev):
+    """SAE and PMKSA caching with two ESSs"""
+    check_sae_capab(dev[0])
+
+    params = hostapd.wpa3_params(ssid="test-sae",
+                                 password="12345678")
+    hapd1 = hostapd.add_ap(apdev[0], params)
+    params = hostapd.wpa3_params(ssid="test-sae-2",
+                                 password="password")
+    hapd2 = hostapd.add_ap(apdev[1], params)
+
+    # Generate a PMKSA for network 1
+    dev[0].set("sae_groups", "")
+    id1 = dev[0].connect("test-sae", sae_password="12345678", key_mgmt="SAE",
+                         ieee80211w="2", scan_freq="2412")
+    hapd1.wait_sta()
+    dev[0].request("DISCONNECT")
+    dev[0].wait_disconnected()
+    dev[0].dump_monitor()
+
+    # Generate a PMKSA for network 2
+    id2 = dev[0].connect("test-sae-2", sae_password="password", key_mgmt="SAE",
+                         ieee80211w="2", scan_freq="2412")
+    hapd2.wait_sta()
+    dev[0].request("DISCONNECT")
+    dev[0].wait_disconnected()
+    dev[0].dump_monitor()
+
+    # Verify SAE PMKSA caching with network 1
+    hapd1.dump_monitor()
+    dev[0].select_network(id1, freq="2412")
+    dev[0].wait_connected()
+    val = dev[0].get_status_field('sae_group')
+    if val is not None:
+        raise Exception("SAE group claimed to have been used: " + val)
+    hapd1.wait_sta()
+    dev[0].request("DISCONNECT")
+    dev[0].wait_disconnected()
+    dev[0].dump_monitor()
+
+    # Verify SAE PMKSA caching with network 2 using external 4-way handshake
+    addr = dev[0].own_addr()
+    bssid = hapd2.own_addr()
+    pmk = binascii.unhexlify(hapd2.request("GET_PMK " + addr))
+    pmkid = binascii.unhexlify(hapd2.get_pmksa(addr)['pmkid'])
+
+    hapd2.dump_monitor()
+    hapd2.set("ext_eapol_frame_io", "1")
+    dev[0].set("ext_eapol_frame_io", "1")
+
+    dev[0].select_network(id2, freq="2412")
+
+    # Wait for EAPOL-Key msg 1/4 from hostapd to determine when associated
+    msg = recv_eapol(hapd2)
+
+    # Build own EAPOL-Key msg 1/4
+    anonce = binascii.unhexlify('2222222222222222222222222222222222222222222222222222222222222222')
+    counter = 1
+    # PMKID KDE
+    key_data = binascii.unhexlify("dd14000fac04") + pmkid
+    msg = build_eapol_key_1_4(anonce, replay_counter=counter, key_info=0x88,
+                              key_data=key_data)
+    counter += 1
+    time.sleep(0.01)
+    send_eapol(dev[0], bssid, build_eapol(msg))
+
+    # Receive EAPOL-Key msg 2/4
+    msg = recv_eapol(dev[0])
+    snonce = msg['rsn_key_nonce']
+
+    (ptk, kck, kek) = pmk_to_ptk(pmk, addr, bssid, snonce, anonce, sha256=True)
+
+    # Build own EAPOL-Key msg 3/4
+    dev[0].dump_monitor()
+    plain = binascii.unhexlify('30140100000fac040100000fac040100000fac08cc00dd16000fac010100dc11188831bf4aa4a8678d2b41498618')
+    wrapped = aes_wrap(kek, pad_key_data(plain))
+    msg = build_eapol_key_3_4(anonce, kck, wrapped, replay_counter=counter,
+                              key_info=0x13c8, cmac=True)
+    counter += 1
+    send_eapol(dev[0], bssid, build_eapol(msg))
+
+    dev[0].wait_connected()
+
+    dev[0].request("DISCONNECT")
+    dev[0].wait_disconnected()
+    dev[0].dump_monitor()
+
+    # Verify SAE PMKSA caching fails if AP tries to use unrelated PMKSA
+    addr = dev[0].own_addr()
+    bssid = hapd2.own_addr()
+
+    hapd1.dump_monitor()
+    hapd1.set("ext_eapol_frame_io", "1")
+    dev[0].set("ext_eapol_frame_io", "1")
+
+    dev[0].select_network(id1, freq="2412")
+
+    # Wait for EAPOL-Key msg 1/4 from hostapd to determine when associated
+    msg = recv_eapol(hapd1)
+
+    # Build own EAPOL-Key msg 1/4
+    anonce = binascii.unhexlify('3333333333333333333333333333333333333333333333333333333333333333')
+    counter = 1
+    # PMKID KDE
+    key_data = binascii.unhexlify("dd14000fac04") + pmkid
+    msg = build_eapol_key_1_4(anonce, replay_counter=counter, key_info=0x88,
+                              key_data=key_data)
+    counter += 1
+    time.sleep(0.01)
+    send_eapol(dev[0], bssid, build_eapol(msg))
+
+    # Receive EAPOL-Key msg 2/4
+    msg = recv_eapol(dev[0])
+    snonce = msg['rsn_key_nonce']
+
+    (ptk, kck, kek) = pmk_to_ptk(pmk, addr, bssid, snonce, anonce, sha256=True)
+
+    # Build own EAPOL-Key msg 3/4
+    dev[0].dump_monitor()
+    plain = binascii.unhexlify('30140100000fac040100000fac040100000fac08cc00dd16000fac010100dc11188831bf4aa4a8678d2b41498618')
+    wrapped = aes_wrap(kek, pad_key_data(plain))
+    msg = build_eapol_key_3_4(anonce, kck, wrapped, replay_counter=counter,
+                              key_info=0x13c8, cmac=True)
+    counter += 1
+    send_eapol(dev[0], bssid, build_eapol(msg))
+
+    ev = dev[0].wait_event(["CTRL-EVENT-CONNECTED",
+                            "CTRL-EVENT-DISCONNECTED"], timeout=10)
+    dev[0].request("DISCONNECT")
+    if ev is None:
+        raise Exception("No connection result reported")
+    if "CTRL-EVENT-CONNECTED" in ev:
+        raise Exception("Unexpected connection")
+
+def test_sae_pmksa_caching_and_psk(dev, apdev):
+    """SAE and PMKSA caching and another ESS with PSK"""
+    check_sae_capab(dev[0])
+
+    # First, generate a PMKSA using SAE in network 1
+
+    params = hostapd.wpa3_params(ssid="test-sae", password="12345678")
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    dev[0].set("sae_groups", "")
+    id1 = dev[0].connect("test-sae", sae_password="12345678", key_mgmt="SAE",
+                         ieee80211w="2", scan_freq="2412")
+    hapd.wait_sta()
+    addr = dev[0].own_addr()
+    bssid = hapd.own_addr()
+    pmk = binascii.unhexlify(hapd.request("GET_PMK " + addr))
+    pmkid = binascii.unhexlify(hapd.get_pmksa(addr)['pmkid'])
+    dev[0].request("DISCONNECT")
+    dev[0].wait_disconnected()
+    dev[0].dump_monitor()
+
+    # Then, try to use PSK and see if AP can force PMKSA caching using
+    # unexpected entry from a different network.
+
+    params = hostapd.wpa2_params(ssid="test-psk", passphrase="password")
+    hapd = hostapd.add_ap(apdev[0], params)
+    hapd.set("ext_eapol_frame_io", "1")
+    dev[0].set("ext_eapol_frame_io", "1")
+
+    id2 = dev[0].connect("test-psk", psk="password", scan_freq="2412",
+                         wait_connect=False)
+
+    # Wait for EAPOL-Key msg 1/4 from hostapd to determine when associated
+    msg = recv_eapol(hapd)
+
+    # Build own EAPOL-Key msg 1/4
+    anonce = binascii.unhexlify('2222222222222222222222222222222222222222222222222222222222222222')
+    counter = 1
+    # PMKID KDE
+    key_data = binascii.unhexlify("dd14000fac04") + pmkid
+    msg = build_eapol_key_1_4(anonce, replay_counter=counter,
+                              key_data=key_data)
+    counter += 1
+    send_eapol(dev[0], bssid, build_eapol(msg))
+
+    # Receive EAPOL-Key msg 2/4
+    msg = recv_eapol(dev[0])
+    snonce = msg['rsn_key_nonce']
+
+    (ptk, kck, kek) = pmk_to_ptk(pmk, addr, bssid, snonce, anonce)
+
+    plain = binascii.unhexlify('30140100000fac040100000fac040100000fac020c00dd16000fac010100dc11188831bf4aa4a8678d2b41498618')
+    wrapped = aes_wrap(kek, pad_key_data(plain))
+    msg = build_eapol_key_3_4(anonce, kck, wrapped, replay_counter=counter)
+    counter += 1
+    send_eapol(dev[0], bssid, build_eapol(msg))
+
+    ev = dev[0].wait_event(["CTRL-EVENT-CONNECTED",
+                            "CTRL-EVENT-DISCONNECTED"], timeout=10)
+    dev[0].request("DISCONNECT")
+    if ev is None:
+        raise Exception("No connection result reported")
+    if "CTRL-EVENT-CONNECTED" in ev:
+        raise Exception("Unexpected connection")
