@@ -326,7 +326,9 @@ int wpa_external_auth_add_rsne(u8 *rsne, size_t rsne_len, struct wpa_sm *sm,
 
 	if (rsne_len < sizeof(*hdr) + RSN_SELECTOR_LEN +
 	    2 + RSN_SELECTOR_LEN + 2 + RSN_SELECTOR_LEN + 2 +
-	    (sm->cur_pmksa ? 2 + PMKID_LEN : 0)) {
+	    (sm->cur_pmksa ? 2 + PMKID_LEN : 0) +
+	    (wpa_cipher_valid_mgmt_group(group_mgmt_cipher) ?
+	    (RSN_SELECTOR_LEN + (!sm->cur_pmksa ? 2 : 0)) : 0)) {
 		wpa_printf(MSG_DEBUG, "Ext-Auth: Too short RSNE buffer (%lu bytes)",
 			   (unsigned long) rsne_len);
 		return -1;
