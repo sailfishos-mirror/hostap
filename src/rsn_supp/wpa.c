@@ -323,7 +323,7 @@ static int wpa_supplicant_get_pmk(struct wpa_sm *sm,
 		 * matching PMKSA cache entry here. */
 		sm->cur_pmksa = pmksa_cache_get(sm->pmksa, src_addr,
 						sm->own_addr, pmkid,
-						NULL, 0);
+						sm->network_ctx, sm->key_mgmt);
 		if (sm->cur_pmksa) {
 			wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG,
 				"RSN: found matching PMKID from PMKSA cache");
