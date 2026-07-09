@@ -4985,7 +4985,6 @@ void wpas_nan_rx_naf(struct wpa_supplicant *wpa_s,
 
 	nan_action_rx(wpa_s->nan, mgmt, len);
 }
-#endif /* CONFIG_NAN */
 
 
 void wpas_nan_data_interface_removed(struct wpa_supplicant *wpa_s)
@@ -4999,3 +4998,4 @@ void wpas_nan_data_interface_removed(struct wpa_supplicant *wpa_s)
 	if (nan_dev_wpas)
 		nan_terminate_ndi_ndps(nan_dev_wpas->nan, wpa_s->own_addr);
 }
+#endif /* CONFIG_NAN */
