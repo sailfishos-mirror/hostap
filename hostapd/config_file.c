@@ -1269,7 +1269,7 @@ static int hostapd_parse_he_srg_bitmap(u8 *bitmap, char *val)
 			*end = '\0';
 
 		bitpos = atoi(pos);
-		if (bitpos < 0 || bitpos > 64)
+		if (bitpos < 0 || bitpos > 63)
 			return -1;
 
 		bitmap[bitpos / 8] |= BIT(bitpos % 8);
