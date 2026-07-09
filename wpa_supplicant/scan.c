@@ -3090,7 +3090,7 @@ static u8 get_eht_num_punct_bits(const u8 *ies, size_t ies_len)
 	const u8 *eht_ie;
 
 	eht_ie = get_ie_ext(ies, ies_len, WLAN_EID_EXT_EHT_OPERATION);
-	if (eht_ie && eht_ie[1] >= 1 + IEEE80211_EHT_OP_MIN_LEN) {
+	if (eht_ie && eht_ie[1] >= 1 + sizeof(struct ieee80211_eht_operation)) {
 		struct ieee80211_eht_operation *eht_op;
 
 		eht_op = (struct ieee80211_eht_operation *) &eht_ie[3];

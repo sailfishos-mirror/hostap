@@ -2765,8 +2765,6 @@ struct ieee80211_eht_operation {
 	struct ieee80211_eht_oper_info oper_info; /* 0 or 3 or 5 octets */
 } STRUCT_PACKED;
 
-#define IEEE80211_EHT_OP_MIN_LEN (1 + 4)
-
 /* IEEE Std 802.11be-2024, 9.4.2.323 - EHT Capabilities element */
 #define EHT_CAPABILITIES_ELEM_MIN_LEN             11
 
