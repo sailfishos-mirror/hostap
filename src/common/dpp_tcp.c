@@ -2291,7 +2291,7 @@ void dpp_controller_new_qr_code(struct dpp_global *dpp,
 	dl_list_for_each(conn, &ctrl->conn, struct dpp_connection, list) {
 		struct dpp_authentication *auth = conn->auth;
 
-		if (!auth->response_pending ||
+		if (!auth || !auth->response_pending ||
 		    dpp_notify_new_qr_code(auth, bi) != 1)
 			continue;
 		wpa_printf(MSG_DEBUG,
