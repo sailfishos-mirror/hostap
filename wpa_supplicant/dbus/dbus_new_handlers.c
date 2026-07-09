@@ -941,7 +941,7 @@ DBusMessage * wpas_dbus_handler_remove_interface(DBusMessage *message,
 	struct wpa_supplicant *wpa_s;
 	char *path;
 	DBusMessage *reply = NULL;
-	bool delete_iface;
+	char *delete_iface = NULL;
 
 	dbus_message_get_args(message, NULL, DBUS_TYPE_OBJECT_PATH, &path,
 			      DBUS_TYPE_INVALID);
@@ -951,7 +951,11 @@ DBusMessage * wpas_dbus_handler_remove_interface(DBusMessage *message,
 		reply = wpas_dbus_error_iface_unknown(message);
 		goto out;
 	}
-	delete_iface = wpa_s->added_vif;
+	if (wpa_s->added_vif) {
+		/* Keep a local copy of wpa_s->ifname since wpa_s is going to be
+		 * freed before we need the interface name. */
+		delete_iface = os_strdup(wpa_s->ifname);
+	}
 	if (wpa_supplicant_remove_iface(global, wpa_s, 0)) {
 		reply = wpas_dbus_error_unknown_error(
 			message,
@@ -961,11 +965,11 @@ DBusMessage * wpas_dbus_handler_remove_interface(DBusMessage *message,
 
 	if (delete_iface) {
 		wpa_printf(MSG_DEBUG, "%s[dbus]: deleting the interface '%s'",
-			   __func__, wpa_s->ifname);
+			   __func__, delete_iface);
 		/* wpa_supplicant does not create multi-BSS AP, so collapse to
 		 * WPA_IF_STATION to avoid unwanted clean up in the driver. */
 		if (wpa_drv_if_remove(global->ifaces, WPA_IF_STATION,
-				      wpa_s->ifname)) {
+				      delete_iface)) {
 			reply = wpas_dbus_error_unknown_error(
 				message,
 				"wpa_supplicant couldn't delete this interface.");
@@ -973,6 +977,7 @@ DBusMessage * wpas_dbus_handler_remove_interface(DBusMessage *message,
 	}
 
 out:
+	os_free(delete_iface);
 	return reply;
 }
 
