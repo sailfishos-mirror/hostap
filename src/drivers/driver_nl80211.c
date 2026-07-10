@@ -539,6 +539,8 @@ static void nl80211_deliver_pending_events(void *eloop_ctx, void *data)
 	if (dl_list_empty(&global->pending_events))
 		return;
 
+	global->delivering_pending_events = true;
+
 	dl_list_init(&pending_events);
 
 	global->pending_events.next->prev = &pending_events;
@@ -555,6 +557,8 @@ static void nl80211_deliver_pending_events(void *eloop_ctx, void *data)
 		event->handler(event->msg, event->data);
 		nl80211_remove_pending_event(event);
 	}
+
+	global->delivering_pending_events = false;
 }
 
 
@@ -575,9 +579,20 @@ int nl80211_reply_hook(struct nl80211_global *global, struct nl_msg *msg,
 		 * to read the socket again (it should usually, but it may not
 		 * if multiple timeouts have expired). As such, check here if
 		 * there are already pending events, and if there are, queue
-		 * this one.
+		 * this one to preserve delivery order.
+		 *
+		 * However, if we are already inside
+		 * nl80211_deliver_pending_events(), do not re-queue events
+		 * triggered by event handlers. Re-queuing during delivery
+		 * causes events to accumulate across command cycles. When the
+		 * accumulated event count is large enough, a re-queued event's
+		 * sequence number eventually matches the reply_seq of a
+		 * concurrent send_and_recv_glb() call, causing the reply
+		 * handler to fire with the wrong message and corrupt the
+		 * caller's stack.
 		 */
-		if (!dl_list_empty(&global->pending_events))
+		if (!dl_list_empty(&global->pending_events) &&
+		    !global->delivering_pending_events)
 			goto queue_event;
 
 		return NL_OK;

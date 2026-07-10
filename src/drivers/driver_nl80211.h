@@ -48,6 +48,8 @@ struct nl80211_global {
 
 	/* pending events that happened while waiting for a sync reply */
 	struct dl_list pending_events;
+	/* set while nl80211_deliver_pending_events() is running */
+	bool delivering_pending_events;
 #ifdef CONFIG_NAN
 	/* Dedicated socket for NAN interface creation and events */
 	struct nl_sock *nl_nan;
