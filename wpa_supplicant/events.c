@@ -4778,8 +4778,8 @@ out:
 }
 
 
-static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
-				       union wpa_event_data *data)
+static int wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
+				      union wpa_event_data *data)
 {
 	u8 bssid[ETH_ALEN];
 	int ft_completed, already_authorized;
@@ -4791,13 +4791,13 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_AP
 	if (wpa_s->ap_iface) {
 		if (!data)
-			return;
+			return 0;
 		hostapd_notif_assoc(wpa_s->ap_iface->bss[0],
 				    data->assoc_info.addr,
 				    data->assoc_info.req_ies,
 				    data->assoc_info.req_ies_len, NULL, 0,
 				    NULL, data->assoc_info.reassoc);
-		return;
+		return 0;
 	}
 #endif /* CONFIG_AP */
 
@@ -4810,14 +4810,14 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		wpa_dbg(wpa_s, MSG_ERROR, "Failed to get BSSID");
 		wpa_supplicant_deauthenticate(
 			wpa_s, WLAN_REASON_DEAUTH_LEAVING);
-		return;
+		return -1;
 	}
 
 	if (wpa_drv_get_mlo_info(wpa_s) < 0) {
 		wpa_dbg(wpa_s, MSG_ERROR, "Failed to get MLO connection info");
 		wpa_supplicant_deauthenticate(wpa_s,
 					      WLAN_REASON_DEAUTH_LEAVING);
-		return;
+		return -1;
 	}
 
 	if (ft_completed &&
@@ -4827,13 +4827,13 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		if (!wpa_supplicant_update_current_bss(wpa_s, bssid)) {
 			wpa_printf(MSG_ERROR,
 				   "Can't find target AP's information!");
-			return;
+			return 0;
 		}
 		wpa_supplicant_assoc_update_ie(wpa_s);
 	}
 
 	if (data && wpa_supplicant_event_associnfo(wpa_s, data) < 0)
-		return;
+		return -1;
 	/*
 	 * FILS authentication can share the same mechanism to mark the
 	 * connection fully authenticated, so set ft_completed also based on
@@ -4874,13 +4874,13 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		if (wpa_supplicant_select_config(wpa_s, data) < 0) {
 			wpa_supplicant_deauthenticate(
 				wpa_s, WLAN_REASON_DEAUTH_LEAVING);
-			return;
+			return -1;
 		}
 	}
 
 	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) &&
 	    data && wpa_supplicant_use_own_rsne_params(wpa_s, data) < 0)
-		return;
+		return -1;
 
 	multi_ap_set_4addr_mode(wpa_s);
 
@@ -4950,7 +4950,7 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 			"Failed to set MLO connection info to wpa_sm");
 		wpa_supplicant_deauthenticate(wpa_s,
 					      WLAN_REASON_DEAUTH_LEAVING);
-		return;
+		return -1;
 	}
 
 	if (wpa_s->l2)
@@ -5101,7 +5101,7 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 			wpa_msg(wpa_s, MSG_INFO, "Failed to init IBSS RSN");
 			wpa_supplicant_deauthenticate(
 				wpa_s, WLAN_REASON_DEAUTH_LEAVING);
-			return;
+			return -1;
 		}
 
 		ibss_rsn_set_psk(wpa_s->ibss_rsn, wpa_s->current_ssid->psk);
@@ -5143,6 +5143,8 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 
 	if (wpa_s->current_ssid && wpa_s->current_ssid->enable_4addr_mode)
 		wpa_supplicant_set_4addr_mode(wpa_s);
+
+	return 0;
 }
 
 
@@ -6904,7 +6906,11 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			wpa_s->scs_reconfigure = true;
 		}
 #endif /* CONFIG_NO_ROBUST_AV */
-		wpa_supplicant_event_assoc(wpa_s, data);
+		if (wpa_supplicant_event_assoc(wpa_s, data) < 0) {
+			wpa_printf(MSG_DEBUG,
+				   "Skip assoc_auth handling - disconnected during assoc event processing");
+			break;
+		}
 		wpa_s->assoc_status_code = WLAN_STATUS_SUCCESS;
 		if (data &&
 		    (data->assoc_info.authorized ||
