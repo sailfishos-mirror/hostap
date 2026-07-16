@@ -4746,7 +4746,9 @@ static size_t wpa_auth_ml_kdes_len(struct wpa_state_machine *sm)
 		if (ie)
 			kde_len += 2 + ie[1];
 
-		if (!rsn_is_snonce_cookie(sm->SNonce))
+		if ((!wpa_auth->conf.rsn_override_key_mgmt &&
+		     !wpa_auth->conf.rsn_override_key_mgmt_2) ||
+		    !rsn_is_snonce_cookie(sm->SNonce))
 			continue;
 
 		/* RSN Override Link KDE */
@@ -4840,7 +4842,9 @@ static u8 * wpa_auth_ml_kdes(struct wpa_state_machine *sm, u8 *pos)
 			pos += rsnxe_len;
 		}
 
-		if (!rsn_is_snonce_cookie(sm->SNonce))
+		if ((!wpa_auth->conf.rsn_override_key_mgmt &&
+		     !wpa_auth->conf.rsn_override_key_mgmt_2) ||
+		    !rsn_is_snonce_cookie(sm->SNonce))
 			continue;
 
 		rsnoe = get_vendor_ie(wpa_auth->wpa_ie, wpa_auth->wpa_ie_len,
