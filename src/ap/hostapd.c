@@ -742,6 +742,7 @@ void hostapd_cleanup_iface_partial(struct hostapd_iface *iface)
 	airtime_policy_update_deinit(iface);
 	hostapd_free_multi_hw_info(iface->multi_hw_info);
 	iface->multi_hw_info = NULL;
+	iface->num_multi_hws = 0;
 	iface->current_hw_info = NULL;
 }
 
