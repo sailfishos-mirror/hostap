@@ -420,13 +420,14 @@ unsigned int get_max_nss_capability(struct ieee802_11_elems *elems,
 				    bool parse_for_rx, enum chan_width bw);
 
 struct supported_chan_width {
+	bool is_40_supported;
 	bool is_160_supported;
 	bool is_80p80_supported;
 	bool is_320_supported;
 };
 
 struct supported_chan_width
-get_supported_channel_width(struct ieee802_11_elems *elems);
+get_supported_channel_width(struct ieee802_11_elems *elems, int freq);
 
 enum chan_width get_operation_channel_width(struct ieee802_11_elems *elems);
 

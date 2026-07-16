@@ -3900,22 +3900,30 @@ unsigned int get_max_nss_capability(struct ieee802_11_elems *elems,
 
 /* Parse VHT/HE capabilities elements to get supported channel width */
 struct supported_chan_width
-get_supported_channel_width(struct ieee802_11_elems *elems)
+get_supported_channel_width(struct ieee802_11_elems *elems, int freq)
 {
 	struct supported_chan_width supported_width;
+	struct ieee80211_ht_capabilities *htcaps;
 	struct ieee80211_vht_capabilities *vhtcaps;
 	struct ieee80211_he_capabilities *hecaps;
 	struct ieee80211_eht_capabilities *ehtcaps;
 
+	supported_width.is_40_supported = false;
 	supported_width.is_160_supported = false;
 	supported_width.is_80p80_supported = false;
 	supported_width.is_320_supported = false;
 	if (!elems)
 		return supported_width;
 
+	htcaps = (struct ieee80211_ht_capabilities *) elems->ht_capabilities;
 	vhtcaps = (struct ieee80211_vht_capabilities *) elems->vht_capabilities;
 	hecaps = (struct ieee80211_he_capabilities *) elems->he_capabilities;
 	ehtcaps = (struct ieee80211_eht_capabilities *) elems->eht_capabilities;
+
+	if (htcaps &&
+	    (le_to_host16(htcaps->ht_capabilities_info) &
+	     HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET))
+		supported_width.is_40_supported = true;
 
 	if (vhtcaps) {
 		u32 vht_capabilities_info =
@@ -3933,6 +3941,19 @@ get_supported_channel_width(struct ieee802_11_elems *elems)
 	if (hecaps) {
 		u8 channel_width_set = hecaps->he_phy_capab_info[
 			HE_PHYCAP_CHANNEL_WIDTH_SET_IDX];
+
+		/*
+		 * The 40 MHz capability is band specific in HE: a bit for 2.4
+		 * GHz vs. the shared 40/80 MHz bit for 5 GHz.
+		 */
+		if (is_24ghz_freq(freq)) {
+			if (channel_width_set &
+			    HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_IN_2G)
+				supported_width.is_40_supported = true;
+		} else if (channel_width_set &
+			   HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G) {
+			supported_width.is_40_supported = true;
+		}
 
 		if (channel_width_set &
 		    HE_PHYCAP_CHANNEL_WIDTH_SET_160MHZ_IN_5G)
@@ -4155,6 +4176,10 @@ enum chan_width get_sta_operation_chan_width(
 	if (ap_operation_chan_width == CHAN_WIDTH_80P80)
 		return sta_supported_chan_width.is_80p80_supported ?
 			CHAN_WIDTH_80P80 : CHAN_WIDTH_80;
+
+	if (ap_operation_chan_width == CHAN_WIDTH_40)
+		return sta_supported_chan_width.is_40_supported ?
+			CHAN_WIDTH_40 : CHAN_WIDTH_20;
 
 	return ap_operation_chan_width;
 }

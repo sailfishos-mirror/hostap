@@ -3504,7 +3504,8 @@ static void wpas_parse_connection_info_link(struct wpa_supplicant *wpa_s,
 		return;
 	}
 
-	sta_cw = get_supported_channel_width(&req_persta_elems);
+	sta_cw = get_supported_channel_width(&req_persta_elems,
+					     wpa_s->links[i].freq);
 	ap_cw = get_operation_channel_width(&resp_persta_elems);
 
 	if (wpa_s->connection_vht || wpa_s->connection_he ||
@@ -3588,7 +3589,8 @@ static void wpas_parse_connection_info(struct wpa_supplicant *wpa_s,
 	}
 #endif /* CONFIG_PMKSA_PRIVACY */
 
-	sta_supported_chan_width = get_supported_channel_width(&req_elems);
+	sta_supported_chan_width = get_supported_channel_width(&req_elems,
+							       freq);
 	ap_operation_chan_width = get_operation_channel_width(&resp_elems);
 	if (wpa_s->connection_vht || wpa_s->connection_he ||
 	    wpa_s->connection_eht) {
