@@ -1337,14 +1337,28 @@ static void gas_serv_req_local_processing(struct hostapd_data *hapd,
 	    hapd->conf->gas_comeback_delay) {
 		struct gas_dialog_info *di;
 		u16 comeback_delay = 1;
+		unsigned int num_frag;
 
 		if (hapd->conf->gas_comeback_delay) {
 			/* Testing - allow overriding of the delay value */
 			comeback_delay = hapd->conf->gas_comeback_delay;
 		}
 
-		wpa_printf(MSG_DEBUG, "ANQP: Too long response to fit in "
-			   "initial response - use GAS comeback");
+		num_frag = wpabuf_len(buf) / hapd->conf->gas_frag_limit;
+		wpa_printf(MSG_DEBUG,
+			   "ANQP: Too long response (%zu bytes) to fit in initial response (frag_limit %zu bytes) - use GAS comeback (%u fragments)",
+			   wpabuf_len(buf), hapd->conf->gas_frag_limit,
+			   num_frag);
+		if (num_frag > 128) {
+			wpa_printf(MSG_INFO,
+				   "ANQP: Too long response (%zu bytes) to fit into GAS response",
+				   wpabuf_len(buf));
+			wpabuf_free(buf);
+			tx_buf = gas_anqp_build_initial_resp_buf(
+				dialog_token, WLAN_STATUS_UNSPECIFIED_FAILURE,
+				0, NULL);
+			goto done;
+		}
 		di = gas_dialog_create(hapd, sa, dialog_token);
 		if (!di) {
 			wpa_printf(MSG_INFO, "ANQP: Could not create dialog "
@@ -1368,6 +1382,7 @@ static void gas_serv_req_local_processing(struct hostapd_data *hapd,
 			dialog_token, WLAN_STATUS_SUCCESS, 0, buf);
 		wpabuf_free(buf);
 	}
+done:
 	if (!tx_buf)
 		return;
 	if (prot)
