@@ -617,11 +617,12 @@ static void anqp_add_nai_realm(struct hostapd_data *hapd, struct wpabuf **buf,
 
 	if (nai_realm && hapd->conf->nai_realm_data) {
 		u8 *len;
-		unsigned int i, j;
+		unsigned int i, j, count = 0;
 		size_t tlen = 2 + 2 + 2;
 
 		for (i = 0; i < hapd->conf->nai_realm_count; i++) {
 			struct hostapd_nai_realm_data *realm;
+			size_t prev_tlen = tlen;
 
 			realm = &hapd->conf->nai_realm_data[i];
 			tlen += 2 + 1 + 1;
@@ -631,13 +632,20 @@ static void anqp_add_nai_realm(struct hostapd_data *hapd, struct wpabuf **buf,
 				tlen += os_strlen(realm->realm[j]);
 			}
 			tlen += anqp_len_nai_realm_eap(realm);
+			if (tlen > 65535) {
+				tlen = prev_tlen;
+				wpa_printf(MSG_INFO,
+					   "ANQP: Too many NAI realms configured to fit into an ANQP-element");
+				break;
+			}
+			count++;
 		}
 		if (wpabuf_resize(buf, tlen) < 0)
 			return;
 
 		len = gas_anqp_add_element(*buf, ANQP_NAI_REALM);
-		wpabuf_put_le16(*buf, hapd->conf->nai_realm_count);
-		for (i = 0; i < hapd->conf->nai_realm_count; i++) {
+		wpabuf_put_le16(*buf, count);
+		for (i = 0; i < count; i++) {
 			u8 *realm_data_len, *realm_len;
 			struct hostapd_nai_realm_data *realm;
 
