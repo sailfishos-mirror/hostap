@@ -698,7 +698,10 @@ int nan_ndl_setup(struct nan_data *nan, struct nan_peer *peer,
 	nan_ndl_sched_print(nan, &nan->sched);
 
 	if (is_zero_ether_addr(ndl->ndc_id)) {
-		os_get_random(ndl->ndc_id, ETH_ALEN);
+		if (os_get_random(ndl->ndc_id, ETH_ALEN) < 0) {
+			reason = NAN_REASON_UNSPECIFIED_REASON;
+			goto out_fail;
+		}
 		wpa_printf(MSG_DEBUG,
 			   "NAN: NDL: generated NDC ID " MACSTR,
 			   MAC2STR(ndl->ndc_id));

@@ -302,11 +302,15 @@ static void nan_bootstrap_handle_rx_request(struct nan_data *nan,
 	peer->bootstrap.cookie_len = NAN_BOOTSTRAP_COOKIE_LEN;
 	peer->bootstrap.cookie = os_malloc(peer->bootstrap.cookie_len);
 
-	if (peer->bootstrap.cookie)
-		os_get_random(peer->bootstrap.cookie,
-			      peer->bootstrap.cookie_len);
-	else
+	if (peer->bootstrap.cookie) {
+		if (os_get_random(peer->bootstrap.cookie,
+				  peer->bootstrap.cookie_len) < 0) {
+			nan_bootstrap_reset(nan, peer);
+			return;
+		}
+	} else {
 		peer->bootstrap.cookie_len = 0;
+	}
 
 	peer->bootstrap.comeback_after = nan->cfg->bootstrap_comeback_timeout;
 

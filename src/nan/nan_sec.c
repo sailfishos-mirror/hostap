@@ -843,7 +843,8 @@ static int nan_sec_add_m1_attrs(struct nan_data *nan, struct nan_peer *peer,
 		return -1;
 
 	/* Initialize the initiator security state */
-	os_get_random(ndp_sec->i_nonce, sizeof(ndp_sec->i_nonce));
+	if (os_get_random(ndp_sec->i_nonce, sizeof(ndp_sec->i_nonce)) < 0)
+		return -1;
 	ndp_sec->i_capab = nan->cfg->security_capab;
 	ndp_sec->i_instance_id = peer->ndp_setup.publish_inst_id;
 
@@ -1324,7 +1325,8 @@ int nan_sec_init_resp(struct nan_data *nan, struct nan_peer *peer)
 		return -1;
 
 	/* Initialize the responder's security state */
-	os_get_random(ndp_sec->r_nonce, sizeof(ndp_sec->r_nonce));
+	if (os_get_random(ndp_sec->r_nonce, sizeof(ndp_sec->r_nonce)) < 0)
+		return -1;
 	ndp_sec->r_capab = nan->cfg->security_capab;
 	ndp_sec->r_instance_id = peer->ndp_setup.publish_inst_id;
 
