@@ -393,7 +393,7 @@ static void anqp_add_network_auth_type(struct hostapd_data *hapd,
 static void anqp_add_roaming_consortium(struct hostapd_data *hapd,
 					struct wpabuf **buf)
 {
-	unsigned int i;
+	unsigned int i, count = 0;
 	u8 *len;
 	size_t tlen = 2 + 2;
 
@@ -404,15 +404,22 @@ static void anqp_add_roaming_consortium(struct hostapd_data *hapd,
 		struct hostapd_roaming_consortium *rc;
 
 		rc = &hapd->conf->roaming_consortium[i];
+		if (tlen + 1 + rc->len > 2 + 2 + 65535) {
+			wpa_printf(MSG_INFO,
+				   "ANQP: Too many roaming consortium OIs configured to fit into an ANQP-element");
+			break;
+		}
 		tlen += 1 + rc->len;
+		count++;
 	}
 
 	if (wpabuf_resize(buf, tlen) < 0)
 		return;
 
 	len = gas_anqp_add_element(*buf, ANQP_ROAMING_CONSORTIUM);
-	for (i = 0; i < hapd->conf->roaming_consortium_count; i++) {
+	for (i = 0; i < count; i++) {
 		struct hostapd_roaming_consortium *rc;
+
 		rc = &hapd->conf->roaming_consortium[i];
 		wpabuf_put_u8(*buf, rc->len);
 		wpabuf_put_data(*buf, rc->oi, rc->len);
