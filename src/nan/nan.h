@@ -485,6 +485,18 @@ struct nan_config {
 	/* Wi-Fi Aware spec v4.0, Table 141 (Capability Info field) */
 	u8 dev_capa_ext_reg_info; /* NAN_DEV_CAPA_EXT_INFO_0_* */
 
+	/* Wi-Fi Aware R5 draft v0.0.16, Table 173, b16-b21 */
+	u8 dev_capa_ext_info_2; /* NAN_DEV_CAPA_EXT_INFO_2_* */
+
+	/* Wi-Fi Generational Info (4-8); 0 = not advertised */
+	u8 wifi_gen;
+
+	/*
+	 * Maximum Service Specific Info length for SDEA in a unicast follow-up
+	 * frame; 0 = not advertised
+	 */
+	u16 max_ssi_len;
+
 	struct nan_pairing_cfg pairing_cfg;
 	u8 nik[NAN_NIK_LEN];
 

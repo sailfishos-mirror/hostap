@@ -519,6 +519,10 @@ int nan_add_csia(struct wpabuf *buf, u8 capab, size_t cs_list_len,
 void nan_add_dev_capa_ext_attr(struct nan_data *nan, struct wpabuf *buf)
 {
 	u8 pairing_and_npk_caching = 0;
+	u8 byte2 = nan->cfg->dev_capa_ext_info_2;
+	bool wifi_gen_valid = nan->cfg->wifi_gen >= 4 &&
+		nan->cfg->wifi_gen <= 8;
+	u32 ext;
 
 	if (nan->cfg->pairing_cfg.pairing_setup)
 		pairing_and_npk_caching |=
@@ -529,15 +533,27 @@ void nan_add_dev_capa_ext_attr(struct nan_data *nan, struct wpabuf *buf)
 	if (nan->cfg->pairing_cfg.pik_caching)
 		pairing_and_npk_caching |=
 			NAN_DEV_CAPA_EXT_INFO_1_PIK_CACHING;
+	if (wifi_gen_valid)
+		pairing_and_npk_caching |=
+			nan->cfg->wifi_gen <<
+			NAN_DEV_CAPA_EXT_INFO_1_WIFI_GEN_POS;
+
+	/* b16-b21 and the Maximum Service Specific Info length in b22-b37 */
+	ext = (byte2 & 0x3f) | ((u32) nan->cfg->max_ssi_len << 6);
 
 	if (!nan->cfg->dev_capa_ext_reg_info &&
-	    !pairing_and_npk_caching)
+	    !pairing_and_npk_caching && !ext)
 		return;
 
 	wpabuf_put_u8(buf, NAN_ATTR_DCEA);
-	wpabuf_put_le16(buf, 2);
+	wpabuf_put_le16(buf, ext ? 5 : 2);
 	wpabuf_put_u8(buf, nan->cfg->dev_capa_ext_reg_info);
 	wpabuf_put_u8(buf, pairing_and_npk_caching);
+	if (ext) {
+		wpabuf_put_u8(buf, ext & 0xff);
+		wpabuf_put_u8(buf, (ext >> 8) & 0xff);
+		wpabuf_put_u8(buf, (ext >> 16) & 0xff);
+	}
 }
 
 
