@@ -449,6 +449,11 @@ OBJS += src/pasn/pasn_common.c
 OBJS += pasn_supplicant.c
 endif
 
+ifdef CONFIG_NAN_IDP
+L_CFLAGS += -DCONFIG_NAN_IDP
+OBJS += wpas_idp.c
+endif
+
 ifdef CONFIG_HS20
 OBJS += hs20_supplicant.c
 L_CFLAGS += -DCONFIG_HS20

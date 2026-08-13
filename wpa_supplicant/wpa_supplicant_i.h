@@ -351,6 +351,10 @@ struct wpa_global {
 #ifdef CONFIG_PROCESS_COORDINATION
 	struct proc_coord *pc;
 #endif /* CONFIG_PROCESS_COORDINATION */
+
+#ifdef CONFIG_NAN_IDP
+	struct wpas_idp_info *idp;
+#endif /* CONFIG_NAN_IDP */
 };
 
 

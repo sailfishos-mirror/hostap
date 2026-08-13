@@ -69,6 +69,7 @@
 #include "dpp_supplicant.h"
 #include "pr_supplicant.h"
 #include "nan_supplicant.h"
+#include "wpas_idp.h"
 #ifdef CONFIG_MESH
 #include "ap/ap_config.h"
 #include "ap/hostapd.h"
@@ -9845,6 +9846,14 @@ struct wpa_global * wpa_supplicant_init(struct wpa_params *params)
 	eloop_register_timeout(WPA_SUPPLICANT_CLEANUP_INTERVAL, 0,
 			       wpas_periodic, global, NULL);
 
+#ifdef CONFIG_NAN_IDP
+	if (wpas_idp_init(global) < 0) {
+		wpa_printf(MSG_ERROR, "IDP: Failed to initialize");
+		wpa_supplicant_deinit(global);
+		return NULL;
+	}
+#endif /* CONFIG_NAN_IDP */
+
 	return global;
 }
 
@@ -9929,6 +9938,10 @@ void wpa_supplicant_deinit(struct wpa_global *global)
 	os_free(global->drv_priv);
 
 	random_deinit();
+
+#ifdef CONFIG_NAN_IDP
+	wpas_idp_deinit(global);
+#endif /* CONFIG_NAN_IDP */
 
 #ifdef CONFIG_PROCESS_COORDINATION
 	proc_coord_deinit(global->pc);
