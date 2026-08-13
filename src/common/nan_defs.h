@@ -31,6 +31,7 @@ enum nan_subtype {
 	NAN_SUBTYPE_PROTECTED_TRANSPORT		= 14,
 	NAN_SUBTYPE_CONNECTION_MGMT		= 15,
 	NAN_SUBTYPE_DEAUTH			= 16,
+	NAN_SUBTYPE_IDP_TERMINATE		= 17,
 };
 
 enum nan_attr_id {
@@ -86,6 +87,12 @@ enum nan_attr_id {
 	NAN_ATTR_SAQA = 0x38, /* SA Query attribute */
 	NAN_ATTR_RKA = 0x39, /* Rekey attribute */
 	NAN_ATTR_NIKA = 0x3A, /* NAN Identity Key attribute */
+	NAN_ATTR_IDP_ID = 0x4D, /* IDP ID attribute */
+	NAN_ATTR_IDP_CHANNEL_LIST = 0x4E, /* IDP Channel List attribute */
+	NAN_ATTR_IDP_OPERATING_CHANNEL = 0x4F, /* IDP Operating Channel
+						* attribute */
+	NAN_ATTR_IDP_TERMINATION = 0x50, /* IDP Termination attribute */
+	NAN_ATTR_IDP_INFORMATION = 0x52, /* IDP Information attribute */
 	NAN_ATTR_VENDOR_SPECIFIC = 0xDD,
 };
 
@@ -97,6 +104,33 @@ enum nan_attr_id {
 #define NAN_CONN_CAPA_IBSS         BIT(4)
 #define NAN_CONN_CAPA_MESH         BIT(5)
 #define NAN_CONN_CAPA_IDP          BIT(6)
+
+/* Wi-Fi Aware R5 spec, Table 182 - IDP Termination attribute */
+#define NAN_IDP_TERM_TYPE_MASK   0x0f
+#define NAN_IDP_TERM_STATUS_MASK 0xf0
+#define NAN_IDP_TERM_STATUS_POS  4
+
+enum nan_idp_term_type {
+	NAN_IDP_TERM_TYPE_REQUEST = 0,
+	NAN_IDP_TERM_TYPE_RESPONSE = 1,
+	NAN_IDP_TERM_TYPE_CONFIRM = 2,
+};
+
+enum nan_idp_term_status {
+	NAN_IDP_TERM_STATUS_CONTINUED = 0,
+	NAN_IDP_TERM_STATUS_ACCEPTED = 1,
+	NAN_IDP_TERM_STATUS_REJECTED = 2,
+};
+
+/* Wi-Fi Aware R5 spec, Table 183 - Termination Info field */
+#define NAN_IDP_TERM_INFO_3_WAY          BIT(0)
+#define NAN_IDP_TERM_INFO_NDP_TRANSITION BIT(1)
+
+/* Wi-Fi Aware R5 spec, Table 184 - IDP Information attribute - Control field */
+#define NAN_IDP_INFO_CTRL_OP_CHAN_PRESENT      BIT(0)
+#define NAN_IDP_INFO_CTRL_BEACON_INFO_PRESENT  BIT(1)
+#define NAN_IDP_INFO_CTRL_DFS_INFO_PRESENT     BIT(2)
+#define NAN_IDP_INFO_CTRL_CLUSTER_INFO_PRESENT BIT(3)
 
 /* Wi-Fi Aware spec v4.0, Table 43 (Reason Code field) */
 enum nan_reason {
