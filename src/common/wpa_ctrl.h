@@ -264,6 +264,39 @@ extern "C" {
 #define NAN_PEER_SCHEDULE_CHANGED "NAN-PEER-SCHEDULE-CHANGED "
 #define NAN_SCHEDULE_UPDATE_DONE "NAN-SCHEDULE-UPDATE-DONE "
 
+/* IDP events */
+/* IDP-REQUEST: Incoming IDP request pending user accept/reject
+ * peer=<MAC address> role=<ap|sta>
+ * No session= field - session is only created on accept.
+ */
+#define IDP_EVENT_REQUEST "IDP-REQUEST "
+/* IDP-TERMINATED: IDP session terminated
+ * session=<id> peer=<MAC address> reason=<code>
+ */
+#define IDP_EVENT_TERMINATED "IDP-TERMINATED "
+/* IDP-REJECTED: Initiator notified that responder rejected the request
+ * peer=<MAC address> session=<id>
+ */
+#define IDP_EVENT_REJECTED "IDP-REJECTED "
+/* IDP-NEGOTIATION-SUCCESS: IDP PASN negotiation completed successfully
+ * peer=<MAC address>
+ */
+#define IDP_EVENT_NEGOTIATION_SUCCESS "IDP-NEGOTIATION-SUCCESS "
+
+/* IDP-ESTABLISHED: IDP data path is active and peer is connected
+ * role=<ap|sta> peer=<NMI> mac_addr=<peer IDP interface MAC address>
+ * Indicated on AP side when STA associates (AP-STA-CONNECTED equivalent).
+ * Indicated on STA side when STA connects (CTRL-EVENT-CONNECTED equivalent).
+ */
+#define IDP_EVENT_ESTABLISHED "IDP-ESTABLISHED "
+
+/* IDP-TERM-REQUEST: Peer has sent a termination request - upper layer must
+ * respond with IDP_TERM_RESPONSE peer=<MAC address> accept|reject within 10
+ * seconds. If no response is received the request is auto-accepted.
+ * peer=<MAC> session=<id> reason=<code> mode=<2|3> ndp=<0|1>
+ */
+#define IDP_EVENT_TERM_REQUEST "IDP-TERM-REQUEST "
+
 /* NAN Pairing status
  * addr=<peer address> akmp=<SAE|PASN> cipher=<CCMP|GCMP-256>
  * status=<success|failure> [nd_pmk=<hex>]

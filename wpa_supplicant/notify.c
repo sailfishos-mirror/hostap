@@ -1644,6 +1644,46 @@ void wpas_notify_nan_stopped(struct wpa_supplicant *wpa_s)
 		       wpa_s->ifname);
 }
 
+void wpas_notify_idp_request(struct wpa_supplicant *wpa_s,
+			     const u8 *peer_addr, const char *role)
+{
+	wpa_msg_global(wpa_s, MSG_INFO,
+		       IDP_EVENT_REQUEST "peer=" MACSTR " role=%s",
+		       MAC2STR(peer_addr), role);
+}
+
+
+void wpas_notify_idp_negotiation_success(struct wpa_supplicant *wpa_s,
+					 const u8 *peer_addr)
+{
+	wpa_msg_global(wpa_s, MSG_INFO,
+		       IDP_EVENT_NEGOTIATION_SUCCESS "peer=" MACSTR,
+		       MAC2STR(peer_addr));
+}
+
+
+void wpas_notify_idp_established(struct wpa_supplicant *wpa_s,
+				 const char *role, const u8 *peer_nmi,
+				 const u8 *peer_iface_mac_addr)
+{
+	wpa_msg_global(wpa_s, MSG_INFO,
+		       IDP_EVENT_ESTABLISHED "role=%s peer=" MACSTR
+		       " mac_addr=" MACSTR,
+		       role, MAC2STR(peer_nmi), MAC2STR(peer_iface_mac_addr));
+}
+
+
+void wpas_notify_idp_term_request(struct wpa_supplicant *wpa_s,
+				  const u8 *peer_addr,
+				  unsigned int session_id,
+				  u8 reason, u8 mode, u8 ndp)
+{
+	wpa_msg_global(wpa_s, MSG_INFO,
+		       IDP_EVENT_TERM_REQUEST
+		       "peer=" MACSTR " session=%u reason=%d mode=%d ndp=%d",
+		       MAC2STR(peer_addr), session_id, reason, mode, ndp);
+}
+
 #endif /* CONFIG_NAN || CONFIG_NAN_USD */
 
 

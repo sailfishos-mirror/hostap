@@ -292,5 +292,16 @@ void wpas_notify_nan_chan_evacuation(struct wpa_supplicant *wpa_s,
 void wpas_notify_nan_stopped(struct wpa_supplicant *wpa_s);
 void wpas_notify_pr_ranging_terminated(struct wpa_supplicant *wpa_s,
 				       int reason);
+void wpas_notify_idp_request(struct wpa_supplicant *wpa_s,
+			     const u8 *peer_addr, const char *role);
+void wpas_notify_idp_negotiation_success(struct wpa_supplicant *wpa_s,
+					 const u8 *peer_addr);
+void wpas_notify_idp_established(struct wpa_supplicant *wpa_s,
+				 const char *role, const u8 *peer_nmi,
+				 const u8 *peer_iface_mac);
+void wpas_notify_idp_term_request(struct wpa_supplicant *wpa_s,
+				  const u8 *peer_addr,
+				  unsigned int session_id,
+				  u8 reason, u8 mode, u8 ndp);
 
 #endif /* NOTIFY_H */
