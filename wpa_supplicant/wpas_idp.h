@@ -12,6 +12,7 @@
 #include "utils/list.h"
 #include "common/nan_defs.h"
 #include "common/wpa_common.h"
+#include "drivers/driver.h"
 
 struct wpa_global;
 
@@ -106,6 +107,14 @@ struct wpas_idp_session {
 
 	/* AP address of the connected peer STA */
 	u8 connected_sta_mac_addr[ETH_ALEN];
+
+	/* IDP interface information */
+	struct wpa_supplicant *group_wpa_s;
+	char iface_name[IFNAMSIZ];
+	u8 iface_addr[ETH_ALEN];
+	char pending_iface_name[IFNAMSIZ];
+	u8 pending_iface_addr[ETH_ALEN];
+	int pending_iface_type;
 };
 
 /**
@@ -168,5 +177,16 @@ int wpas_idp_set_pmk(struct wpas_idp_session *session,
 
 int wpas_idp_state_machine(struct wpas_idp_session *session,
 			   enum wpas_idp_event event);
+
+/* Interface management */
+bool wpas_idp_need_separate_iface(struct wpa_supplicant *wpa_s);
+int wpas_idp_add_interface(struct wpa_supplicant *wpa_s,
+			   struct wpas_idp_session *session,
+			   enum wpa_driver_if_type type);
+struct wpa_supplicant *
+wpas_idp_init_interface(struct wpa_supplicant *wpa_s,
+			struct wpas_idp_session *session);
+void wpas_idp_remove_interface(struct wpa_supplicant *wpa_s,
+			       struct wpas_idp_session *session);
 
 #endif /* WPAS_IDP_H */

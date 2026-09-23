@@ -994,6 +994,177 @@ int wpas_idp_state_machine(struct wpas_idp_session *session,
 
 
 /**
+ * wpas_idp_need_separate_iface - Check whether IDP needs its own netdev
+ * @wpa_s: wpa_supplicant structure
+ * Returns: Whether a separate virtual interface should be created
+ *
+ * Create a dedicated interface for IDP when the driver supports separate
+ * management and data-path operation. Otherwise, reuse the interface on which
+ * the IDP request was initiated.
+ */
+bool wpas_idp_need_separate_iface(struct wpa_supplicant *wpa_s)
+{
+	if (wpa_s->drv_flags & (WPA_DRIVER_FLAGS_DEDICATED_P2P_DEVICE |
+				WPA_DRIVER_FLAGS_P2P_MGMT_AND_NON_P2P))
+		return true;
+
+	wpa_printf(MSG_DEBUG,
+		   "IDP: Driver supports concurrent operation on the same interface");
+
+	return false;
+}
+
+
+/**
+ * wpas_idp_add_interface - Create an IDP virtual interface
+ * @wpa_s: wpa_supplicant structure
+ * @session: IDP session
+ * @type: Interface type, WPA_IF_AP_BSS or WPA_IF_STATION
+ * Returns: 0 on success, -1 on failure
+ *
+ * Use a role-specific interface name derived from the session ID so concurrent
+ * sessions use distinct netdevs: nan-ap<id> for the AP role and nan-sta<id> for
+ * the STA role. On success, record the interface name, address, and type in the
+ * session for wpas_idp_init_interface() to initialize.
+ */
+int wpas_idp_add_interface(struct wpa_supplicant *wpa_s,
+			   struct wpas_idp_session *session,
+			   enum wpa_driver_if_type type)
+{
+	char ifname[IFNAMSIZ];
+	char force_name[IFNAMSIZ] = "";
+	u8 if_addr[ETH_ALEN];
+	int res;
+
+	if (!wpa_s || !session) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: Invalid parameters for interface creation");
+		return -1;
+	}
+
+	if (type == WPA_IF_AP_BSS)
+		res = os_snprintf(ifname, sizeof(ifname), "nan-ap%u",
+				  session->id);
+	else
+		res = os_snprintf(ifname, sizeof(ifname), "nan-sta%u",
+				  session->id);
+	if (os_snprintf_error(sizeof(ifname), res)) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: Interface name too long for session %u",
+			   session->id);
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "IDP: Creating interface %s (type=%d)",
+		   ifname, type);
+
+	if (wpa_drv_if_add(wpa_s, type, ifname, NULL, NULL, force_name,
+			   if_addr, NULL) < 0) {
+		wpa_printf(MSG_ERROR, "IDP: Failed to create interface %s",
+			   ifname);
+		return -1;
+	}
+
+	os_strlcpy(session->pending_iface_name, ifname,
+		   sizeof(session->pending_iface_name));
+	os_memcpy(session->pending_iface_addr, if_addr, ETH_ALEN);
+	session->pending_iface_type = type;
+
+	wpa_printf(MSG_DEBUG, "IDP: Created interface %s addr=" MACSTR,
+		   ifname, MAC2STR(session->pending_iface_addr));
+
+	return 0;
+}
+
+
+/**
+ * wpas_idp_init_interface - Register the IDP interface with wpa_supplicant
+ * @wpa_s: wpa_supplicant structure
+ * @session: IDP session
+ * Returns: New wpa_supplicant instance, or NULL on failure
+ *
+ * Attach a wpa_supplicant instance to the netdev created by
+ * wpas_idp_add_interface() and record the interface details in the
+ * session.
+ */
+struct wpa_supplicant *
+wpas_idp_init_interface(struct wpa_supplicant *wpa_s,
+			struct wpas_idp_session *session)
+{
+	struct wpa_supplicant *iface_wpa_s;
+	struct wpa_interface iface;
+
+	if (!wpa_s || !session || !session->pending_iface_name[0]) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: Invalid parameters for interface init");
+		return NULL;
+	}
+
+	wpa_printf(MSG_DEBUG, "IDP: Initializing interface %s",
+		   session->pending_iface_name);
+
+	os_memset(&iface, 0, sizeof(iface));
+	iface.ifname = session->pending_iface_name;
+	iface.driver = wpa_s->driver->name;
+	iface.ctrl_interface = wpa_s->conf->ctrl_interface;
+	iface.driver_param = wpa_s->conf->driver_param;
+
+	iface_wpa_s = wpa_supplicant_add_iface(wpa_s->global, &iface, wpa_s);
+	if (!iface_wpa_s) {
+		wpa_printf(MSG_ERROR, "IDP: Failed to initialize interface %s",
+			   session->pending_iface_name);
+		return NULL;
+	}
+
+	session->group_wpa_s = iface_wpa_s;
+	os_strlcpy(session->iface_name, session->pending_iface_name,
+		   sizeof(session->iface_name));
+	os_memcpy(session->iface_addr, session->pending_iface_addr, ETH_ALEN);
+	session->pending_iface_name[0] = '\0';
+	os_memset(session->pending_iface_addr, 0, ETH_ALEN);
+
+	wpa_printf(MSG_DEBUG, "IDP: Initialized interface %s addr=" MACSTR,
+		   session->iface_name, MAC2STR(session->iface_addr));
+
+	return iface_wpa_s;
+}
+
+
+/**
+ * wpas_idp_remove_interface - Tear down the IDP virtual interface
+ * @wpa_s: wpa_supplicant structure
+ * @session: IDP session
+ *
+ * Remove the wpa_supplicant interface before removing the
+ * corresponding driver interface.
+ */
+void wpas_idp_remove_interface(struct wpa_supplicant *wpa_s,
+			       struct wpas_idp_session *session)
+{
+	enum wpa_driver_if_type type;
+	char ifname[IFNAMSIZ];
+
+	if (!wpa_s || !session || !session->group_wpa_s ||
+	    !session->iface_name[0])
+		return;
+
+	wpa_printf(MSG_DEBUG, "IDP: Removing interface %s",
+		   session->iface_name);
+
+	type = session->pending_iface_type;
+	os_strlcpy(ifname, session->iface_name, sizeof(ifname));
+
+	wpa_supplicant_remove_iface(wpa_s->global, session->group_wpa_s, 0);
+	session->group_wpa_s = NULL;
+
+	wpa_drv_if_remove(wpa_s, type, ifname);
+
+	session->iface_name[0] = '\0';
+	os_memset(session->iface_addr, 0, ETH_ALEN);
+}
+
+
+/**
  * wpas_idp_get_pending_request_by_peer - Find a pending request by peer
  * @wpa_s: wpa_supplicant context
  * @peer_addr: Peer NMI address
