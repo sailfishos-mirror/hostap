@@ -1,0 +1,70 @@
+/*
+ * wpa_supplicant - NAN IDP PASN authentication context
+ * Copyright (c) Qualcomm Technologies, Inc.
+ *
+ * This software may be distributed under the terms of the BSD license.
+ * See README for more details.
+ */
+
+#ifndef WPAS_IDP_PASN_H
+#define WPAS_IDP_PASN_H
+
+struct wpa_supplicant;
+struct wpas_idp_session;
+struct pasn_data;
+
+#ifdef CONFIG_PASN
+
+/**
+ * enum idp_pasn_state - IDP PASN handshake state
+ */
+enum idp_pasn_state {
+	IDP_PASN_IDLE,
+	IDP_PASN_M1_SENT,
+	IDP_PASN_M2_SENT,
+	IDP_PASN_COMPLETED,
+	IDP_PASN_FAILED,
+};
+
+
+/**
+ * struct idp_pasn_context - IDP PASN handshake context
+ *
+ * Tracks a single IDP PASN handshake. The PASN core maintains the cryptographic
+ * state; this structure stores only the IDP-specific information needed for
+ * attribute generation and session matching.
+ */
+struct idp_pasn_context {
+	struct wpa_supplicant *wpa_s;
+	struct wpas_idp_session *session;
+
+	/* Core PASN data, owns all crypto state */
+	struct pasn_data *pasn;
+
+	u8 peer_addr[ETH_ALEN];
+
+	/* Role in the handshake */
+	bool is_initiator;
+
+	enum idp_pasn_state state;
+
+	/* IDP attributes carried in the Authentication frames */
+	struct wpabuf *idp_req_attrs;
+	struct wpabuf *idp_resp_attrs;
+};
+
+struct idp_pasn_context * wpas_idp_pasn_init(struct wpa_supplicant *wpa_s,
+					     struct wpas_idp_session *session,
+					     const u8 *peer_addr,
+					     bool is_initiator);
+void wpas_idp_pasn_deinit(struct idp_pasn_context *ctx);
+
+#else /* CONFIG_PASN */
+
+static inline void wpas_idp_pasn_deinit(struct idp_pasn_context *ctx)
+{
+}
+
+#endif /* CONFIG_PASN */
+
+#endif /* WPAS_IDP_PASN_H */

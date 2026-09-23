@@ -505,6 +505,7 @@ endif
 ifdef CONFIG_NAN_IDP
 CFLAGS += -DCONFIG_NAN_IDP
 OBJS += wpas_idp.o
+OBJS += wpas_idp_pasn.o
 endif
 
 ifdef CONFIG_HS20

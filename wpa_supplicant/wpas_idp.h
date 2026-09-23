@@ -121,6 +121,9 @@ struct wpas_idp_session {
 	char pending_iface_name[IFNAMSIZ];
 	u8 pending_iface_addr[ETH_ALEN];
 	int pending_iface_type;
+
+	/* PASN context used for pairing verification */
+	struct idp_pasn_context *pasn_ctx;
 };
 
 /**
