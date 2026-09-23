@@ -266,6 +266,7 @@ wpas_idp_alloc_session(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 static void idp_termination_timeout(void *eloop_ctx, void *timeout_ctx);
 static void idp_term_response_tx_done(void *eloop_ctx, void *timeout_ctx);
 static void idp_failure_teardown(void *eloop_ctx, void *timeout_ctx);
+static void idp_term_request_timeout(void *eloop_ctx, void *timeout_ctx);
 
 
 /**
@@ -293,6 +294,7 @@ static void wpas_idp_free_session(struct wpas_idp_session *session)
 	eloop_cancel_timeout(idp_termination_timeout, session, NULL);
 	eloop_cancel_timeout(idp_term_response_tx_done, session, NULL);
 	eloop_cancel_timeout(idp_failure_teardown, session, NULL);
+	eloop_cancel_timeout(idp_term_request_timeout, session, NULL);
 
 	os_free(session->pending_termination);
 	session->pending_termination = NULL;
@@ -1034,6 +1036,29 @@ int wpas_idp_set_pmk(struct wpas_idp_session *session,
 }
 
 
+/*
+ * idp_enter_peer_termination - Leave the operating state after accepting
+ *
+ * Handle peer-initiated termination. A three-message termination exchange
+ * requires a final confirmation, while a two-message exchange completes after
+ * the response is sent.
+ */
+static void idp_enter_peer_termination(struct wpas_idp_session *session)
+{
+	if (session->termination.handshake_mode == 3) {
+		session->state = IDP_STATE_TERM_WAIT_CONFIRM;
+		wpa_printf(MSG_DEBUG,
+			   "IDP: Session %u: ACTIVE -> TERM_WAIT_CONFIRM",
+			   session->id);
+	} else {
+		session->state = IDP_STATE_TERMINATING;
+		wpa_printf(MSG_DEBUG,
+			   "IDP: Session %u: ACTIVE -> TERMINATING",
+			   session->id);
+	}
+}
+
+
 /**
  * wpas_idp_state_machine - IDP session state machine
  * @session: IDP session
@@ -1170,6 +1195,8 @@ int wpas_idp_state_machine(struct wpas_idp_session *session,
 			wpas_notify_idp_established(
 				session->wpa_s, "ap", session->peer_addr,
 				session->connected_sta_mac_addr);
+		} else if (event == IDP_EVENT_TERM_REQUEST_RX) {
+			idp_enter_peer_termination(session);
 		} else if (event == IDP_EVENT_TERM_INITIATED) {
 			session->state = IDP_STATE_TERM_WAIT_RESP;
 			wpa_printf(MSG_DEBUG,
@@ -1191,6 +1218,8 @@ int wpas_idp_state_machine(struct wpas_idp_session *session,
 			wpa_printf(MSG_DEBUG,
 				   "IDP: Session %u: ACTIVE -> TERMINATING",
 				   session->id);
+		} else if (event == IDP_EVENT_TERM_REQUEST_RX) {
+			idp_enter_peer_termination(session);
 		} else if (event == IDP_EVENT_TERM_INITIATED) {
 			session->state = IDP_STATE_TERM_WAIT_RESP;
 			wpa_printf(MSG_DEBUG,
@@ -2554,6 +2583,7 @@ static void idp_complete_termination(struct wpas_idp_session *session)
 	eloop_cancel_timeout(idp_termination_timeout, session, NULL);
 	eloop_cancel_timeout(idp_term_response_tx_done, session, NULL);
 	eloop_cancel_timeout(idp_failure_teardown, session, NULL);
+	eloop_cancel_timeout(idp_term_request_timeout, session, NULL);
 
 	wpas_idp_pasn_deinit(session->pasn_ctx);
 	session->pasn_ctx = NULL;
@@ -2925,6 +2955,162 @@ static int idp_process_termination_response(struct wpas_idp_session *session,
 
 
 /*
+ * idp_term_response_accept - Agree to a peer's termination request
+ *
+ * Reached when termination is accepted or times out. The session is torn down
+ * in either case. If the peer does not receive the termination message, it is
+ * expected to time out and clean up its own state.
+ */
+static int idp_term_response_accept(struct wpas_idp_session *session)
+{
+	struct wpabuf *frame;
+	u8 handshake_mode;
+	int ret;
+
+	if (!session->pending_termination)
+		return -1;
+
+	eloop_cancel_timeout(idp_term_request_timeout, session, NULL);
+
+	handshake_mode = session->pending_termination->mode;
+	os_free(session->pending_termination);
+	session->pending_termination = NULL;
+
+	frame = idp_build_termination_attr(session, NAN_IDP_TERM_TYPE_RESPONSE,
+					   NAN_IDP_TERM_STATUS_ACCEPTED,
+					   session->termination.handshake_mode,
+					   session->termination.ndp_transition);
+	if (!frame)
+		goto tear_down;
+
+	ret = idp_send_termination_naf(session, frame);
+	wpabuf_free(frame);
+	if (ret < 0) {
+		wpa_printf(MSG_INFO,
+			   "IDP: Session %u: could not agree to termination",
+			   session->id);
+		goto tear_down;
+	}
+
+	wpa_printf(MSG_INFO,
+		   "IDP: Session %u: agreed to terminate with " MACSTR,
+		   session->id, MAC2STR(session->peer_addr));
+
+	wpas_idp_state_machine(session, IDP_EVENT_TERM_REQUEST_RX);
+
+	if (handshake_mode == 3) {
+		session->termination.expected_response =
+			NAN_IDP_TERM_TYPE_CONFIRM;
+		eloop_register_timeout(IDP_TERM_RESPONSE_TIMEOUT_SEC, 0,
+				       idp_termination_timeout, session, NULL);
+		return 0;
+	}
+
+	/*
+	 * Delay interface teardown briefly to allow the termination
+	 * acknowledgment to be transmitted. Since there is no indication of
+	 * when transmission completes, a short delay is used.
+	 */
+	if (session->group_wpa_s && session->group_wpa_s != session->wpa_s &&
+	    !is_zero_ether_addr(session->iface_addr)) {
+		session->termination.wait_idp_tx = true;
+		eloop_register_timeout(0, 100000, idp_term_response_tx_done,
+				       session, NULL);
+		return 0;
+	}
+
+	idp_complete_termination(session);
+
+	return 0;
+
+tear_down:
+	idp_complete_termination(session);
+
+	return -1;
+}
+
+
+/*
+ * idp_term_request_timeout - The operator did not answer the peer in time
+ *
+ * If the peer does not respond after requesting termination, treat the timeout
+ * as acceptance and complete local teardown.
+ */
+static void idp_term_request_timeout(void *eloop_ctx, void *timeout_ctx)
+{
+	struct wpas_idp_session *session = eloop_ctx;
+
+	if (!session->pending_termination)
+		return;
+
+	wpa_printf(MSG_INFO,
+		   "IDP: Session %u: no response for termination request from "
+		   MACSTR ", accepting it",
+		   session->id, MAC2STR(session->peer_addr));
+
+	idp_term_response_accept(session);
+}
+
+
+/*
+ * idp_process_termination_request - Handle a peer termination request
+ *
+ * Hold the request for operator approval before responding. If no decision is
+ * received within IDP_TERM_REQUEST_TIMEOUT_SEC, accept the request and proceed
+ * with termination.
+ */
+static int idp_process_termination_request(struct wpas_idp_session *session,
+					   u8 handshake_mode,
+					   bool ndp_transition)
+{
+	struct wpas_idp_pending_termination *pending;
+	enum wpas_idp_termination_reason reason;
+
+	reason = IDP_TERM_REASON_USER_REQUEST;
+
+	pending = os_zalloc(sizeof(*pending));
+	if (!pending)
+		return -1;
+
+	wpa_printf(MSG_INFO, "IDP: Session %u: " MACSTR
+		   " asked to terminate (mode=%u ndp=%d reason=%d)",
+		   session->id, MAC2STR(session->peer_addr), handshake_mode,
+		   ndp_transition, reason);
+
+	session->termination.termination_in_progress = true;
+	session->termination.is_initiator = false;
+	session->termination.handshake_mode = handshake_mode;
+	session->termination.ndp_transition = ndp_transition;
+	session->termination.reason = reason;
+
+	os_memcpy(pending->peer_addr, session->peer_addr, ETH_ALEN);
+	pending->reason = reason;
+	pending->mode = handshake_mode;
+	pending->ndp = ndp_transition ? 1 : 0;
+	pending->session_id = session->id;
+
+	/*
+	 * The same request arrives over both the data path and the management
+	 * interface, so this can run twice for one request. Release anything
+	 * already held and replace the wait rather than stacking a second one
+	 * on top of it.
+	 */
+	os_free(session->pending_termination);
+	session->pending_termination = pending;
+
+	eloop_cancel_timeout(idp_term_request_timeout, session, NULL);
+	eloop_register_timeout(IDP_TERM_REQUEST_TIMEOUT_SEC, 0,
+			       idp_term_request_timeout, session, NULL);
+
+	wpas_notify_idp_term_request(session->wpa_s, session->peer_addr,
+				     session->id, pending->reason,
+				     pending->mode, pending->ndp);
+
+	return 0;
+}
+
+
+/*
  * idp_termination_rx - Act on a received IDP Termination attribute
  * @wpa_s: Interface the frame arrived on
  * @src: Address the frame came from
@@ -2993,6 +3179,9 @@ static int idp_termination_rx(struct wpa_supplicant *wpa_s, const u8 *src,
 	}
 
 	switch (type) {
+	case NAN_IDP_TERM_TYPE_REQUEST:
+		return idp_process_termination_request(session, handshake_mode,
+						       ndp_transition);
 	case NAN_IDP_TERM_TYPE_RESPONSE:
 		return idp_process_termination_response(session,
 							handshake_mode);
