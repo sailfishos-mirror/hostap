@@ -409,6 +409,76 @@ struct wpabuf * wpas_idp_build_resp_attrs(struct wpas_idp_session *session)
 
 
 /**
+ * wpas_idp_state_machine - IDP session state machine
+ * @session: IDP session
+ * @event: Event to process
+ * Returns: 0 on success, -1 on invalid session or unhandled state
+ *
+ * Drives state transitions for an IDP session. A state gets a case here
+ * once the code that can put a session into it exists, so that every branch is
+ * reachable.
+ */
+int wpas_idp_state_machine(struct wpas_idp_session *session,
+			   enum wpas_idp_event event)
+{
+	if (!session) {
+		wpa_printf(MSG_ERROR, "IDP: Invalid session in state machine");
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "IDP: State machine: session=%u state=%d event=%d role=%d",
+		   session->id, session->state, event, session->role);
+
+	switch (session->state) {
+	case IDP_STATE_NONE:
+		if (event == IDP_EVENT_INIT) {
+			session->state = IDP_STATE_NEGOTIATING;
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: NONE -> NEGOTIATING",
+				   session->id);
+		}
+		break;
+	case IDP_STATE_NEGOTIATING:
+		if (event == IDP_EVENT_PASN_SUCCESS) {
+			session->state = IDP_STATE_NEGOTIATED;
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: NEGOTIATING -> NEGOTIATED",
+				   session->id);
+		} else if (event == IDP_EVENT_PASN_FAILED ||
+			   event == IDP_EVENT_FAILURE) {
+			session->state = IDP_STATE_TERMINATING;
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: NEGOTIATING -> TERMINATING",
+				   session->id);
+			wpa_msg(session->wpa_s, MSG_INFO,
+				IDP_EVENT_REJECTED "peer=" MACSTR " session=%u",
+				MAC2STR(session->peer_addr), session->id);
+		}
+		break;
+	case IDP_STATE_TERMINATING:
+		if (event == IDP_EVENT_FAILURE) {
+			session->state = IDP_STATE_NONE;
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: TERMINATING -> NONE",
+				   session->id);
+		}
+		break;
+	default:
+		wpa_printf(MSG_WARNING, "IDP: Session %u: Unhandled state %d",
+			   session->id, session->state);
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "IDP: State machine done: session=%u new_state=%d",
+		   session->id, session->state);
+
+	return 0;
+}
+
+
+/**
  * wpas_idp_get_pending_request_by_peer - Find a pending request by peer
  * @wpa_s: wpa_supplicant context
  * @peer_addr: Peer NMI address

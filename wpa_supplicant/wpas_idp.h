@@ -41,6 +41,25 @@ enum idp_state {
 };
 
 /**
+ * enum wpas_idp_event - IDP state machine events
+ */
+enum wpas_idp_event {
+	IDP_EVENT_INIT,
+	IDP_EVENT_PASN_SUCCESS,
+	IDP_EVENT_PASN_FAILED,
+	IDP_EVENT_AP_UP,
+	IDP_EVENT_STA_CONNECTED,
+	IDP_EVENT_DISCONNECTED,
+	IDP_EVENT_FAILURE,
+	IDP_EVENT_TERM_INITIATED,
+	IDP_EVENT_TERM_REQUEST_RX,
+	IDP_EVENT_TERM_RESPONSE_RX,
+	IDP_EVENT_TERM_CONFIRM_RX,
+	IDP_EVENT_TERM_TIMEOUT,
+	IDP_EVENT_PEER_CONNECTED,
+};
+
+/**
  * struct wpas_idp_channel_info - Negotiated channel parameters for IDP
  */
 struct wpas_idp_channel_info {
@@ -133,5 +152,8 @@ wpas_idp_get_pending_request_by_peer(struct wpa_supplicant *wpa_s,
 struct wpabuf * wpas_idp_build_nan_elem(const struct wpabuf *attrs);
 struct wpabuf * wpas_idp_build_req_attrs(struct wpas_idp_session *session);
 struct wpabuf * wpas_idp_build_resp_attrs(struct wpas_idp_session *session);
+
+int wpas_idp_state_machine(struct wpas_idp_session *session,
+			   enum wpas_idp_event event);
 
 #endif /* WPAS_IDP_H */
