@@ -197,5 +197,6 @@ void wpas_idp_remove_interface(struct wpa_supplicant *wpa_s,
 
 /* AP and STA bring-up */
 int wpas_idp_setup_ap(struct wpas_idp_session *session);
+int wpas_idp_setup_sta(struct wpas_idp_session *session);
 
 #endif /* WPAS_IDP_H */

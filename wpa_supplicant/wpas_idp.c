@@ -1281,6 +1281,121 @@ fail:
 
 
 /**
+ * wpas_idp_setup_sta - Connect the STA for an IDP session
+ * @session: IDP session in the STA role
+ * Returns: 0 on success, -1 on failure
+ *
+ * Create a temporary network profile for the negotiated IDP AP and initiate
+ * association. The profile carries no SAE credential; the STA is expected to
+ * authenticate using a PMKSA derived from the PASN exchange and therefore
+ * requests Open authentication to use PMKSA caching.
+ */
+int wpas_idp_setup_sta(struct wpas_idp_session *session)
+{
+	struct wpa_supplicant *iface_wpa_s;
+	struct wpa_ssid *ssid_conf;
+	char ssid_hex[SSID_MAX_LEN * 2 + 1];
+
+	if (!session) {
+		wpa_printf(MSG_ERROR, "IDP: No session for STA setup");
+		return -1;
+	}
+
+	if (session->pmk_len != PMK_LEN) {
+		wpa_printf(MSG_ERROR, "IDP: Session %u: no PMK for STA setup",
+			   session->id);
+		goto fail;
+	}
+
+	/*
+	 * A responder may create the interface only after accepting the
+	 * request, so it may still need to be registered at this point.
+	 */
+	if (session->pending_iface_name[0] && !session->group_wpa_s &&
+	    !wpas_idp_init_interface(session->wpa_s, session)) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: Session %u: failed to initialize STA interface",
+			   session->id);
+		wpas_idp_remove_interface(session->wpa_s, session);
+		goto fail;
+	}
+
+	if (!session->group_wpa_s) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: Session %u: no interface for STA setup",
+			   session->id);
+		goto fail;
+	}
+
+	if (session->ssid_len == 0 || session->ssid_len > SSID_MAX_LEN) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: Session %u: invalid SSID length %zu",
+			   session->id, session->ssid_len);
+		goto fail;
+	}
+
+	iface_wpa_s = session->group_wpa_s;
+
+	ssid_conf = wpa_config_add_network(iface_wpa_s->conf);
+	if (!ssid_conf) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: Session %u: failed to add STA network",
+			   session->id);
+		goto fail;
+	}
+
+	wpa_config_set_network_defaults(ssid_conf);
+	ssid_conf->mode = WPAS_MODE_INFRA;
+	ssid_conf->disabled = 0;
+	ssid_conf->temporary = 1;
+
+	if (!is_zero_ether_addr(session->bssid)) {
+		os_memcpy(ssid_conf->bssid, session->bssid, ETH_ALEN);
+		ssid_conf->bssid_set = 1;
+	}
+
+	wpa_snprintf_hex(ssid_hex, sizeof(ssid_hex), session->ssid,
+			 session->ssid_len);
+	if (wpa_config_set(ssid_conf, "ssid", ssid_hex, 0) < 0) {
+		wpa_printf(MSG_ERROR, "IDP: Session %u: failed to set STA SSID",
+			   session->id);
+		goto fail_remove;
+	}
+
+	/*
+	 * Request Open authentication since this network has no SAE credential.
+	 * Association is expected to use the PMKSA derived from the PASN
+	 * exchange.
+	 */
+	ssid_conf->key_mgmt = WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_PASN;
+	ssid_conf->auth_alg = WPA_AUTH_ALG_OPEN;
+	ssid_conf->proto = WPA_PROTO_RSN;
+	ssid_conf->pairwise_cipher = WPA_CIPHER_CCMP;
+	ssid_conf->group_cipher = WPA_CIPHER_CCMP;
+	ssid_conf->ieee80211w = MGMT_FRAME_PROTECTION_REQUIRED;
+	ssid_conf->sae_pwe = SAE_PWE_HASH_TO_ELEMENT;
+
+	session->network_id = ssid_conf->id;
+
+	iface_wpa_s->current_ssid = ssid_conf;
+	wpa_supplicant_select_network(iface_wpa_s, ssid_conf);
+
+	wpa_printf(MSG_DEBUG, "IDP: Session %u: STA connecting on '%s' to "
+		   MACSTR,
+		   session->id, iface_wpa_s->ifname, MAC2STR(session->bssid));
+
+	return 0;
+
+fail_remove:
+	wpa_config_remove_network(iface_wpa_s->conf, ssid_conf->id);
+fail:
+	wpas_idp_state_machine(session, IDP_EVENT_FAILURE);
+
+	return -1;
+}
+
+
+/**
  * wpas_idp_need_separate_iface - Check whether IDP needs its own netdev
  * @wpa_s: wpa_supplicant structure
  * Returns: Whether a separate virtual interface should be created
