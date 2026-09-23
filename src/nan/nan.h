@@ -1047,12 +1047,20 @@ int nan_get_peer_ndc_freq(struct nan_data *nan,
 int nan_crypto_derive_nd_pmk(const char *pwd, const u8 *service_id,
 			     enum nan_cipher_suite_id csid,
 			     const u8 *peer_nmi, u8 *nd_pmk);
+int nan_crypto_derive_nd_pmk_from_kdk(const u8 *kdk, size_t kdk_len,
+				      enum nan_cipher_suite_id cipher,
+				      const u8 *initiator_nmi,
+				      const u8 *responder_nmi, u8 *nd_pmk);
 int nan_crypto_pmkid_list(struct dl_list *pmkid_list, const u8 *raddr,
 			  const u8 *srv_id, const int *cipher_suites_list,
 			  const u8 *pmk);
 void nan_crypto_clear_pmkid_list(struct dl_list *pmkid_list);
 void nan_add_dev_capa_attr(struct nan_data *nan, struct wpabuf *buf);
+void nan_add_dev_capa_ext_attr(struct nan_data *nan, struct wpabuf *buf);
 void nan_add_conn_capa_attr(struct wpabuf *buf, u16 capa_bitmap);
+int nan_add_csia(struct wpabuf *buf, u8 capab, size_t cs_list_len,
+		 const struct nan_cipher_suite *cs_list);
+int nan_add_nira(struct wpabuf *buf, const u8 *tag, const u8 *nonce);
 int nan_peer_del_all_ndps(struct nan_data *nan, const u8 *addr);
 int nan_get_chan_entry(struct nan_data *nan, const struct nan_sched_chan *chan,
 		       struct nan_chan_entry *chan_entry);

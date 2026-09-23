@@ -1032,10 +1032,6 @@ int nan_crypto_derive_kek(const u8 *kdk, size_t kdk_len,
 			  enum nan_cipher_suite_id cipher,
 			  const u8 *initiator_nmi, const u8 *responder_nmi,
 			  struct wpa_ptk *ptk);
-int nan_crypto_derive_nd_pmk_from_kdk(const u8 *kdk, size_t kdk_len,
-				      enum nan_cipher_suite_id cipher,
-				      const u8 *initiator_nmi,
-				      const u8 *responder_nmi, u8 *nd_pmk);
 struct wpabuf * nan_crypto_encrypt_key_data(const struct wpabuf *key_data,
 					    const u8 *kek, size_t kek_len);
 struct wpabuf * nan_crypto_decrypt_key_data(const u8 *kek, size_t kek_len,
@@ -1046,8 +1042,6 @@ void nan_parse_pbea(struct nan_data *nan, struct nan_peer *peer,
 void nan_sec_reset(struct nan_data *nan, struct nan_ndp_sec *ndp_sec);
 int nan_sec_rx(struct nan_data *nan, struct nan_peer *peer,
 	       struct nan_msg *msg);
-int nan_add_csia(struct wpabuf *buf, u8 capab, size_t cs_list_len,
-		 const struct nan_cipher_suite *cs_list);
 int nan_sec_add_attrs(struct nan_data *nan, struct nan_peer *peer,
 		      enum nan_subtype subtype, struct wpabuf *buf);
 int nan_sec_init_resp(struct nan_data *nan, struct nan_peer *peer);
@@ -1058,14 +1052,12 @@ bool nan_sec_ndp_store_keys(struct nan_data *nan, struct nan_peer *peer,
 int nan_sec_get_tk(struct nan_data *nan, struct nan_peer *peer,
 		   const u8 *peer_ndi, const u8 *local_ndi,
 		   u8 *tk, size_t *tk_len, enum nan_cipher_suite_id *csid);
-void nan_add_dev_capa_ext_attr(struct nan_data *nan, struct wpabuf *buf);
 
 void nan_bootstrap_reset(struct nan_data *nan, struct nan_peer *peer);
 bool nan_bootstrap_handle_rx(struct nan_data *nan, const u8 *peer_nmi,
 			     const u8 *npba, u16 npba_len,
 			     const u8 *buf, size_t len,
 			     int handle, u8 req_instance_id);
-int nan_add_nira(struct wpabuf *buf, const u8 *tag, const u8 *nonce);
 void nan_parse_peer_dev_capa_ext(struct nan_data *nan, struct nan_peer *peer,
 				 struct nan_attrs *attrs);
 int nan_configure_peer_schedule(struct nan_data *nan, struct nan_peer *peer,
