@@ -15,6 +15,7 @@
 #include "wpa_supplicant_i.h"
 #include "driver_i.h"
 #include "nan_supplicant.h"
+#include "notify.h"
 #include "wpas_idp.h"
 #include "wpas_idp_pasn.h"
 
@@ -519,6 +520,45 @@ fail:
 
 
 /**
+ * idp_pasn_find_nan_attr - Find a NAN attribute
+ * @attrs: NAN attributes returned by idp_pasn_get_nan_attrs()
+ * @attr_id: Attribute identifier to look for
+ * @attr_len: Set to the length of the attribute body on return, may be NULL
+ * Returns: Pointer to the attribute body, or NULL if it is not present
+ *
+ * Only an attribute whose declared length fits in the defragmented NAN
+ * element is reported.
+ */
+static const u8 * idp_pasn_find_nan_attr(const struct wpabuf *attrs,
+					 u8 attr_id, u16 *attr_len)
+{
+	const u8 *pos, *end;
+
+	if (!attrs)
+		return NULL;
+
+	pos = wpabuf_head_u8(attrs);
+	end = pos + wpabuf_len(attrs);
+	while (end - pos >= NAN_ATTR_HDR_LEN) {
+		u8 id = pos[0];
+		u16 len = WPA_GET_LE16(&pos[1]);
+
+		pos += NAN_ATTR_HDR_LEN;
+		if (len > end - pos)
+			break;
+		if (id == attr_id) {
+			if (attr_len)
+				*attr_len = len;
+			return pos;
+		}
+		pos += len;
+	}
+
+	return NULL;
+}
+
+
+/**
  * wpas_idp_pasn_send_reject - Refuse an incoming IDP PASN handshake
  * @wpa_s: wpa_supplicant structure
  * @peer_addr: Peer NAN management interface address
@@ -564,6 +604,102 @@ int wpas_idp_pasn_send_reject(struct wpa_supplicant *wpa_s,
 	return 0;
 }
 
+/**
+ * wpas_idp_pasn_extract_role_from_m1 - Work out our role from a PASN M1
+ * @attrs: NAN attributes from the received PASN M1
+ * Returns: The role this device is to take
+ *
+ * An initiator that intends to be the AP names the BSSID and SSID it will use
+ * in an IDP ID attribute, which leaves this device as the STA. Without that
+ * attribute the initiator wants to be the STA, so this device takes the AP
+ * role.
+ */
+static enum wpas_idp_role
+wpas_idp_pasn_extract_role_from_m1(const struct wpabuf *attrs)
+{
+	return idp_pasn_find_nan_attr(attrs, NAN_ATTR_IDP_ID, NULL) ?
+		WPAS_IDP_ROLE_STA : WPAS_IDP_ROLE_AP;
+}
+
+
+/**
+ * idp_pasn_rx_m1 - Hold an incoming IDP request until it is answered for
+ * @wpa_s: wpa_supplicant structure
+ * @mgmt: Received PASN M1
+ * @len: Length of @mgmt
+ * @freq: Frequency the frame arrived on
+ * Returns: 0 on success, -1 on failure
+ *
+ * No session is created and no interface is brought up yet. The frame is kept
+ * along with the role it proposes, and the decision is reported upwards; only
+ * once the request is accepted does the responder answer it.
+ */
+static int idp_pasn_rx_m1(struct wpa_supplicant *wpa_s,
+			  const struct ieee80211_mgmt *mgmt, size_t len,
+			  int freq)
+{
+	struct wpas_idp_pending_request *pending;
+	const u8 *peer_addr = mgmt->sa;
+	struct wpabuf *attrs;
+	const u8 *csia;
+	u16 csia_len = 0;
+
+	if (!wpa_s->global->idp)
+		return -1;
+
+	if (wpas_idp_get_pending_request_by_peer(wpa_s, peer_addr)) {
+		wpa_printf(MSG_DEBUG,
+			   "IDP-PASN: Repeated PASN M1 from " MACSTR
+			   ", ignoring",
+			   MAC2STR(peer_addr));
+		return 0;
+	}
+
+	pending = os_zalloc(sizeof(*pending));
+	if (!pending)
+		return -1;
+
+	pending->m1_frame = wpabuf_alloc_copy(mgmt, len);
+	if (!pending->m1_frame) {
+		os_free(pending);
+		return -1;
+	}
+
+	attrs = idp_pasn_get_nan_attrs(
+		mgmt->u.auth.variable,
+		len - offsetof(struct ieee80211_mgmt, u.auth.variable));
+
+	os_memcpy(pending->peer_addr, peer_addr, ETH_ALEN);
+	pending->proposed_role = wpas_idp_pasn_extract_role_from_m1(attrs);
+	pending->freq = freq;
+	pending->handle = -1;
+
+	/*
+	 * The CSIA names the publish the peer discovered us through, which is
+	 * the handle the answer has to be built against.
+	 */
+	csia = idp_pasn_find_nan_attr(attrs, NAN_ATTR_CSIA, &csia_len);
+
+	/* Capabilities(1) followed by cipher suite and instance ID pairs */
+	if (csia && csia_len >= 1 + sizeof(struct nan_cipher_suite))
+		pending->handle = csia[2];
+	wpabuf_free(attrs);
+
+	dl_list_add(&wpa_s->global->idp->pending_requests, &pending->list);
+
+	wpa_printf(MSG_DEBUG, "IDP-PASN: Holding request from " MACSTR
+		   " proposing role=%s handle=%d",
+		   MAC2STR(peer_addr),
+		   pending->proposed_role == WPAS_IDP_ROLE_AP ? "ap" : "sta",
+		   pending->handle);
+
+	wpas_notify_idp_request(wpa_s, peer_addr,
+				pending->proposed_role == WPAS_IDP_ROLE_AP ?
+				"ap" : "sta");
+
+	return 0;
+}
+
 
 /**
  * wpas_idp_pasn_auth_rx - Handle a received IDP PASN Authentication frame
@@ -593,6 +729,8 @@ int wpas_idp_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 		   auth_transaction, MAC2STR(mgmt->sa), status_code);
 
 	switch (auth_transaction) {
+	case 1:
+		return idp_pasn_rx_m1(wpa_s, mgmt, len, freq);
 	default:
 		wpa_printf(MSG_DEBUG,
 			   "IDP-PASN: Unexpected transaction %u from " MACSTR,
