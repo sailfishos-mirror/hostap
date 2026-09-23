@@ -11,6 +11,10 @@
 #include "common/ieee802_11_common.h"
 #include "common/nan_defs.h"
 #include "pasn/pasn_common.h"
+#include "config.h"
+#include "wpa_supplicant_i.h"
+#include "driver_i.h"
+#include "nan_supplicant.h"
 #include "wpas_idp.h"
 #include "wpas_idp_pasn.h"
 
@@ -188,6 +192,163 @@ void wpas_idp_pasn_deinit(struct idp_pasn_context *ctx)
 	wpabuf_free(ctx->idp_resp_attrs);
 
 	os_free(ctx);
+}
+
+
+static int wpas_idp_pasn_send_mgmt_cb(void *ctx, const u8 *data,
+				      size_t data_len, int noack,
+				      unsigned int freq, unsigned int wait)
+{
+	struct idp_pasn_context *pctx = ctx;
+
+	return wpa_drv_send_mlme(pctx->wpa_s, data, data_len, noack, freq,
+				 wait);
+}
+
+
+static int wpas_idp_pasn_validate_custom_pmkid_cb(void *ctx, const u8 *addr,
+						  const u8 *pmkid)
+{
+	/*
+	 * Peer authentication is based on the NIRA nonce/tag lookup and the
+	 * associated pairing key. The PASN PMKID is used only to correlate
+	 * the PASN exchange, so no additional validation is needed here.
+	 */
+	return 0;
+}
+
+
+/**
+ * wpas_idp_pasn_initialize - Build the PASN state for an IDP handshake
+ * @ctx: IDP PASN context
+ * Returns: 0 on success, -1 on failure
+ *
+ * Set up PASN in NAN_PASN_AUTH_MODE_PMK: the NAN pairing key cached for the
+ * peer becomes the PMK, so no password is involved and the peer is
+ * authenticated by having completed pairing earlier.
+ */
+static int wpas_idp_pasn_initialize(struct idp_pasn_context *ctx)
+{
+	struct wpa_supplicant *wpa_s = ctx->wpa_s;
+	struct pasn_data *pasn;
+	const struct wpa_dev_ik *ik = NULL;
+	const u8 *nonce = NULL, *tag = NULL, *pmkid = NULL;
+	int cipher;
+
+	if (!wpa_s->nan) {
+		wpa_printf(MSG_DEBUG, "IDP-PASN: NAN is not running");
+		return -1;
+	}
+
+	if (ctx->pasn) {
+		wpa_pasn_reset(ctx->pasn);
+	} else {
+		ctx->pasn = pasn_data_init();
+		if (!ctx->pasn)
+			return -1;
+	}
+
+	pasn = ctx->pasn;
+
+	pasn_set_own_addr(pasn, wpa_s->own_addr);
+	pasn_set_peer_addr(pasn, ctx->peer_addr);
+
+	/*
+	 * Use the cipher associated with the identity key resolved from the
+	 * NIRA nonce/tag of the peer. If no NIRA information is available,
+	 * fall back to the default 128-bit cipher suite.
+	 */
+	if (nan_peer_get_pairing_cfg(wpa_s->nan, ctx->peer_addr, &nonce,
+				     &tag) && nonce && tag)
+		ik = wpas_nan_find_ik_by_nonce_tag(wpa_s, ctx->peer_addr,
+						   nonce, tag);
+	if (ik && ik->dik_cipher != NAN_NIRA_CIPHER_VER_128)
+		cipher = WPA_CIPHER_GCMP_256;
+	else
+		cipher = WPA_CIPHER_CCMP;
+
+	/*
+	 * PASN requires the responder to echo the PMKID received in M1. When
+	 * initiating a PASN exchange, a fresh PMKID is generated for that
+	 * exchange. This PMKID is used only during PASN authentication and is
+	 * unrelated to the ND-PMKID derived later during IDP verification.
+	 */
+	if (!ctx->is_initiator && ctx->m1_pmkid_valid)
+		pmkid = ctx->m1_pmkid;
+
+	if (nan_pairing_idp_pasn_init(wpa_s->nan, pasn, ctx->peer_addr,
+				      ctx->is_initiator, cipher, pmkid) < 0) {
+		wpa_printf(MSG_INFO,
+			   "IDP-PASN: Failed to set up PASN for peer " MACSTR,
+			   MAC2STR(ctx->peer_addr));
+		goto fail;
+	}
+
+	pasn_register_callbacks(pasn, ctx, wpas_idp_pasn_send_mgmt_cb,
+				wpas_idp_pasn_validate_custom_pmkid_cb,
+				NULL, NULL);
+
+	wpa_printf(MSG_DEBUG, "IDP-PASN: Ready for peer " MACSTR
+		   " akmp=%d cipher=%d group=%d as %s",
+		   MAC2STR(ctx->peer_addr), pasn->akmp, pasn->cipher,
+		   pasn->group,
+		   ctx->is_initiator ? "initiator" : "responder");
+
+	return 0;
+
+fail:
+	wpa_pasn_reset(pasn);
+	pasn_data_deinit(pasn);
+	ctx->pasn = NULL;
+
+	return -1;
+}
+
+
+/**
+ * wpas_idp_pasn_send_reject - Refuse an incoming IDP PASN handshake
+ * @wpa_s: wpa_supplicant structure
+ * @peer_addr: Peer NAN management interface address
+ * @m1_frame: The PASN M1 that is being refused
+ * Returns: 0 if the refusal was sent, -1 on failure
+ *
+ * Replies to the PASN M1 with a failure status so the initiator learns
+ * immediately that the request was rejected. No session is created; a temporary
+ * one is used only to carry the peer address into the handshake context.
+ */
+int wpas_idp_pasn_send_reject(struct wpa_supplicant *wpa_s,
+			      const u8 *peer_addr, struct wpabuf *m1_frame)
+{
+	struct idp_pasn_context *ctx;
+	struct wpas_idp_session tmp_session;
+
+	if (!wpa_s || !peer_addr || !m1_frame)
+		return -1;
+
+	os_memset(&tmp_session, 0, sizeof(tmp_session));
+	tmp_session.wpa_s = wpa_s;
+	os_memcpy(tmp_session.peer_addr, peer_addr, ETH_ALEN);
+
+	ctx = wpas_idp_pasn_init(wpa_s, &tmp_session, peer_addr, false);
+	if (!ctx)
+		return -1;
+
+	if (wpas_idp_pasn_initialize(ctx) < 0) {
+		wpas_idp_pasn_deinit(ctx);
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "IDP-PASN: Rejecting request from " MACSTR,
+		   MAC2STR(peer_addr));
+
+	handle_auth_pasn_1(ctx->pasn, wpa_s->own_addr, peer_addr,
+			   (const struct ieee80211_mgmt *)
+			   wpabuf_head(m1_frame),
+			   wpabuf_len(m1_frame), true /* reject */);
+
+	wpas_idp_pasn_deinit(ctx);
+
+	return 0;
 }
 
 #endif /* CONFIG_PASN */

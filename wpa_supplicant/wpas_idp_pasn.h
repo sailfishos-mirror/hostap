@@ -51,6 +51,10 @@ struct idp_pasn_context {
 	/* IDP attributes carried in the Authentication frames */
 	struct wpabuf *idp_req_attrs;
 	struct wpabuf *idp_resp_attrs;
+
+	/* PMKID from PASN M1, kept by the responder to copy into PASN M2 */
+	u8 m1_pmkid[PMKID_LEN];
+	bool m1_pmkid_valid;
 };
 
 struct idp_pasn_context * wpas_idp_pasn_init(struct wpa_supplicant *wpa_s,
@@ -63,6 +67,8 @@ bool wpas_idp_pasn_is_idp_auth_frame(const u8 *frame_body,
 				     size_t frame_body_len);
 bool wpas_idp_pasn_has_session_for_peer(struct wpa_supplicant *wpa_s,
 					const u8 *peer_addr);
+int wpas_idp_pasn_send_reject(struct wpa_supplicant *wpa_s,
+			      const u8 *peer_addr, struct wpabuf *m1_frame);
 
 #else /* CONFIG_PASN */
 
