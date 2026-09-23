@@ -564,4 +564,41 @@ int wpas_idp_pasn_send_reject(struct wpa_supplicant *wpa_s,
 	return 0;
 }
 
+
+/**
+ * wpas_idp_pasn_auth_rx - Handle a received IDP PASN Authentication frame
+ * @wpa_s: wpa_supplicant structure
+ * @mgmt: Received Authentication frame
+ * @len: Length of @mgmt
+ * @freq: Frequency the frame arrived on
+ * Returns: 0 if the frame was handled, -1 otherwise
+ */
+int wpas_idp_pasn_auth_rx(struct wpa_supplicant *wpa_s,
+			  const struct ieee80211_mgmt *mgmt, size_t len,
+			  int freq)
+{
+	u16 auth_transaction, status_code;
+
+	if (!wpa_s || !mgmt ||
+	    len < offsetof(struct ieee80211_mgmt, u.auth.variable))
+		return -1;
+
+	if (le_to_host16(mgmt->u.auth.auth_alg) != WLAN_AUTH_PASN)
+		return -1;
+
+	auth_transaction = le_to_host16(mgmt->u.auth.auth_transaction);
+	status_code = le_to_host16(mgmt->u.auth.status_code);
+
+	wpa_printf(MSG_DEBUG, "IDP-PASN: RX PASN M%u from " MACSTR " status=%u",
+		   auth_transaction, MAC2STR(mgmt->sa), status_code);
+
+	switch (auth_transaction) {
+	default:
+		wpa_printf(MSG_DEBUG,
+			   "IDP-PASN: Unexpected transaction %u from " MACSTR,
+			   auth_transaction, MAC2STR(mgmt->sa));
+		return -1;
+	}
+}
+
 #endif /* CONFIG_PASN */

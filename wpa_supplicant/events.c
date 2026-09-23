@@ -55,6 +55,7 @@
 #include "dpp_supplicant.h"
 #include "pr_supplicant.h"
 #include "nan_supplicant.h"
+#include "wpas_idp_pasn.h"
 
 
 #define MAX_OWE_TRANSITION_BSS_SELECT_COUNT 5
@@ -7079,6 +7080,27 @@ static int wpas_pasn_auth(struct wpa_supplicant *wpa_s,
 	    ((elems.nan_ie && elems.nan_len) ||
 	     (is_nan_cluster_id(mgmt->bssid) &&
 	      auth_transaction == WLAN_AUTH_TR_SEQ_PASN_AUTH3))) {
+#ifdef CONFIG_NAN_IDP
+		if (wpa_s->global->idp) {
+			size_t body_len =
+				len - offsetof(struct ieee80211_mgmt,
+					       u.auth.variable);
+			const u8 *body = mgmt->u.auth.variable;
+			bool is_idp;
+
+			if (auth_transaction == WLAN_AUTH_TR_SEQ_PASN_AUTH3)
+				is_idp = wpas_idp_pasn_has_session_for_peer(
+					wpa_s, mgmt->sa);
+			else
+				is_idp = elems.nan_ie &&
+					wpas_idp_pasn_is_idp_auth_frame(
+						body, body_len);
+
+			if (is_idp)
+				return wpas_idp_pasn_auth_rx(wpa_s, mgmt, len,
+							     freq);
+		}
+#endif /* CONFIG_NAN_IDP */
 		wpa_printf(MSG_DEBUG,
 			   "PASN: Routing NAN transaction %u",
 			   auth_transaction);
