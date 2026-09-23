@@ -2953,6 +2953,28 @@ static int nl80211_mgmt_subscribe_non_ap(struct i802_bss *bss)
 			ret = -1;
 	}
 #endif /* CONFIG_NAN_USD */
+#ifdef CONFIG_NAN_IDP
+	/*
+	 * Register for protected and unprotected NAFs on the dedicated IDP STA
+	 * interface to receive IDP termination frames.
+	 */
+	if (!drv->multicast_registrations ||
+	    nl80211_register_action_frame2(bss, NAN_NAF_ACTION, 6, true) < 0) {
+		/* fallback to non-multicast */
+		if (nl80211_register_action_frame2(bss, NAN_NAF_ACTION, 6,
+						   false) < 0)
+			ret = -1;
+	}
+	if (!drv->multicast_registrations ||
+	    nl80211_register_action_frame2(bss, NAN_PROTECTED_NAF_ACTION, 6,
+					   true) < 0) {
+		/* fallback to non-multicast */
+		if (nl80211_register_action_frame2(bss,
+						   NAN_PROTECTED_NAF_ACTION, 6,
+						   false) < 0)
+			ret = -1;
+	}
+#endif /* CONFIG_NAN_IDP */
 #ifdef CONFIG_DPP
 	/* DPP Public Action */
 	if (nl80211_register_action_frame(bss,
