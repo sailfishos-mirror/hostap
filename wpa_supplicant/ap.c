@@ -34,6 +34,7 @@
 #include "wpa_supplicant_i.h"
 #include "driver_i.h"
 #include "p2p_supplicant.h"
+#include "wpas_idp.h"
 #include "ap.h"
 #include "ap/sta_info.h"
 #include "notify.h"
@@ -898,6 +899,11 @@ static void ap_sta_authorized_cb(void *ctx, const u8 *mac_addr,
 				 const u8 *ip)
 {
 	wpas_notify_sta_authorized(ctx, mac_addr, authorized, p2p_dev_addr, ip);
+
+#ifdef CONFIG_NAN_IDP
+	if (authorized)
+		wpas_idp_sta_authorized(ctx, mac_addr);
+#endif /* CONFIG_NAN_IDP */
 }
 
 

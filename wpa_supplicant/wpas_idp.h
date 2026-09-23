@@ -220,6 +220,8 @@ int wpas_idp_get_nd_pmk(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 			char *buf, size_t buflen);
 
 /* Event handling */
+void wpas_idp_sta_authorized(struct wpa_supplicant *wpa_s,
+			     const u8 *sta_mac);
 #ifdef CONFIG_NAN_IDP
 void wpas_idp_event(struct wpa_supplicant *wpa_s, enum wpa_event_type event);
 #else /* CONFIG_NAN_IDP */

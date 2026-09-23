@@ -1125,7 +1125,30 @@ int wpas_idp_state_machine(struct wpas_idp_session *session,
 		}
 		break;
 	case IDP_STATE_ACTIVE_AP:
+		if (event == IDP_EVENT_PEER_CONNECTED) {
+			session->state = IDP_STATE_PEER_CONNECTED;
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: ACTIVE_AP -> PEER_CONNECTED",
+				   session->id);
+
+			/*
+			 * The AP has no local connection event. Consider the
+			 * IDP link established when the peer connects and the
+			 * data path is available.
+			 */
+			wpas_notify_idp_established(
+				session->wpa_s, "ap", session->peer_addr,
+				session->connected_sta_mac_addr);
+		} else if (event == IDP_EVENT_DISCONNECTED ||
+			   event == IDP_EVENT_FAILURE) {
+			session->state = IDP_STATE_TERMINATING;
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: ACTIVE_AP -> TERMINATING",
+				   session->id);
+		}
+		break;
 	case IDP_STATE_ACTIVE_STA:
+	case IDP_STATE_PEER_CONNECTED:
 		if (event == IDP_EVENT_DISCONNECTED ||
 		    event == IDP_EVENT_FAILURE) {
 			session->state = IDP_STATE_TERMINATING;
@@ -2350,8 +2373,14 @@ idp_find_active_ap_session(struct wpa_supplicant *wpa_s)
 
 	dl_list_for_each(session, &wpa_s->global->idp->sessions,
 			 struct wpas_idp_session, list) {
-		if (session->role == WPAS_IDP_ROLE_AP &&
-		    session->state == IDP_STATE_ACTIVE_AP)
+		if (session->role != WPAS_IDP_ROLE_AP)
+			continue;
+		/*
+		 * A peer having joined does not stop the AP, and further
+		 * peers can still be told about it.
+		 */
+		if (session->state == IDP_STATE_ACTIVE_AP ||
+		    session->state == IDP_STATE_PEER_CONNECTED)
 			return session;
 	}
 
@@ -2397,4 +2426,38 @@ void wpas_idp_add_sdf_info_attr(struct wpa_supplicant *wpa_s,
 	}
 
 	wpabuf_free(attr);
+}
+
+
+/**
+ * wpas_idp_sta_authorized - Indicate that a peer has joined the IDP AP
+ * @wpa_s: Interface the AP is running on
+ * @sta_mac: Address the peer joined with
+ *
+ * The AP side of an IDP link has no association of its own to report, so a
+ * peer completing its own is what tells this device the data path is carrying
+ * traffic. This is called from the AP's station authorization callback.
+ */
+void wpas_idp_sta_authorized(struct wpa_supplicant *wpa_s, const u8 *sta_mac)
+{
+	struct wpas_idp_session *session;
+
+	if (!wpa_s->global->idp)
+		return;
+
+	dl_list_for_each(session, &wpa_s->global->idp->sessions,
+			 struct wpas_idp_session, list) {
+		if (session->group_wpa_s != wpa_s ||
+		    session->role != WPAS_IDP_ROLE_AP ||
+		    session->state != IDP_STATE_ACTIVE_AP)
+			continue;
+
+		wpa_printf(MSG_DEBUG,
+			   "IDP: Session %u: peer joined AP as " MACSTR,
+			   session->id, MAC2STR(sta_mac));
+
+		os_memcpy(session->connected_sta_mac_addr, sta_mac, ETH_ALEN);
+		wpas_idp_state_machine(session, IDP_EVENT_PEER_CONNECTED);
+		return;
+	}
 }
