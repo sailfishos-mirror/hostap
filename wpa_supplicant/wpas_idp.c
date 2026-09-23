@@ -9,6 +9,9 @@
 #include "utils/includes.h"
 #include "utils/common.h"
 #include "utils/wpabuf.h"
+#include "common/ieee802_11_defs.h"
+#include "common/nan_defs.h"
+#include "config.h"
 #include "wpa_supplicant_i.h"
 #include "wpas_idp.h"
 
@@ -161,6 +164,160 @@ static void wpas_idp_free_session(struct wpas_idp_session *session)
 	dl_list_del(&session->list);
 
 	os_free(session);
+}
+
+
+/*
+ * idp_get_country_string - Fill the 3-byte country code for IDP attributes
+ *
+ * Uses the configured country code, or "XX" (noncountry entity) when none is
+ * set. The third byte is 0x04 to indicate the global values (IEEE Std
+ * 802.11-2024, Table E-4.
+ */
+static void idp_get_country_string(struct wpa_supplicant *wpa_s, u8 out[3])
+{
+	if (wpa_s && wpa_s->conf && wpa_s->conf->country[0] &&
+	    wpa_s->conf->country[1]) {
+		out[0] = wpa_s->conf->country[0];
+		out[1] = wpa_s->conf->country[1];
+	} else {
+		out[0] = 'X';
+		out[1] = 'X';
+	}
+
+	out[2] = 0x04;
+}
+
+
+/**
+ * wpas_idp_build_nan_elem - Build a NAN element
+ * @attrs: NAN attributes to include
+ * Returns: NAN element, including any Fragment elements, or NULL on error
+ *
+ * Fragment elements extend the payload of the preceding Vendor Specific
+ * element, as described in IEEE Std 802.11-2024, 10.28.11.
+ */
+struct wpabuf * wpas_idp_build_nan_elem(const struct wpabuf *attrs)
+{
+	struct wpabuf *buf;
+	const u8 *pos;
+	size_t left, len, num_frags;
+
+	if (!attrs)
+		return NULL;
+
+	pos = wpabuf_head_u8(attrs);
+	left = wpabuf_len(attrs);
+	num_frags = left > 251 ? (left - 251 + 254) / 255 : 0;
+	buf = wpabuf_alloc(2 + 4 + left + 2 * num_frags);
+	if (!buf)
+		return NULL;
+
+	len = left > 251 ? 251 : left;
+	wpabuf_put_u8(buf, WLAN_EID_VENDOR_SPECIFIC);
+	wpabuf_put_u8(buf, 4 + len);
+	wpabuf_put_be32(buf, NAN_IE_VENDOR_TYPE);
+	wpabuf_put_data(buf, pos, len);
+	pos += len;
+	left -= len;
+
+	while (left) {
+		len = left > 255 ? 255 : left;
+		wpabuf_put_u8(buf, WLAN_EID_FRAGMENT);
+		wpabuf_put_u8(buf, len);
+		wpabuf_put_data(buf, pos, len);
+		pos += len;
+		left -= len;
+	}
+
+	return buf;
+}
+
+
+/* Build the IDP Channel List attribute */
+static struct wpabuf *
+idp_build_channel_list_attr(struct wpas_idp_session *session)
+{
+	struct wpabuf *buf;
+	u8 *len_ptr;
+	u8 oc, ch;
+
+	buf = wpabuf_alloc(100);
+	if (!buf)
+		return NULL;
+
+	wpabuf_put_u8(buf, NAN_ATTR_IDP_CHANNEL_LIST);
+	len_ptr = wpabuf_put(buf, 2);
+
+	idp_get_country_string(session->wpa_s, wpabuf_put(buf, 3));
+
+	/*
+	 * Fall back to 5 GHz channel 36 until channel selection completes and
+	 * populates session->channel.
+	 */
+	if (!session->channel.operating_class) {
+		oc = 115;
+		ch = 36;
+	} else {
+		oc = session->channel.operating_class;
+		ch = session->channel.channel_number;
+	}
+
+	wpabuf_put_u8(buf, oc);
+	wpabuf_put_u8(buf, 1); /* number of channels */
+	wpabuf_put_u8(buf, ch);
+
+	WPA_PUT_LE16(len_ptr, wpabuf_len(buf) - NAN_ATTR_HDR_LEN);
+
+	return buf;
+}
+
+
+/* Build the combined IDP attribute payload carried in PASN M1/M2 */
+static struct wpabuf *
+idp_build_attributes_payload(struct wpas_idp_session *session)
+{
+	struct wpabuf *payload, *attr;
+
+	payload = wpabuf_alloc(300);
+	if (!payload)
+		return NULL;
+
+	attr = idp_build_channel_list_attr(session);
+	if (attr) {
+		wpabuf_put_buf(payload, attr);
+		wpabuf_free(attr);
+	}
+
+	return payload;
+}
+
+
+/**
+ * wpas_idp_build_req_attrs - Build IDP request attributes for PASN M1
+ * @session: IDP session
+ * Returns: Attribute buffer, or NULL on failure
+ */
+struct wpabuf * wpas_idp_build_req_attrs(struct wpas_idp_session *session)
+{
+	if (!session)
+		return NULL;
+
+	return idp_build_attributes_payload(session);
+}
+
+
+/**
+ * wpas_idp_build_resp_attrs - Build IDP response attributes for PASN M2
+ * @session: IDP session
+ * Returns: Attribute buffer, or NULL on failure
+ */
+struct wpabuf * wpas_idp_build_resp_attrs(struct wpas_idp_session *session)
+{
+	if (!session)
+		return NULL;
+
+	return idp_build_attributes_payload(session);
 }
 
 

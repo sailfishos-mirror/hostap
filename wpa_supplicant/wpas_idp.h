@@ -41,6 +41,15 @@ enum idp_state {
 };
 
 /**
+ * struct wpas_idp_channel_info - Negotiated channel parameters for IDP
+ */
+struct wpas_idp_channel_info {
+	u8 country_string[3];
+	u8 operating_class;
+	u8 channel_number;
+};
+
+/**
  * struct wpas_idp_session - IDP session state
  *
  * Stores the state for one IDP connection.
@@ -63,6 +72,9 @@ struct wpas_idp_session {
 
 	/* Network ID used by the STA */
 	int network_id;
+
+	/* Negotiated channel parameters */
+	struct wpas_idp_channel_info channel;
 
 	/* AP address of the connected peer STA */
 	u8 connected_sta_mac_addr[ETH_ALEN];
@@ -111,5 +123,10 @@ wpas_idp_alloc_session(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 struct wpas_idp_pending_request *
 wpas_idp_get_pending_request_by_peer(struct wpa_supplicant *wpa_s,
 				     const u8 *peer_addr);
+
+/* Attribute builders */
+struct wpabuf * wpas_idp_build_nan_elem(const struct wpabuf *attrs);
+struct wpabuf * wpas_idp_build_req_attrs(struct wpas_idp_session *session);
+struct wpabuf * wpas_idp_build_resp_attrs(struct wpas_idp_session *session);
 
 #endif /* WPAS_IDP_H */
