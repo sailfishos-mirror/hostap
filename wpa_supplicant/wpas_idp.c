@@ -34,6 +34,46 @@
 
 
 /*
+ * idp_assign_session_id - Assign an IDP Session ID for a session we serve as AP
+ * @session: Session to assigned in ID for
+ * Returns: Assigned session ID or 0 if an ID is not available
+ *
+ * The IDP Session ID, together with the initiator's data path address, uniquely
+ * identifies a session. Zero is reserved, leaving values 1-255 available.
+ * Assign the lowest free value and return 0 if all session IDs are in use.
+ */
+static u8 idp_assign_session_id(struct wpas_idp_session *session)
+{
+	struct wpas_idp_session *s;
+	unsigned long used[256 / (8 * sizeof(unsigned long))] = { 0 };
+	unsigned int i;
+
+	if (!session->wpa_s || !session->wpa_s->global ||
+	    !session->wpa_s->global->idp)
+		return 0;
+
+	dl_list_for_each(s, &session->wpa_s->global->idp->sessions,
+			 struct wpas_idp_session, list) {
+		if (s != session && s->idp_session_id)
+			used[s->idp_session_id / (8 * sizeof(used[0]))] |=
+				1UL << (s->idp_session_id %
+					(8 * sizeof(used[0])));
+	}
+
+	for (i = 1; i < 256; i++) {
+		if (!(used[i / (8 * sizeof(used[0]))] &
+		      (1UL << (i % (8 * sizeof(used[0]))))))
+			return i;
+	}
+
+	wpa_printf(MSG_INFO, "IDP: No IDP Session ID left for session %u",
+		   session->id);
+
+	return 0;
+}
+
+
+/*
  * idp_set_channel_from_freq - Settle a session's channel on a given frequency
  * @session: Session to configure
  * @freq: Frequency in MHz, or 0 if the caller did not name one
@@ -866,6 +906,9 @@ int wpas_idp_process_req_attrs(struct wpas_idp_session *session,
 
 		if (idp_generate_ssid(session) < 0)
 			return -1;
+
+		/* The AP creates and owns the IDP Session ID sent in IDP ID. */
+		session->idp_session_id = idp_assign_session_id(session);
 
 		if (session->channel.operating_class == 0 &&
 		    idp_select_default_channel(session) < 0)
