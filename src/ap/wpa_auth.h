@@ -542,6 +542,11 @@ int wpa_auth_pmksa_add_preauth(struct wpa_authenticator *wpa_auth,
 int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
 			   const u8 *pmk, size_t pmk_len, const u8 *pmkid,
 			   int akmp, bool is_ml, int vlan_id);
+int wpa_auth_pmksa_add_pmkid_only(struct wpa_authenticator *wpa_auth,
+				  const u8 *addr, const u8 *pmk,
+				  size_t pmk_len, const u8 *pmkid, int akmp);
+void wpa_auth_pmksa_remove_pmkid(struct wpa_authenticator *wpa_auth,
+				 const u8 *pmkid);
 void wpa_auth_add_sae_pmkid(struct wpa_state_machine *sm, const u8 *pmkid);
 int wpa_auth_pmksa_add2(struct wpa_authenticator *wpa_auth, const u8 *addr,
 			const u8 *pmk, size_t pmk_len, const u8 *pmkid,

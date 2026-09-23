@@ -37,6 +37,13 @@ struct rsn_pmksa_cache_entry {
 	int opportunistic;
 
 	u64 acct_multi_session_id;
+
+	/*
+	 * The entry was added before the Supplicant address was known. It can
+	 * be matched by PMKID alone and is then bound to the Supplicant address
+	 * that referenced the entry by the PMKID.
+	 */
+	bool pmkid_only;
 #ifdef CONFIG_IEEE80211BE
 	/**
 	 * This field is used to identify whether the entry is from ml_pmksa or
@@ -57,6 +64,9 @@ void pmksa_cache_auth_set_ctx(struct rsn_pmksa_cache *cache, void *ctx);
 struct rsn_pmksa_cache_entry *
 pmksa_cache_auth_get(struct rsn_pmksa_cache *pmksa,
 		     const u8 *spa, const u8 *pmkid);
+struct rsn_pmksa_cache_entry *
+pmksa_cache_auth_get_pmkid_only(struct rsn_pmksa_cache *pmksa,
+				const u8 *spa, const u8 *pmkid);
 struct rsn_pmksa_cache_entry * pmksa_cache_get_okc(
 	struct rsn_pmksa_cache *pmksa, const u8 *spa, const u8 *aa,
 	const u8 *pmkid);

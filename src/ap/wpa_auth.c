@@ -6963,6 +6963,78 @@ int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
 }
 
 
+/**
+ * wpa_auth_pmksa_add_pmkid_only - Add a PMKSA that is matched by PMKID only
+ * @wpa_auth: Pointer to WPA authenticator data from wpa_init()
+ * @addr: Address to store the entry under until a Supplicant uses it
+ * @pmk: PMK
+ * @pmk_len: Length of @pmk
+ * @pmkid: PMKID
+ * @akmp: WPA_KEY_MGMT_* of the PMKSA
+ * Returns: 0 on success, -1 on failure
+ *
+ * This is for a PMKSA that is established before the address that the
+ * Supplicant uses for association is known. The lookup with the Supplicant
+ * address is tried first; if it fails, this entry can be matched by its PMKID
+ * alone and it is then bound to the address of the associating Supplicant.
+ */
+int wpa_auth_pmksa_add_pmkid_only(struct wpa_authenticator *wpa_auth,
+				  const u8 *addr, const u8 *pmk,
+				  size_t pmk_len, const u8 *pmkid, int akmp)
+{
+	struct rsn_pmksa_cache_entry *entry;
+
+	if (wpa_auth->conf.disable_pmksa_caching)
+		return -1;
+
+	wpa_hexdump(MSG_DEBUG, "RSN: Cache PMKSA for PMKID only lookup - PMKID",
+		    pmkid, PMKID_LEN);
+	wpa_hexdump_key(MSG_DEBUG, "RSN: Cache PMK (for PMKID only lookup)",
+			pmk, pmk_len);
+	entry = pmksa_cache_auth_add(wpa_auth->pmksa, pmk, pmk_len, pmkid,
+				     NULL, 0, wpa_auth->addr, addr, 0, NULL,
+				     akmp, RSN_HASH_NOT_SPECIFIED);
+	if (!entry)
+		return -1;
+
+	entry->pmkid_only = true;
+
+	return 0;
+}
+
+
+/**
+ * wpa_auth_pmksa_remove_pmkid - Remove a PMKSA cache entry by PMKID
+ * @wpa_auth: Pointer to WPA authenticator data from wpa_init()
+ * @pmkid: PMKID of the entry to remove
+ *
+ * Used by NAN IDP teardown, where the PMKSA entry may be keyed by the peer NMI
+ * before association or by its IDP interface address after the PMKID-only
+ * match.
+ */
+void wpa_auth_pmksa_remove_pmkid(struct wpa_authenticator *wpa_auth,
+				 const u8 *pmkid)
+{
+	struct rsn_pmksa_cache_entry *entry;
+
+	if (!wpa_auth || !pmkid)
+		return;
+
+	entry = wpa_auth->pmksa ?
+		pmksa_cache_auth_get(wpa_auth->pmksa, NULL, pmkid) : NULL;
+	if (entry)
+		pmksa_cache_free_entry(wpa_auth->pmksa, entry);
+
+#ifdef CONFIG_IEEE80211BE
+	if (wpa_auth->ml_pmksa) {
+		entry = pmksa_cache_auth_get(wpa_auth->ml_pmksa, NULL, pmkid);
+		if (entry)
+			pmksa_cache_free_entry(wpa_auth->ml_pmksa, entry);
+	}
+#endif /* CONFIG_IEEE80211BE */
+}
+
+
 void wpa_auth_add_sae_pmkid(struct wpa_state_machine *sm, const u8 *pmkid)
 {
 	os_memcpy(sm->pmkid, pmkid, PMKID_LEN);

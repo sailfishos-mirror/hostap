@@ -517,6 +517,52 @@ pmksa_cache_auth_get(struct rsn_pmksa_cache *pmksa,
 
 
 /**
+ * pmksa_cache_auth_get_pmkid_only - Fetch a PMKSA cache entry by PMKID only
+ * @pmksa: Pointer to PMKSA cache data from pmksa_cache_auth_init()
+ * @spa: Supplicant address for binding the matched PMKSA entry
+ * @pmkid: PMKID
+ * Returns: Pointer to the PMKSA cache entry or %NULL if no match was found
+ *
+ * Only entries that were added with pmkid_only true are considered. This is
+ * meant to be used after the lookup with the Supplicant address has failed.
+ * A matching entry is bound to @spa, so that it is found by the normal lookup
+ * from then on and it cannot be used by any other Supplicant.
+ */
+struct rsn_pmksa_cache_entry *
+pmksa_cache_auth_get_pmkid_only(struct rsn_pmksa_cache *pmksa,
+				const u8 *spa, const u8 *pmkid)
+{
+	struct rsn_pmksa_cache_entry *entry, *old;
+
+	for (entry = pmksa->pmkid[PMKID_HASH(pmkid)]; entry;
+	     entry = entry->hnext) {
+		if (entry->pmkid_only &&
+		    os_memcmp(entry->pmkid, pmkid, PMKID_LEN) == 0)
+			break;
+	}
+	if (!entry)
+		return NULL;
+
+	/* Replace an old entry for the same STA (if found) */
+	old = pmksa_cache_auth_get(pmksa, spa, NULL);
+	if (old && old != entry) {
+		wpa_printf(MSG_DEBUG, "RSN: Remove old entry for SPA " MACSTR
+			   " due to pmkid_only match", MAC2STR(old->spa));
+		pmksa_cache_free_entry(pmksa, old);
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "RSN: Bind PMKSA cache entry added for " MACSTR " to "
+		   MACSTR,
+		   MAC2STR(entry->spa), MAC2STR(spa));
+	os_memcpy(entry->spa, spa, ETH_ALEN);
+	entry->pmkid_only = false;
+
+	return entry;
+}
+
+
+/**
  * pmksa_cache_get_okc - Fetch a PMKSA cache entry using OKC
  * @pmksa: Pointer to PMKSA cache data from pmksa_cache_auth_init()
  * @aa: Authenticator address

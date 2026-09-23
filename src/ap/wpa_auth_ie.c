@@ -1399,6 +1399,10 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 			sm->pmksa = pmksa_cache_auth_get(
 				wpa_auth->pmksa, sm->p2p_dev_addr,
 				&data.pmkid[i * PMKID_LEN]);
+		if (!sm->pmksa)
+			sm->pmksa = pmksa_cache_auth_get_pmkid_only(
+				wpa_auth->pmksa, sm->addr,
+				&data.pmkid[i * PMKID_LEN]);
 		if (sm->pmksa) {
 			pmkid = sm->pmksa->pmkid;
 			break;
