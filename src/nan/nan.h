@@ -16,6 +16,7 @@
 struct nan_cluster_config;
 struct nan_peer;
 struct nan_pik_cache;
+struct pasn_data;
 enum nan_reason;
 struct ieee80211_mgmt;
 
@@ -981,6 +982,8 @@ int nan_bootstrap_get_supported_methods(struct nan_data *nan,
 bool nan_publish_instance_id_valid(struct nan_data *nan, u8 instance_id,
 				   u8 *service_id);
 void nan_set_cluster_id(struct nan_data *nan, const u8 *cluster_id);
+const u8 * nan_get_cluster_id(struct nan_data *nan);
+int nan_send_peer_naf(struct nan_data *nan, const u8 *dst, struct wpabuf *buf);
 int nan_action_rx(struct nan_data *nan, const struct ieee80211_mgmt *mgmt,
 		  size_t len);
 int nan_tx_status(struct nan_data *nan, const u8 *dst, const u8 *data,
@@ -1003,6 +1006,7 @@ int nan_peer_store_pairing_pmkid(struct nan_data *nan, const u8 *addr,
 void nan_pairing_store_sae_pmkid(struct nan_data *nan_data, const u8 *addr);
 int nan_peer_get_conn_capa(struct nan_data *nan, const u8 *addr,
 			   u16 *capa, bool *valid);
+int nan_peer_get_freq(struct nan_data *nan, const u8 *addr);
 int nan_peer_get_schedule_info(struct nan_data *nan, const u8 *addr,
 			       struct nan_peer_schedule *sched);
 int nan_peer_dump_sched_to_buf(struct nan_peer_schedule *sched,
@@ -1025,6 +1029,7 @@ void nan_local_sched_update(struct nan_data *nan, struct nan_schedule *sched);
 void nan_set_sched_update_pending(struct nan_data *nan, bool pending);
 void nan_set_supported_bands(struct nan_data *nan, u8 supported_bands);
 void nan_set_cm_capa(struct nan_data *nan, u8 cm_capa, bool enable);
+void nan_set_idp_twt_support(struct nan_data *nan, bool enable);
 int nan_cm_terminate(struct nan_data *nan, const u8 *addr,
 		     enum nan_cm_sa type, const u8 *init_ndi,
 		     const u8 *resp_ndi);
@@ -1112,6 +1117,11 @@ int nan_pairing_set_pik_caching(struct nan_data *nan, bool value);
 bool nan_pairing_is_peer_paired(struct nan_data *nan_data, const u8 *peer_addr);
 int nan_pairing_abort(struct nan_data *nan_data, const u8 *peer_addr);
 void nan_pairing_unpair_peer(struct nan_data *nan_data, const u8 *peer_addr);
+int nan_peer_set_nira(struct nan_data *nan, const u8 *addr, const u8 *nonce,
+		      const u8 *tag);
+int nan_pairing_idp_pasn_init(struct nan_data *nan, struct pasn_data *pasn,
+			      const u8 *addr, bool initiator, int cipher,
+			      const u8 *pmkid);
 #else /* CONFIG_PASN */
 static inline int nan_pairing_add_attrs(struct nan_data *nan_data,
 					struct wpabuf *buf)

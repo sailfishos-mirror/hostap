@@ -3219,6 +3219,55 @@ int nan_peer_get_conn_capa(struct nan_data *nan, const u8 *addr,
 }
 
 
+/**
+ * nan_peer_get_freq - Get the frequency on which a peer was last seen
+ * @nan: NAN module context from nan_init()
+ * @addr: NMI of the peer
+ * Returns: Frequency in MHz of the last SDF received from the peer, or 0 if
+ *	not known
+ */
+int nan_peer_get_freq(struct nan_data *nan, const u8 *addr)
+{
+	struct nan_peer *peer;
+
+	if (!nan || !addr)
+		return 0;
+
+	peer = nan_get_peer(nan, addr);
+	return peer ? (int) peer->freq : 0;
+}
+
+
+/**
+ * nan_get_cluster_id - Get the current NAN cluster ID
+ * @nan: NAN module context from nan_init()
+ * Returns: The cluster ID, which is all zeros when not in a cluster
+ */
+const u8 * nan_get_cluster_id(struct nan_data *nan)
+{
+	return nan->cluster_id;
+}
+
+
+/**
+ * nan_send_peer_naf - Send a NAN Action frame to a peer
+ * @nan: NAN module context from nan_init()
+ * @dst: NMI of the peer
+ * @buf: NAN Action frame starting from the Category field
+ * Returns: 0 on success, -1 on failure
+ *
+ * The frame is sent from the NMI with the current cluster ID as the BSSID.
+ */
+int nan_send_peer_naf(struct nan_data *nan, const u8 *dst, struct wpabuf *buf)
+{
+	if (!nan->cfg->send_naf)
+		return -1;
+
+	return nan->cfg->send_naf(nan->cfg->cb_ctx, dst, NULL, nan->cluster_id,
+				  buf);
+}
+
+
 int nan_peer_store_pairing_tk(struct nan_data *nan, const u8 *addr,
 			      const u8 *tk, size_t tk_len)
 {
@@ -4135,6 +4184,25 @@ void nan_set_cm_capa(struct nan_data *nan, u8 cm_capa, bool enable)
 	wpa_printf(MSG_DEBUG, "NAN: Local CM capabilities 0x%02x",
 		   nan->cfg->dev_capa_ext_info_2 &
 		   NAN_DEV_CAPA_EXT_INFO_2_CM_MASK);
+}
+
+
+/**
+ * nan_set_idp_twt_support - Indicate support for TWT with an IDP
+ * @nan: NAN module context from nan_init()
+ * @enable: Whether to indicate the capability
+ */
+void nan_set_idp_twt_support(struct nan_data *nan, bool enable)
+{
+	if (!nan || !nan->cfg)
+		return;
+
+	if (enable)
+		nan->cfg->dev_capa_ext_info_2 |=
+			NAN_DEV_CAPA_EXT_INFO_2_IDP_TWT_SUPPORT;
+	else
+		nan->cfg->dev_capa_ext_info_2 &=
+			~NAN_DEV_CAPA_EXT_INFO_2_IDP_TWT_SUPPORT;
 }
 
 

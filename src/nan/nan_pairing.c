@@ -1063,6 +1063,170 @@ fail:
 }
 
 
+/**
+ * nan_peer_set_nira - Store the NIRA nonce and tag received from a peer
+ * @nan: NAN module context from nan_init()
+ * @addr: NMI of the peer
+ * @nonce: NIRA nonce (NAN_NIRA_NONCE_LEN octets)
+ * @tag: NIRA tag (NAN_NIRA_TAG_LEN octets)
+ * Returns: 0 if the NIRA was stored, 1 if a NIRA is already known for the
+ *	peer, -1 if the peer is not known
+ *
+ * A NIRA that is already known for the peer is not replaced.
+ */
+int nan_peer_set_nira(struct nan_data *nan, const u8 *addr, const u8 *nonce,
+		      const u8 *tag)
+{
+	struct nan_peer *peer;
+
+	peer = nan_get_peer(nan, addr);
+	if (!peer)
+		return -1;
+	if (peer->pairing.nonce_tag_valid)
+		return 1;
+
+	os_memcpy(peer->pairing.nonce, nonce, NAN_NIRA_NONCE_LEN);
+	os_memcpy(peer->pairing.tag, tag, NAN_NIRA_TAG_LEN);
+	peer->pairing.nonce_tag_valid = true;
+	peer->pairing.pairing_cfg.pairing_verification = true;
+
+	return 0;
+}
+
+
+/**
+ * nan_pairing_idp_pasn_init - Prepare PASN for an IDP with a paired peer
+ * @nan: NAN module context from nan_init()
+ * @pasn: PASN data for the handshake, with the own and peer addresses set
+ * @addr: NMI of the peer
+ * @initiator: Whether the local device is the PASN initiator
+ * @cipher: WPA_CIPHER_GCMP_256 or WPA_CIPHER_CCMP
+ * @pmkid: PMKID to use, or %NULL to build it from a new NIRA nonce and tag
+ * Returns: 0 on success, -1 on failure
+ *
+ * The NPK cached from the pairing with the peer is used as the PMK in the same
+ * way as in pairing verification. The caller registers the PASN callbacks.
+ */
+int nan_pairing_idp_pasn_init(struct nan_data *nan, struct pasn_data *pasn,
+			      const u8 *addr, bool initiator, int cipher,
+			      const u8 *pmkid)
+{
+	struct nan_peer *peer;
+	const struct wpabuf *npk;
+	struct wpabuf *rsnxe;
+	const u8 *nonce = NULL, *tag = NULL;
+	u8 npkid[NAN_NIRA_NONCE_LEN + NAN_NIRA_TAG_LEN];
+	int akmp;
+
+	peer = nan_get_peer(nan, addr);
+
+	/*
+	 * PASN uses the NAN cluster ID as the BSSID. In non-cluster operation,
+	 * use the peer's advertised cluster ID since the local cluster is not
+	 * available.
+	 */
+	if (is_zero_ether_addr(nan->cluster_id) && peer &&
+	    !is_zero_ether_addr(peer->peer_cluster_id))
+		pasn_set_bssid(pasn, peer->peer_cluster_id);
+	else
+		pasn_set_bssid(pasn, nan->cluster_id);
+
+	pasn_enable_kdk_derivation(pasn);
+
+	/*
+	 * Locate the cached pairing key using either the NIRA nonce/tag
+	 * advertised by the peer or, if NIRA is not present, the NPKID saved
+	 * during pairing. Without either identifier, authentication cannot
+	 * proceed.
+	 */
+	if (!peer || (!peer->pairing.nonce_tag_valid &&
+		      !peer->pairing.npkid_valid)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: IDP: No cached pairing identity for peer "
+			   MACSTR, MAC2STR(addr));
+		return -1;
+	}
+
+	if (peer->pairing.nonce_tag_valid) {
+		nonce = peer->pairing.nonce;
+		tag = peer->pairing.tag;
+	}
+
+	if (cipher == WPA_CIPHER_GCMP_256) {
+		pasn->cipher = WPA_CIPHER_GCMP_256;
+		pasn->group = 20;
+	} else {
+		pasn->cipher = WPA_CIPHER_CCMP;
+		pasn->group = 19;
+	}
+
+	os_free(pasn->pasn_groups);
+	pasn->pasn_groups = os_calloc(2, sizeof(*pasn->pasn_groups));
+	if (!pasn->pasn_groups)
+		return -1;
+	pasn->pasn_groups[0] = pasn->group;
+
+	/*
+	 * If NIRA information is unavailable, the pairing key is located using
+	 * the peer address.
+	 */
+	if (!nan->cfg->get_npk_akmp)
+		return -1;
+	npk = nan->cfg->get_npk_akmp(nan->cfg->cb_ctx, addr, nonce, tag, &akmp);
+	if (!npk) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: IDP: No cached pairing key for peer " MACSTR,
+			   MAC2STR(addr));
+		return -1;
+	}
+
+	pasn_set_akmp(pasn, akmp);
+
+	if (initiator) {
+		pasn_initiator_pmksa_cache_add(nan->initiator_pmksa,
+					       pasn->own_addr, addr,
+					       wpabuf_head_u8(npk),
+					       wpabuf_len(npk), NULL, akmp);
+		pasn->pmksa = nan->initiator_pmksa;
+	} else {
+		pasn_responder_pmksa_cache_add(nan->responder_pmksa,
+					       pasn->own_addr, addr,
+					       wpabuf_head_u8(npk),
+					       wpabuf_len(npk), NULL, akmp);
+		pasn->pmksa = nan->responder_pmksa;
+	}
+
+	/*
+	 * The PMKID used by the PASN exchange is either the one the responder
+	 * has to echo from the received first frame or a fresh one built from
+	 * a NIRA nonce and tag. It is used only for the PASN exchange.
+	 */
+	if (pmkid) {
+		os_memcpy(npkid, pmkid, PMKID_LEN);
+	} else if (nan_nira_get_tag_nonce(nan->cfg, npkid,
+					  &npkid[NAN_NIRA_NONCE_LEN]) < 0) {
+		wpa_printf(MSG_DEBUG, "NAN: IDP: Failed to build PMKID");
+		return -1;
+	}
+	pasn_set_custom_pmkid(pasn, npkid);
+
+	pasn_set_rsn_pairwise(pasn, pasn->cipher);
+	pasn_set_wpa_key_mgmt(pasn, pasn->akmp);
+
+	rsnxe = nan_pairing_generate_rsnxe(akmp, peer->non_cluster ||
+					   !nan->nan_started);
+	if (!rsnxe) {
+		wpa_printf(MSG_DEBUG, "NAN: IDP: Failed to build RSNXE");
+		return -1;
+	}
+	/* pasn_set_rsnxe_ie() copies the element */
+	pasn_set_rsnxe_ie(pasn, wpabuf_head_u8(rsnxe));
+	wpabuf_free(rsnxe);
+
+	return 0;
+}
+
+
 /*
  * nan_pairing_add_csia - Add the pairing Cipher Suite Information attribute
  * @nan_data: Pointer to NAN data structure
