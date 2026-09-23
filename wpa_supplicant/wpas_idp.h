@@ -160,6 +160,8 @@ struct wpabuf * wpas_idp_build_resp_attrs(struct wpas_idp_session *session);
 /* Attribute processors */
 int wpas_idp_process_req_attrs(struct wpas_idp_session *session,
 			       const u8 *attrs, size_t attrs_len);
+int wpas_idp_process_resp_attrs(struct wpas_idp_session *session,
+				const u8 *attrs, size_t attrs_len);
 
 int wpas_idp_set_pmk(struct wpas_idp_session *session,
 		     const u8 *pmk, size_t pmk_len);

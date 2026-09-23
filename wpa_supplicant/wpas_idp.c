@@ -643,6 +643,45 @@ int wpas_idp_process_req_attrs(struct wpas_idp_session *session,
 
 
 /**
+ * wpas_idp_process_resp_attrs - Process PASN M2 attributes on the initiator
+ * @session: IDP session
+ * @attrs: Raw NAN attribute TLVs, or %NULL if PASN M2 carried none
+ * @attrs_len: Length of attrs
+ * Returns: 0 on success, -1 if the session cannot proceed
+ *
+ * When operating as the STA, the peer acts as the AP and must provide both the
+ * BSSID and the operating channel. If either is missing, the handshake fails
+ * immediately instead of timing out during association.
+ */
+int wpas_idp_process_resp_attrs(struct wpas_idp_session *session,
+				const u8 *attrs, size_t attrs_len)
+{
+	if (!session)
+		return -1;
+
+	if (attrs)
+		idp_parse_attributes(attrs, attrs_len, session, NULL);
+
+	if (session->role != WPAS_IDP_ROLE_STA)
+		return 0;
+
+	if (is_zero_ether_addr(session->bssid) || session->ssid_len == 0) {
+		wpa_printf(MSG_INFO,
+			   "IDP: Responder did not provide BSSID/SSID");
+		return -1;
+	}
+
+	if (session->channel.operating_class == 0 ||
+	    session->channel.channel_number == 0) {
+		wpa_printf(MSG_INFO, "IDP: Responder did not provide channel");
+		return -1;
+	}
+
+	return 0;
+}
+
+
+/**
  * wpas_idp_set_pmk - Store PMK derived from PASN handshake
  * @session: IDP session
  * @pmk: PMK buffer
