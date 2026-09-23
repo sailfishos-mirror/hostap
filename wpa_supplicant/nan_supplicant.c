@@ -24,6 +24,7 @@
 #include "p2p_supplicant.h"
 #include "pr_supplicant.h"
 #include "nan_supplicant.h"
+#include "wpas_idp.h"
 
 #define DEFAULT_NAN_MASTER_PREF 2
 #define DEFAULT_NAN_DUAL_BAND   0
@@ -4489,6 +4490,9 @@ static void wpas_nan_de_add_extra_attrs(void *ctx, struct wpabuf *buf)
 		nan_add_dev_capa_attr(wpa_s->nan, buf);
 		nan_pairing_add_attrs(wpa_s->nan, buf);
 		wpas_nan_add_conn_capa_attr(wpa_s, buf);
+#ifdef CONFIG_NAN_IDP
+		wpas_idp_add_sdf_info_attr(wpa_s, buf);
+#endif /* CONFIG_NAN_IDP */
 	}
 
 	if (!wpas_nan_ndp_allowed(wpa_s) || !map_ids)

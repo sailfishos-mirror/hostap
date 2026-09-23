@@ -2335,3 +2335,66 @@ int wpas_idp_get_nd_pmk(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 	return wpa_snprintf_hex(buf, buflen, session->nd_pmk, PMK_LEN);
 }
 #endif /* CONFIG_TESTING_OPTIONS */
+
+
+/**
+ * idp_find_active_ap_session - Find the session whose IDP AP is up
+ *
+ * Only one AP is brought up at a time, so the first match is the AP this device
+ * is running.
+ */
+static struct wpas_idp_session *
+idp_find_active_ap_session(struct wpa_supplicant *wpa_s)
+{
+	struct wpas_idp_session *session;
+
+	dl_list_for_each(session, &wpa_s->global->idp->sessions,
+			 struct wpas_idp_session, list) {
+		if (session->role == WPAS_IDP_ROLE_AP &&
+		    session->state == IDP_STATE_ACTIVE_AP)
+			return session;
+	}
+
+	return NULL;
+}
+
+
+/**
+ * wpas_idp_add_sdf_info_attr - Advertise a running IDP AP in a NAN SDF
+ * @wpa_s: Interface publishing the service
+ * @buf: Attribute buffer of the frame being built
+ *
+ * Advertise infrastructure connectivity and the operating channel in
+ * service discovery so a peer can determine whether and how to start
+ * an IDP session.
+ *
+ * Omit the attribute if there is insufficient space in the frame.
+ */
+void wpas_idp_add_sdf_info_attr(struct wpa_supplicant *wpa_s,
+				struct wpabuf *buf)
+{
+	struct wpas_idp_session *session;
+	struct wpabuf *attr;
+	bool with_channel;
+
+	if (!wpa_s->global->idp)
+		return;
+
+	session = idp_find_active_ap_session(wpa_s);
+	if (!session)
+		return;
+
+	with_channel = session->channel.channel_number != 0;
+	attr = idp_build_idp_information_attr(session, with_channel);
+	if (!attr)
+		return;
+
+	if (wpabuf_tailroom(buf) < wpabuf_len(attr)) {
+		wpa_printf(MSG_DEBUG,
+			   "IDP: No room in SDF for IDP Information attribute");
+	} else {
+		wpabuf_put_buf(buf, attr);
+	}
+
+	wpabuf_free(attr);
+}

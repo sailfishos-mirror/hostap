@@ -206,6 +206,8 @@ void wpas_idp_remove_interface(struct wpa_supplicant *wpa_s,
 /* AP and STA bring-up */
 int wpas_idp_setup_ap(struct wpas_idp_session *session);
 int wpas_idp_setup_sta(struct wpas_idp_session *session);
+void wpas_idp_add_sdf_info_attr(struct wpa_supplicant *wpa_s,
+				struct wpabuf *buf);
 
 int wpas_idp_request(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 		     enum wpas_idp_role role, int handle, u8 instance_id,
