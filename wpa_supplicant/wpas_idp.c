@@ -976,6 +976,37 @@ int wpas_idp_state_machine(struct wpas_idp_session *session,
 			wpa_printf(MSG_DEBUG,
 				   "IDP: Session %u: NEGOTIATING -> NEGOTIATED",
 				   session->id);
+
+			/*
+			 * Continue with role-specific setup in the same state
+			 * machine invocation. PASN success is reported only
+			 * once, so waiting for a separate event would leave the
+			 * session unconfigured.
+			 *
+			 * The setup functions report failures through
+			 * IDP_EVENT_FAILURE, which advances the state before
+			 * they return. Any additional return value handling
+			 * here is therefore limited to logging.
+			 */
+			if (session->role == WPAS_IDP_ROLE_AP) {
+				session->state = IDP_STATE_CONFIGURING_AP;
+				wpa_printf(MSG_DEBUG,
+					   "IDP: Session %u: NEGOTIATED -> CONFIGURING_AP",
+					   session->id);
+				if (wpas_idp_setup_ap(session) < 0)
+					wpa_printf(MSG_ERROR,
+						   "IDP: Session %u: AP setup failed",
+						   session->id);
+			} else {
+				session->state = IDP_STATE_CONFIGURING_STA;
+				wpa_printf(MSG_DEBUG,
+					   "IDP: Session %u: NEGOTIATED -> CONFIGURING_STA",
+					   session->id);
+				if (wpas_idp_setup_sta(session) < 0)
+					wpa_printf(MSG_ERROR,
+						   "IDP: Session %u: STA setup failed",
+						   session->id);
+			}
 		} else if (event == IDP_EVENT_PASN_FAILED ||
 			   event == IDP_EVENT_FAILURE) {
 			session->state = IDP_STATE_TERMINATING;
@@ -985,6 +1016,37 @@ int wpas_idp_state_machine(struct wpas_idp_session *session,
 			wpa_msg(session->wpa_s, MSG_INFO,
 				IDP_EVENT_REJECTED "peer=" MACSTR " session=%u",
 				MAC2STR(session->peer_addr), session->id);
+		}
+		break;
+	case IDP_STATE_NEGOTIATED:
+		/*
+		 * The session passes through this state immediately after
+		 * NEGOTIATING. Any event received while in this state indicates
+		 * that the transition above did not execute as expected.
+		 */
+		wpa_printf(MSG_INFO,
+			   "IDP: Session %u: event %d in NEGOTIATED state, setup was not started",
+			   session->id, event);
+		break;
+	case IDP_STATE_CONFIGURING_AP:
+		if (event == IDP_EVENT_AP_UP) {
+			session->state = IDP_STATE_ACTIVE_AP;
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: CONFIGURING_AP -> ACTIVE_AP",
+				   session->id);
+		} else if (event == IDP_EVENT_FAILURE) {
+			session->state = IDP_STATE_TERMINATING;
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: CONFIGURING_AP -> TERMINATING",
+				   session->id);
+		}
+		break;
+	case IDP_STATE_CONFIGURING_STA:
+		if (event == IDP_EVENT_FAILURE) {
+			session->state = IDP_STATE_TERMINATING;
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: CONFIGURING_STA -> TERMINATING",
+				   session->id);
 		}
 		break;
 	case IDP_STATE_TERMINATING:
