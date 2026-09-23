@@ -272,6 +272,8 @@ int wpas_idp_setup_sta(struct wpas_idp_session *session);
 void wpas_idp_add_sdf_info_attr(struct wpa_supplicant *wpa_s,
 				struct wpabuf *buf);
 
+int wpas_idp_rx_action(struct wpa_supplicant *wpa_s,
+		       const struct ieee80211_mgmt *mgmt, size_t len);
 int wpas_idp_terminate(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 		       enum wpas_idp_termination_reason reason,
 		       u8 handshake_mode, bool ndp_transition);

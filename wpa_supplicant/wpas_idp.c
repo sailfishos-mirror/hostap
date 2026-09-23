@@ -1205,6 +1205,17 @@ int wpas_idp_state_machine(struct wpas_idp_session *session,
 			wpa_printf(MSG_DEBUG,
 				   "IDP: Session %u: TERM_WAIT_RESP -> TERMINATING",
 				   session->id);
+		} else if (event == IDP_EVENT_TERM_RESPONSE_RX) {
+			/*
+			 * The peer has agreed. Nothing else is waited for even
+			 * in the three step form, because the confirm this side
+			 * owes the peer is sent as part of handling the
+			 * response.
+			 */
+			session->state = IDP_STATE_TERMINATING;
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: TERM_WAIT_RESP -> TERMINATING",
+				   session->id);
 		}
 		break;
 	case IDP_STATE_TERMINATING:
@@ -2836,6 +2847,203 @@ fail:
 	os_memset(&session->termination, 0, sizeof(session->termination));
 
 	return -1;
+}
+
+
+/*
+ * idp_parse_termination_attr - Parse an IDP Termination attribute body
+ * @data: Attribute body, after the identifier and length
+ * @len: Length of @data
+ */
+static int idp_parse_termination_attr(const u8 *data, size_t len,
+				      enum nan_idp_term_type *type,
+				      u8 *session_id, u8 *handshake_mode,
+				      bool *ndp_transition)
+{
+	if (len < 3) {
+		wpa_printf(MSG_DEBUG,
+			   "IDP: Termination attribute is %zu octets, needs 3",
+			   len);
+		return -1;
+	}
+
+	*type = (enum nan_idp_term_type) (data[0] & NAN_IDP_TERM_TYPE_MASK);
+	*session_id = data[1];
+	*handshake_mode = (data[2] & NAN_IDP_TERM_INFO_3_WAY) ? 3 : 2;
+	*ndp_transition = (data[2] & NAN_IDP_TERM_INFO_NDP_TRANSITION) != 0;
+
+	return 0;
+}
+
+
+/*
+ * idp_process_termination_response - The peer agreed to tear the link down
+ *
+ * In the three step form the peer is owed a confirm, which is sent before the
+ * link goes away while there is still something to send it on.
+ */
+static int idp_process_termination_response(struct wpas_idp_session *session,
+					    u8 handshake_mode)
+{
+	struct wpabuf *frame;
+
+	if (!session->termination.termination_in_progress ||
+	    !session->termination.is_initiator) {
+		wpa_printf(MSG_DEBUG,
+			   "IDP: Session %u did not ask for termination",
+			   session->id);
+		return -1;
+	}
+
+	wpa_printf(MSG_INFO, "IDP: Session %u: " MACSTR " agreed to terminate",
+		   session->id, MAC2STR(session->peer_addr));
+
+	eloop_cancel_timeout(idp_termination_timeout, session, NULL);
+
+	if (handshake_mode == 3) {
+		u8 mode = session->termination.handshake_mode;
+		bool ndp = session->termination.ndp_transition;
+
+		frame = idp_build_termination_attr(
+			session, NAN_IDP_TERM_TYPE_CONFIRM,
+			NAN_IDP_TERM_STATUS_CONTINUED, mode, ndp);
+		if (!frame)
+			return -1;
+
+		if (idp_send_termination_naf(session, frame) < 0)
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: confirm not sent",
+				   session->id);
+		wpabuf_free(frame);
+	}
+
+	wpas_idp_state_machine(session, IDP_EVENT_TERM_RESPONSE_RX);
+	idp_complete_termination(session);
+
+	return 0;
+}
+
+
+/*
+ * idp_termination_rx - Act on a received IDP Termination attribute
+ * @wpa_s: Interface the frame arrived on
+ * @src: Address the frame came from
+ * @attrs: Attribute area of the frame, past the Action frame header
+ * @attrs_len: Length of @attrs
+ *
+ * The peer is identified by the address the frame came from, which may be
+ * either its management interface or its end of the data path, because the
+ * same frame is sent over both.
+ */
+static int idp_termination_rx(struct wpa_supplicant *wpa_s, const u8 *src,
+			      const u8 *attrs, size_t attrs_len)
+{
+	struct wpas_idp_session *session;
+	enum nan_idp_term_type type;
+	u8 handshake_mode, session_id;
+	bool ndp_transition;
+	size_t attr_len;
+
+	session = wpas_idp_get_session_by_peer(wpa_s, src);
+	if (!session) {
+		wpa_printf(MSG_DEBUG,
+			   "IDP: No session for termination from " MACSTR,
+			   MAC2STR(src));
+		return -1;
+	}
+
+	/* The link is already going away; a further frame changes nothing */
+	if (session->termination_completed)
+		return 0;
+
+	if (attrs_len < NAN_ATTR_HDR_LEN ||
+	    attrs[0] != NAN_ATTR_IDP_TERMINATION)
+		return -1;
+
+	/*
+	 * Compare the declared length against what is left rather than adding
+	 * it to the position, so a length near the top of its range cannot
+	 * carry the comparison past the end of the buffer.
+	 */
+	attr_len = WPA_GET_LE16(&attrs[1]);
+	if (attr_len > attrs_len - NAN_ATTR_HDR_LEN) {
+		wpa_printf(MSG_DEBUG,
+			   "IDP: Termination attribute claims %zu of %zu octets",
+			   attr_len, attrs_len - NAN_ATTR_HDR_LEN);
+		return -1;
+	}
+
+	if (idp_parse_termination_attr(attrs + NAN_ATTR_HDR_LEN, attr_len,
+				       &type, &session_id, &handshake_mode,
+				       &ndp_transition) < 0)
+		return -1;
+
+	/*
+	 * These frames are acted on before any of the link's own protection
+	 * applies, so check that the one named is the one we have. A peer that
+	 * never assigned an identifier sends zero, and the session then has
+	 * nothing to compare against.
+	 */
+	if (session->idp_session_id && session_id &&
+	    session_id != session->idp_session_id) {
+		wpa_printf(MSG_DEBUG,
+			   "IDP: Session %u: termination names IDP %u, not %u",
+			   session->id, session_id, session->idp_session_id);
+		return -1;
+	}
+
+	switch (type) {
+	case NAN_IDP_TERM_TYPE_RESPONSE:
+		return idp_process_termination_response(session,
+							handshake_mode);
+	default:
+		wpa_printf(MSG_DEBUG,
+			   "IDP: Session %u: nothing to do with termination step %u",
+			   session->id, type);
+		return -1;
+	}
+}
+
+
+/**
+ * wpas_idp_rx_action - Process IDP frames out of the NAF stream
+ * @wpa_s: Interface the frame arrived on
+ * @mgmt: The frame
+ * @len: Length of @mgmt
+ * Returns: 0 if the frame was an IDP frame and was consumed, -1 otherwise
+ *
+ * Termination is the only part of IDP carried as an Action frame; the PASN
+ * exchange uses Authentication frames instead.
+ */
+int wpas_idp_rx_action(struct wpa_supplicant *wpa_s,
+		       const struct ieee80211_mgmt *mgmt, size_t len)
+{
+	const u8 *payload;
+	size_t payload_len;
+
+	if (!wpa_s->global->idp || len <= IEEE80211_HDRLEN)
+		return -1;
+
+	payload = (const u8 *) &mgmt->u.action;
+	payload_len = len - IEEE80211_HDRLEN;
+
+	/* Category(1) + Action(1) + OUI(3) + OUI Type(1) + Subtype(1) */
+	if (payload_len < 7 ||
+	    payload[0] != WLAN_ACTION_PUBLIC ||
+	    payload[1] != WLAN_PA_VENDOR_SPECIFIC ||
+	    WPA_GET_BE24(&payload[2]) != OUI_WFA ||
+	    payload[5] != NAN_NAF_OUI_TYPE ||
+	    payload[6] != NAN_SUBTYPE_IDP_TERMINATE)
+		return -1;
+
+	idp_termination_rx(wpa_s, mgmt->sa, payload + 7, payload_len - 7);
+
+	/*
+	 * The frame was addressed to IDP, so it is consumed whether or not it
+	 * could be acted on. Handing it to the NAN discovery engine as well
+	 * would only have it rejected a second time.
+	 */
+	return 0;
 }
 
 

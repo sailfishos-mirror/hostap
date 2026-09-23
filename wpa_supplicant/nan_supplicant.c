@@ -6292,6 +6292,15 @@ void wpas_nan_rx_naf(struct wpa_supplicant *wpa_s,
 			   wpa_s->ifname);
 	}
 
+#ifdef CONFIG_NAN_IDP
+	/*
+	 * Ahead of the data path check below, because an IDP is not a NAN
+	 * data path and a device that carries one need not support them.
+	 */
+	if (wpas_idp_rx_action(wpa_s, mgmt, len) == 0)
+		return;
+#endif /* CONFIG_NAN_IDP */
+
 	if (!wpas_nan_ndp_allowed(wpa_s))
 		return;
 

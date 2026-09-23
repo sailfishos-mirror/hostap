@@ -6292,15 +6292,32 @@ static void wpas_event_rx_mgmt_action(struct wpa_supplicant *wpa_s,
 		/*
 		 * Drop unprotected unicast NAN frames from paired peers, except
 		 * the Deauthentication NAF that is always unprotected and is
-		 * verified with a protected SA Query.
+		 * verified with a protected SA Query, and IDP termination
+		 * frames. The peer may no longer share the protection state
+		 * required for validation during teardown, so dropping the
+		 * frame could delay session cleanup until timeout.
 		 */
 		if (category == WLAN_ACTION_PUBLIC &&
 		    !is_multicast_ether_addr(mgmt->da) &&
-		    wpas_nan_is_peer_paired(wpa_s, mgmt->sa) &&
-		    !(plen >= 6 &&
-		      WPA_GET_BE32(&payload[1]) == NAN_NAF_VENDOR_TYPE &&
-		      payload[5] == NAN_SUBTYPE_DEAUTH))
-			return;
+		    wpas_nan_is_peer_paired(wpa_s, mgmt->sa)) {
+			bool naf = plen >= 6 &&
+				WPA_GET_BE32(&payload[1]) ==
+				NAN_NAF_VENDOR_TYPE;
+			bool idp_terminate = false;
+
+#ifdef CONFIG_NAN_IDP
+			idp_terminate = naf &&
+				payload[5] == NAN_SUBTYPE_IDP_TERMINATE;
+#endif /* CONFIG_NAN_IDP */
+			if (!idp_terminate &&
+			    !(naf && payload[5] == NAN_SUBTYPE_DEAUTH))
+				return;
+
+			if (idp_terminate)
+				wpa_printf(MSG_DEBUG,
+					   "NAN: Accepting unprotected IDP termination from "
+					   MACSTR, MAC2STR(mgmt->sa));
+		}
 
 		if  (WPA_GET_BE32(&payload[1]) == NAN_SDF_VENDOR_TYPE) {
 			payload += 5;
