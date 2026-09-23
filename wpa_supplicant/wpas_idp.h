@@ -70,6 +70,64 @@ struct wpas_idp_channel_info {
 };
 
 /**
+ * enum wpas_idp_termination_reason - Reason for IDP termination
+ * @IDP_TERM_REASON_USER_REQUEST: Local user requested termination
+ * @IDP_TERM_REASON_TIMEOUT: Termination handshake timed out
+ * @IDP_TERM_REASON_FAILURE: Data path or negotiation failure
+ * @IDP_TERM_REASON_PEER_REQUEST: Peer requested termination
+ *
+ * The values are used in the reason parameter of the IDP_TERMINATE
+ * command and in the IDP-TERMINATED event.
+ */
+enum wpas_idp_termination_reason {
+	IDP_TERM_REASON_USER_REQUEST = 0,
+	IDP_TERM_REASON_TIMEOUT = 1,
+	IDP_TERM_REASON_FAILURE = 2,
+	IDP_TERM_REASON_PEER_REQUEST = 3,
+};
+
+/* Timeout for an unanswered termination request, in seconds */
+#define IDP_TERM_REQUEST_TIMEOUT_SEC 5
+
+/**
+ * struct wpas_idp_termination_info - Session termination state
+ * @termination_in_progress: Termination handshake is active
+ * @expected_response: Next termination message expected from the peer
+ * @is_initiator: Local device initiated termination
+ * @reason: Termination reason
+ * @ndp_transition: Replace the data path with an NDP
+ * @handshake_mode: Two-way or three-way termination
+ * @request_time: Time the request was sent or received
+ * @wait_idp_tx: Defer teardown until the termination response is sent
+ */
+struct wpas_idp_termination_info {
+	bool termination_in_progress;
+	enum nan_idp_term_type expected_response;
+	bool is_initiator;
+	enum wpas_idp_termination_reason reason;
+	bool ndp_transition;
+	u8 handshake_mode;
+	struct os_reltime request_time;
+	bool wait_idp_tx;
+};
+
+/**
+ * struct wpas_idp_pending_termination - Pending peer termination request
+ * @peer_addr: Peer NAN management address
+ * @reason: Termination reason
+ * @mode: Two-way or three-way termination
+ * @ndp: Whether to transition to an NDP
+ * @session_id: Session being terminated
+ */
+struct wpas_idp_pending_termination {
+	u8 peer_addr[ETH_ALEN];
+	u8 reason;
+	u8 mode;
+	u8 ndp;
+	unsigned int session_id;
+};
+
+/**
  * struct wpas_idp_session - IDP session state
  *
  * Stores the state for one IDP connection.
@@ -125,6 +183,11 @@ struct wpas_idp_session {
 
 	/* PASN context used for pairing verification */
 	struct idp_pasn_context *pasn_ctx;
+
+	/* Termination state */
+	struct wpas_idp_termination_info termination;
+	bool termination_completed;
+	struct wpas_idp_pending_termination *pending_termination;
 };
 
 /**

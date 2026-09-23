@@ -9,6 +9,7 @@
 #include "utils/includes.h"
 #include "utils/common.h"
 #include "utils/wpabuf.h"
+#include "utils/eloop.h"
 #include "common/ieee802_11_defs.h"
 #include "common/nan_defs.h"
 #include "rsn_supp/wpa.h"
@@ -255,6 +256,15 @@ wpas_idp_alloc_session(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 }
 
 
+/*
+ * Session teardown must be able to cancel pending timer callbacks
+ * before freeing the session.
+ */
+static void idp_termination_timeout(void *eloop_ctx, void *timeout_ctx);
+static void idp_term_response_tx_done(void *eloop_ctx, void *timeout_ctx);
+static void idp_failure_teardown(void *eloop_ctx, void *timeout_ctx);
+
+
 /**
  * wpas_idp_free_session - Free an IDP session
  * @session: Session to free
@@ -271,6 +281,18 @@ static void wpas_idp_free_session(struct wpas_idp_session *session)
 		   session->id, MAC2STR(session->peer_addr));
 
 	dl_list_del(&session->list);
+
+	/*
+	 * All session releases pass through here. Cancel pending timers
+	 * before freeing the session to avoid callbacks running on released
+	 * memory.
+	 */
+	eloop_cancel_timeout(idp_termination_timeout, session, NULL);
+	eloop_cancel_timeout(idp_term_response_tx_done, session, NULL);
+	eloop_cancel_timeout(idp_failure_teardown, session, NULL);
+
+	os_free(session->pending_termination);
+	session->pending_termination = NULL;
 
 	wpas_idp_pasn_deinit(session->pasn_ctx);
 	session->pasn_ctx = NULL;
@@ -1083,6 +1105,8 @@ int wpas_idp_state_machine(struct wpas_idp_session *session,
 			wpa_printf(MSG_DEBUG,
 				   "IDP: Session %u: NEGOTIATING -> TERMINATING",
 				   session->id);
+			eloop_register_timeout(0, 0, idp_failure_teardown,
+					       session, NULL);
 			wpa_msg(session->wpa_s, MSG_INFO,
 				IDP_EVENT_REJECTED "peer=" MACSTR " session=%u",
 				MAC2STR(session->peer_addr), session->id);
@@ -1109,6 +1133,8 @@ int wpas_idp_state_machine(struct wpas_idp_session *session,
 			wpa_printf(MSG_DEBUG,
 				   "IDP: Session %u: CONFIGURING_AP -> TERMINATING",
 				   session->id);
+			eloop_register_timeout(0, 0, idp_failure_teardown,
+					       session, NULL);
 		}
 		break;
 	case IDP_STATE_CONFIGURING_STA:
@@ -1122,6 +1148,8 @@ int wpas_idp_state_machine(struct wpas_idp_session *session,
 			wpa_printf(MSG_DEBUG,
 				   "IDP: Session %u: CONFIGURING_STA -> TERMINATING",
 				   session->id);
+			eloop_register_timeout(0, 0, idp_failure_teardown,
+					       session, NULL);
 		}
 		break;
 	case IDP_STATE_ACTIVE_AP:
@@ -2460,4 +2488,146 @@ void wpas_idp_sta_authorized(struct wpa_supplicant *wpa_s, const u8 *sta_mac)
 		wpas_idp_state_machine(session, IDP_EVENT_PEER_CONNECTED);
 		return;
 	}
+}
+
+
+/**
+ * idp_complete_termination - Tear the session down and report it has terminated
+ *
+ * This is called when the termination exchange completes or times out.
+ */
+static void idp_complete_termination(struct wpas_idp_session *session)
+{
+	struct wpa_supplicant *wpa_s;
+
+	if (!session || session->termination_completed)
+		return;
+	session->termination_completed = true;
+
+	wpa_s = session->wpa_s;
+
+	wpa_printf(MSG_DEBUG, "IDP: Session %u: tearing down link with " MACSTR,
+		   session->id, MAC2STR(session->peer_addr));
+
+	if (session->role == WPAS_IDP_ROLE_AP && session->pmkid_valid &&
+	    session->group_wpa_s && session->group_wpa_s->ap_iface &&
+	    session->group_wpa_s->ap_iface->num_bss > 0) {
+		struct hostapd_data *hapd =
+			session->group_wpa_s->ap_iface->bss[0];
+
+		wpa_auth_pmksa_remove_pmkid(hapd->wpa_auth, session->pmkid);
+	}
+
+	eloop_cancel_timeout(idp_termination_timeout, session, NULL);
+	eloop_cancel_timeout(idp_term_response_tx_done, session, NULL);
+	eloop_cancel_timeout(idp_failure_teardown, session, NULL);
+
+	wpas_idp_pasn_deinit(session->pasn_ctx);
+	session->pasn_ctx = NULL;
+
+	if (session->role == WPAS_IDP_ROLE_AP) {
+		if (session->group_wpa_s)
+			wpa_supplicant_ap_deinit(session->group_wpa_s);
+	} else if (session->group_wpa_s) {
+		/*
+		 * Disconnect before removing the interface to allow the peer
+		 * AP to observe normal link termination. This is safe even if
+		 * the session never established a connection.
+		 */
+		wpa_supplicant_deauthenticate(session->group_wpa_s,
+					      WLAN_REASON_DEAUTH_LEAVING);
+	}
+
+	/*
+	 * Remove the session-specific network profile. Retaining it would
+	 * leave stale configuration for a peer that is no longer connected.
+	 */
+	if (session->network_id >= 0 && session->group_wpa_s) {
+		if (wpa_config_remove_network(session->group_wpa_s->conf,
+					      session->network_id) < 0)
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: network %d already gone",
+				   session->id, session->network_id);
+		session->network_id = -1;
+	}
+
+	if (session->group_wpa_s && session->iface_name[0]) {
+		wpas_idp_remove_interface(wpa_s, session);
+	} else if (session->pending_iface_name[0]) {
+		/*
+		 * An interface created but never handed to wpa_supplicant is
+		 * only known to the driver, so it has to be removed there.
+		 */
+		wpa_drv_if_remove(wpa_s, session->pending_iface_type,
+				  session->pending_iface_name);
+		session->pending_iface_name[0] = '\0';
+	}
+
+	wpa_msg(wpa_s, MSG_INFO,
+		IDP_EVENT_TERMINATED "session=%u peer=" MACSTR " reason=%d",
+		session->id, MAC2STR(session->peer_addr),
+		session->termination.reason);
+
+	wpas_idp_free_session(session);
+}
+
+
+/*
+ * idp_termination_timeout - Give up waiting for the peer to answer
+ *
+ * The peer may be gone, or may never have heard the request. Either way the
+ * local side of the link cannot be left standing, so it is torn down.
+ */
+static void idp_termination_timeout(void *eloop_ctx, void *timeout_ctx)
+{
+	struct wpas_idp_session *session = eloop_ctx;
+
+	wpa_printf(MSG_INFO, "IDP: Session %u: peer " MACSTR
+		   " did not answer the termination exchange",
+		   session->id, MAC2STR(session->peer_addr));
+
+	session->termination.reason = IDP_TERM_REASON_TIMEOUT;
+	wpas_idp_state_machine(session, IDP_EVENT_TERM_TIMEOUT);
+	idp_complete_termination(session);
+}
+
+
+/*
+ * idp_term_response_tx_done - Tear down after the response has gone out
+ *
+ * A 2-way response sent on the data path interface has to leave the device
+ * before that interface is removed, and nothing reports when that has happened,
+ * so teardown waits a short while for it.
+ */
+static void idp_term_response_tx_done(void *eloop_ctx, void *timeout_ctx)
+{
+	struct wpas_idp_session *session = eloop_ctx;
+
+	wpa_printf(MSG_DEBUG,
+		   "IDP: Session %u: response transmit window expired",
+		   session->id);
+
+	session->termination.wait_idp_tx = false;
+	idp_complete_termination(session);
+}
+
+
+/*
+ * idp_failure_teardown - Remove a session whose setup failed
+ *
+ * A session that fails during negotiation or during AP or STA setup has no
+ * link to terminate with the peer, so it is torn down locally. This frees the
+ * session and its interface and allows a new request with the same peer. The
+ * teardown is run from the event loop since the failure is reported from
+ * handlers that still use the session.
+ */
+static void idp_failure_teardown(void *eloop_ctx, void *timeout_ctx)
+{
+	struct wpas_idp_session *session = eloop_ctx;
+
+	wpa_printf(MSG_DEBUG, "IDP: Session %u: setup failed, tearing down",
+		   session->id);
+
+	session->termination.reason = IDP_TERM_REASON_FAILURE;
+	idp_complete_termination(session);
 }
