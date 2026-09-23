@@ -1301,7 +1301,7 @@ fail:
 }
 
 
-static const struct wpa_dev_ik *
+const struct wpa_dev_ik *
 wpas_nan_find_ik_by_nonce_tag(struct wpa_supplicant *wpa_s, const u8 *peer_nmi,
 			      const u8 *nonce, const u8 *tag)
 {

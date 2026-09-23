@@ -38,6 +38,10 @@ void wpas_nan_rx_beacon(struct wpa_supplicant *wpa_s,
 void wpas_nan_rx_naf(struct wpa_supplicant *wpa_s,
 		     const struct ieee80211_mgmt *mgmt, size_t len);
 void wpas_nan_flush_niks(struct wpa_supplicant *wpa_s);
+const struct wpa_dev_ik *
+wpas_nan_find_ik_by_nonce_tag(struct wpa_supplicant *wpa_s,
+			      const u8 *peer_nmi,
+			      const u8 *nonce, const u8 *tag);
 int wpas_nan_ndp_response(struct wpa_supplicant *wpa_s, char *cmd);
 int wpas_nan_ndp_terminate(struct wpa_supplicant *wpa_s, char *cmd);
 int wpas_nan_peer_info(struct wpa_supplicant *wpa_s, const char *cmd,
