@@ -1191,4 +1191,72 @@ int wpas_idp_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 	}
 }
 
+
+/**
+ * wpas_idp_pasn_auth_tx_status - Handle IDP PASN frame transmit status
+ * @wpa_s: wpa_supplicant structure
+ * @data: The transmitted frame
+ * @data_len: Length of @data
+ * @acked: Whether the frame was acknowledged
+ * Returns: 0 if the status belonged to an IDP handshake, -1 otherwise
+ *
+ * The initiator learns that its PASN M3 arrived only from this status, and that
+ * is the point at which its handshake is complete.
+ */
+int wpas_idp_pasn_auth_tx_status(struct wpa_supplicant *wpa_s,
+				 const u8 *data, size_t data_len, int acked)
+{
+	const struct ieee80211_mgmt *mgmt;
+	struct wpas_idp_session *session;
+	struct idp_pasn_context *ctx;
+
+	if (!wpa_s || !data ||
+	    data_len < offsetof(struct ieee80211_mgmt, u.auth.variable))
+		return -1;
+
+	mgmt = (const struct ieee80211_mgmt *) data;
+
+	session = wpas_idp_get_session_by_peer(wpa_s, mgmt->da);
+	if (!session)
+		return -1;
+
+	if (!session->pasn_ctx) {
+		/* PASN M3 released the context before this status arrived. */
+		size_t auth_len = data_len -
+			offsetof(struct ieee80211_mgmt, u.auth.variable);
+
+		if (wpas_idp_pasn_is_idp_auth_frame(mgmt->u.auth.variable,
+						    auth_len))
+			return 0;
+
+		return -1;
+	}
+
+	ctx = session->pasn_ctx;
+
+	if (!acked) {
+		wpa_printf(MSG_DEBUG,
+			   "IDP-PASN: Frame to " MACSTR " was not acknowledged",
+			   MAC2STR(mgmt->da));
+		return 0;
+	}
+
+	/* A return of 1 means that was the last frame of the handshake */
+	if (wpa_pasn_auth_tx_status(ctx->pasn, data, data_len, acked) != 1)
+		return 0;
+
+	if (wpas_idp_pasn_handle_success(ctx) < 0) {
+		wpas_idp_pasn_deinit(session->pasn_ctx);
+		session->pasn_ctx = NULL;
+		wpas_idp_state_machine(session, IDP_EVENT_PASN_FAILED);
+
+		return 0;
+	}
+
+	wpas_idp_pasn_deinit(session->pasn_ctx);
+	session->pasn_ctx = NULL;
+
+	return 0;
+}
+
 #endif /* CONFIG_PASN */

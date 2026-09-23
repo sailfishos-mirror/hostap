@@ -78,6 +78,8 @@ int wpas_idp_pasn_send_reject(struct wpa_supplicant *wpa_s,
 int wpas_idp_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 			  const struct ieee80211_mgmt *mgmt, size_t len,
 			  int freq);
+int wpas_idp_pasn_auth_tx_status(struct wpa_supplicant *wpa_s,
+				 const u8 *data, size_t data_len, int acked);
 
 #else /* CONFIG_PASN */
 
