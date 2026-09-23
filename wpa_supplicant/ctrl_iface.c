@@ -63,6 +63,7 @@
 #include "sme.h"
 #include "pr_supplicant.h"
 #include "nan_supplicant.h"
+#include "wpas_idp.h"
 
 #ifdef __NetBSD__
 #include <net/if_ether.h>
@@ -13883,6 +13884,82 @@ static int wpas_ctrl_nan_unpause_publish(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_NAN || CONFIG_NAN_USD */
 
 
+#ifdef CONFIG_NAN_IDP
+
+/*
+ * wpas_ctrl_idp_request - Control interface handler for IDP_REQUEST
+ * @wpa_s: Interface the command arrived on
+ * @cmd: Command string following "IDP_REQUEST "
+ * Returns: 0 on success, -1 on failure
+ *
+ * Format: peer=<MAC address> role=<ap|sta> [handle=<handle>] [instance_id=<id>]
+ *         [freq=<MHz>] [discoverable=<0|1>]
+ */
+static int wpas_ctrl_idp_request(struct wpa_supplicant *wpa_s, const char *cmd)
+{
+	const char *peer_str = os_strstr(cmd, "peer=");
+	const char *role_str = os_strstr(cmd, "role=");
+	const char *handle_str = os_strstr(cmd, "handle=");
+	const char *instance_id_str = os_strstr(cmd, "instance_id=");
+	const char *freq_str = os_strstr(cmd, "freq=");
+	const char *disc_str = os_strstr(cmd, "discoverable=");
+	u8 peer_addr[ETH_ALEN];
+	enum wpas_idp_role role;
+	int handle = 0, instance_id = 0, freq = 0;
+	bool discoverable = true;
+
+	if (!peer_str || !role_str) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: IDP_REQUEST needs both peer and role");
+		return -1;
+	}
+
+	if (hwaddr_aton(peer_str + 5, peer_addr) < 0) {
+		wpa_printf(MSG_ERROR, "IDP: Invalid peer MAC address");
+		return -1;
+	}
+
+	role_str += 5;
+	if (os_strncasecmp(role_str, "ap", 2) == 0) {
+		role = WPAS_IDP_ROLE_AP;
+	} else if (os_strncasecmp(role_str, "sta", 3) == 0) {
+		role = WPAS_IDP_ROLE_STA;
+	} else {
+		wpa_printf(MSG_ERROR, "IDP: role must be 'ap' or 'sta'");
+		return -1;
+	}
+
+	if (handle_str)
+		handle = atoi(handle_str + 7);
+
+	if (instance_id_str) {
+		instance_id = atoi(instance_id_str + 12);
+		if (instance_id < 0 || instance_id > 255) {
+			wpa_printf(MSG_ERROR,
+				   "IDP: instance_id %d out of range",
+				   instance_id);
+			return -1;
+		}
+	}
+
+	if (freq_str) {
+		freq = atoi(freq_str + 5);
+		if (freq <= 0) {
+			wpa_printf(MSG_ERROR, "IDP: Invalid freq %d", freq);
+			return -1;
+		}
+	}
+
+	if (disc_str)
+		discoverable = atoi(disc_str + 13) != 0;
+
+	return wpas_idp_request(wpa_s, peer_addr, role, handle, instance_id,
+				freq, discoverable);
+}
+
+#endif /* CONFIG_NAN_IDP */
+
+
 char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 					 char *buf, size_t *resp_len)
 {
@@ -14938,6 +15015,11 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strcmp(buf, "NAN_NIK_FLUSH") == 0) {
 		wpas_nan_flush_niks(wpa_s);
 #endif /* CONFIG_NAN || CONFIG_NAN_USD */
+#ifdef CONFIG_NAN_IDP
+	} else if (os_strncmp(buf, "IDP_REQUEST ", 12) == 0) {
+		if (wpas_ctrl_idp_request(wpa_s, buf + 12) < 0)
+			reply_len = -1;
+#endif /* CONFIG_NAN_IDP */
 #ifdef CONFIG_PASN
 	} else if (os_strncmp(buf, "PASN_START ", 11) == 0) {
 		if (wpas_ctrl_iface_pasn_start(wpa_s, buf + 11) < 0)

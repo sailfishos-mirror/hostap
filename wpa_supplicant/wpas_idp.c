@@ -2003,3 +2003,91 @@ void wpas_idp_event(struct wpa_supplicant *wpa_s, enum wpa_event_type event)
 		break;
 	}
 }
+
+
+/**
+ * wpas_idp_request - Request an IDP connection with a discovered NAN peer
+ * @wpa_s: Interface holding the NAN context
+ * @peer_addr: Peer NAN management interface address
+ * @role: Role this device takes in the connection
+ * @handle: NAN service handle the peer was discovered through, or 0
+ * @instance_id: Peer service instance ID, or 0 if not known
+ * @freq: Frequency in MHz to bring the AP up on, or 0 to select a default
+ * @discoverable: Whether the AP advertises its SSID in Beacon frames
+ * Returns: 0 on success, -1 on failure
+ *
+ * @freq and @discoverable apply only to the AP role.
+ */
+int wpas_idp_request(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+		     enum wpas_idp_role role, int handle, u8 instance_id,
+		     int freq, bool discoverable)
+{
+	struct wpas_idp_session *session;
+	int peer_freq;
+
+	if (!wpa_s->global->idp) {
+		wpa_printf(MSG_ERROR, "IDP: Not initialized");
+		return -1;
+	}
+
+	/*
+	 * A session for this peer is reused so that a repeated request does
+	 * not accumulate sessions, but only while it is idle. Restarting the
+	 * handshake on a session that already has a link, or is in the middle
+	 * of setting one up, would rewrite the role and channel that link is
+	 * running on.
+	 */
+	session = wpas_idp_get_session_by_peer(wpa_s, peer_addr);
+	if (session && session->state != IDP_STATE_NONE) {
+		wpa_printf(MSG_INFO, "IDP: Session %u with " MACSTR
+			   " is busy in state %d", session->id,
+			   MAC2STR(peer_addr), session->state);
+		return -1;
+	}
+
+	if (!session) {
+		session = wpas_idp_alloc_session(wpa_s, peer_addr, role);
+		if (!session)
+			return -1;
+	} else {
+		session->role = role;
+	}
+
+	session->handle = handle;
+	session->peer_instance_id = instance_id;
+
+	if (role == WPAS_IDP_ROLE_AP) {
+		if (idp_generate_ssid(session) < 0) {
+			wpas_idp_free_session(session);
+			return -1;
+		}
+
+		idp_get_country_string(wpa_s, session->channel.country_string);
+
+		session->idp_session_id = idp_assign_session_id(session);
+		session->discoverable = discoverable;
+
+		if (idp_set_channel_from_freq(session, freq) < 0 &&
+		    idp_select_default_channel(session) < 0) {
+			wpas_idp_free_session(session);
+			return -1;
+		}
+	}
+
+	wpas_idp_state_machine(session, IDP_EVENT_INIT);
+
+	/*
+	 * A peer discovered over NAN listens on the channel on which its
+	 * service discovery frame was last received, so send PASN M1 there.
+	 */
+	peer_freq = nan_peer_get_freq(wpa_s->nan, peer_addr);
+	if (wpas_idp_pasn_auth_start(wpa_s, peer_addr, peer_freq) < 0) {
+		wpa_printf(MSG_INFO, "IDP: Failed to start PASN with " MACSTR
+			   " on %d MHz",
+			   MAC2STR(peer_addr), peer_freq);
+		wpas_idp_state_machine(session, IDP_EVENT_FAILURE);
+		return -1;
+	}
+
+	return 0;
+}

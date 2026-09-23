@@ -84,6 +84,7 @@ struct wpas_idp_session {
 
 	/* NAN discovery information */
 	int handle; /* NAN service handle */
+	u8 peer_instance_id; /* Peer service instance ID */
 
 	u8 bssid[ETH_ALEN];
 	u8 ssid[SSID_MAX_LEN];
@@ -205,6 +206,10 @@ void wpas_idp_remove_interface(struct wpa_supplicant *wpa_s,
 /* AP and STA bring-up */
 int wpas_idp_setup_ap(struct wpas_idp_session *session);
 int wpas_idp_setup_sta(struct wpas_idp_session *session);
+
+int wpas_idp_request(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+		     enum wpas_idp_role role, int handle, u8 instance_id,
+		     int freq, bool discoverable);
 
 /* Event handling */
 #ifdef CONFIG_NAN_IDP
