@@ -273,6 +273,29 @@ idp_build_channel_list_attr(struct wpas_idp_session *session)
 }
 
 
+/* Build the IDP Operating Channel attribute */
+static struct wpabuf *
+idp_build_operating_channel_attr(struct wpas_idp_session *session)
+{
+	struct wpabuf *buf;
+	u8 *len_ptr;
+
+	buf = wpabuf_alloc(50);
+	if (!buf)
+		return NULL;
+
+	wpabuf_put_u8(buf, NAN_ATTR_IDP_OPERATING_CHANNEL);
+	len_ptr = wpabuf_put(buf, 2);
+	wpabuf_put_data(buf, session->channel.country_string, 3);
+	wpabuf_put_u8(buf, 1); /* number of operating channels */
+	wpabuf_put_u8(buf, session->channel.operating_class);
+	wpabuf_put_u8(buf, session->channel.channel_number);
+	WPA_PUT_LE16(len_ptr, wpabuf_len(buf) - NAN_ATTR_HDR_LEN);
+
+	return buf;
+}
+
+
 /* Build the combined IDP attribute payload carried in PASN M1/M2 */
 static struct wpabuf *
 idp_build_attributes_payload(struct wpas_idp_session *session)
@@ -287,6 +310,14 @@ idp_build_attributes_payload(struct wpas_idp_session *session)
 	if (attr) {
 		wpabuf_put_buf(payload, attr);
 		wpabuf_free(attr);
+	}
+
+	if (session->role == WPAS_IDP_ROLE_AP) {
+		attr = idp_build_operating_channel_attr(session);
+		if (attr) {
+			wpabuf_put_buf(payload, attr);
+			wpabuf_free(attr);
+		}
 	}
 
 	return payload;
