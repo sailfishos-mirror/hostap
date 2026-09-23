@@ -917,6 +917,239 @@ static int idp_pasn_rx_m1(struct wpa_supplicant *wpa_s,
 
 
 /**
+ * wpas_idp_derive_nd_pmk - Derive the ND-PMK from the PASN KDK
+ * @session: IDP session to store the result in
+ * @ctx: Completed IDP PASN context
+ * Returns: 0 on success, -1 on failure
+ *
+ * The infrastructure link is keyed from the ND-PMK rather than the PASN PMK
+ * directly. The derivation binds it to both NAN management addresses in a
+ * fixed order, so the two peers agree on which is the initiator.
+ */
+static int wpas_idp_derive_nd_pmk(struct wpas_idp_session *session,
+				  struct idp_pasn_context *ctx)
+{
+	struct pasn_data *pasn = ctx->pasn;
+	const u8 *initiator_nmi, *responder_nmi;
+	enum nan_cipher_suite_id csid;
+
+	if (ctx->is_initiator) {
+		initiator_nmi = session->wpa_s->own_addr;
+		responder_nmi = session->peer_addr;
+	} else {
+		initiator_nmi = session->peer_addr;
+		responder_nmi = session->wpa_s->own_addr;
+	}
+
+	csid = pasn_get_cipher(pasn) == WPA_CIPHER_GCMP_256 ?
+		NAN_CS_PK_PASN_256 : NAN_CS_PK_PASN_128;
+
+	if (nan_crypto_derive_nd_pmk_from_kdk(pasn->ptk.kdk, pasn->ptk.kdk_len,
+					      csid, initiator_nmi,
+					      responder_nmi,
+					      session->nd_pmk)) {
+		wpa_printf(MSG_ERROR, "IDP-PASN: Failed to derive ND-PMK");
+		return -1;
+	}
+
+	session->nd_pmk_valid = true;
+	wpa_hexdump_key(MSG_DEBUG, "IDP-PASN: Derived ND-PMK",
+			session->nd_pmk, PMK_LEN);
+
+	return 0;
+}
+
+
+/**
+ * wpas_idp_pasn_handle_success - Take the keys from a completed handshake
+ * @ctx: IDP PASN context whose handshake has completed
+ * Returns: 0 on success, -1 on failure
+ *
+ * Collects everything the infrastructure link needs from the finished
+ * handshake, and only then reports success, so that a session which cannot be
+ * brought up is refused here instead of failing later without explanation.
+ */
+static int wpas_idp_pasn_handle_success(struct idp_pasn_context *ctx)
+{
+	struct wpas_idp_session *session;
+	size_t pmk_len;
+	u8 *pmk;
+
+	if (!ctx || !ctx->pasn || !ctx->session)
+		return -1;
+
+	session = ctx->session;
+
+	pmk = pasn_get_pmk(ctx->pasn);
+	pmk_len = pasn_get_pmk_len(ctx->pasn);
+	if (!pmk || !pmk_len) {
+		wpa_printf(MSG_ERROR, "IDP-PASN: Handshake produced no PMK");
+		return -1;
+	}
+
+	if (wpas_idp_set_pmk(session, pmk, pmk_len) < 0) {
+		wpa_printf(MSG_ERROR, "IDP-PASN: Failed to store the PMK");
+		return -1;
+	}
+
+	if (wpas_idp_derive_nd_pmk(session, ctx) < 0)
+		return -1;
+
+	/*
+	 * The PMKID identifies the entry that will be added to the AP or STA
+	 * PMKSA cache. Without it neither side can skip SAE, and since there
+	 * is no password for an IDP link there would be no way to connect.
+	 */
+	if (nan_peer_get_pairing_pmkid(ctx->wpa_s->nan, ctx->peer_addr,
+				       session->pmkid) < 0) {
+		wpa_printf(MSG_ERROR,
+			   "IDP-PASN: No pairing PMKID for peer " MACSTR,
+			   MAC2STR(ctx->peer_addr));
+		return -1;
+	}
+	session->pmkid_valid = true;
+
+	wpa_printf(MSG_DEBUG, "IDP-PASN: Handshake with " MACSTR " completed",
+		   MAC2STR(ctx->peer_addr));
+
+	wpas_notify_idp_negotiation_success(session->wpa_s, session->peer_addr);
+	wpas_idp_state_machine(session, IDP_EVENT_PASN_SUCCESS);
+
+	return 0;
+}
+
+
+/**
+ * idp_pasn_rx_m2 - Process the responder's answer as the initiator
+ * @wpa_s: wpa_supplicant structure
+ * @mgmt: Received PASN M2
+ * @len: Length of @mgmt
+ * @status_code: Status the responder reported
+ * Returns: 0 on success, -1 on failure
+ */
+static int idp_pasn_rx_m2(struct wpa_supplicant *wpa_s,
+			  const struct ieee80211_mgmt *mgmt, size_t len,
+			  u16 status_code)
+{
+	struct wpa_pasn_params_data pasn_params;
+	struct wpas_idp_session *session;
+	struct idp_pasn_context *ctx;
+	struct wpabuf *attrs;
+	int res;
+
+	session = wpas_idp_get_session_by_peer(wpa_s, mgmt->sa);
+	if (!session || !session->pasn_ctx)
+		return -1;
+	ctx = session->pasn_ctx;
+
+	if (status_code != WLAN_STATUS_SUCCESS) {
+		wpa_printf(MSG_INFO, "IDP-PASN: Peer " MACSTR
+			   " refused the request, status %u",
+			   MAC2STR(mgmt->sa), status_code);
+		goto fail;
+	}
+
+	attrs = idp_pasn_get_nan_attrs(
+		mgmt->u.auth.variable,
+		len - offsetof(struct ieee80211_mgmt, u.auth.variable));
+	res = wpas_idp_process_resp_attrs(session,
+					  attrs ? wpabuf_head(attrs) : NULL,
+					  attrs ? wpabuf_len(attrs) : 0);
+	wpabuf_free(attrs);
+	if (res < 0) {
+		wpa_printf(MSG_INFO,
+			   "IDP-PASN: Unusable IDP attributes in PASN M2 from "
+			   MACSTR, MAC2STR(mgmt->sa));
+		goto fail;
+	}
+
+	/* Outside a cluster, adopt the address the responder answered from */
+	if (is_zero_ether_addr(ctx->pasn->bssid) &&
+	    !is_zero_ether_addr(mgmt->bssid))
+		pasn_set_bssid(ctx->pasn, mgmt->bssid);
+
+	/* PASN M3 carries no NAN element, so clear the buffer that was used
+	 * with PASN M1 */
+	pasn_set_extra_ies(ctx->pasn, NULL, 0);
+
+	os_memset(&pasn_params, 0, sizeof(pasn_params));
+	if (wpa_pasn_auth_rx(ctx->pasn, (const u8 *) mgmt, len,
+			     &pasn_params) < 0) {
+		wpa_printf(MSG_ERROR, "IDP-PASN: Failed to process PASN M2");
+		goto fail;
+	}
+
+	ctx->state = IDP_PASN_COMPLETED;
+
+	/*
+	 * The PASN core has sent PASN M3. The keys are only taken once it has
+	 * been acknowledged, which arrives as a transmit status event.
+	 */
+	return 0;
+
+fail:
+	wpas_idp_pasn_deinit(session->pasn_ctx);
+	session->pasn_ctx = NULL;
+	wpas_idp_state_machine(session, IDP_EVENT_PASN_FAILED);
+
+	return -1;
+}
+
+
+/**
+ * idp_pasn_rx_m3 - Complete the handshake as the responder
+ * @wpa_s: wpa_supplicant structure
+ * @mgmt: Received PASN M3
+ * @len: Length of @mgmt
+ * @status_code: Status the initiator reported
+ * Returns: 0 on success, -1 on failure
+ */
+static int idp_pasn_rx_m3(struct wpa_supplicant *wpa_s,
+			  const struct ieee80211_mgmt *mgmt, size_t len,
+			  u16 status_code)
+{
+	struct wpas_idp_session *session;
+	struct idp_pasn_context *ctx;
+
+	session = wpas_idp_get_session_by_peer(wpa_s, mgmt->sa);
+	if (!session || !session->pasn_ctx)
+		return -1;
+	ctx = session->pasn_ctx;
+
+	if (status_code != WLAN_STATUS_SUCCESS) {
+		wpa_printf(MSG_INFO,
+			   "IDP-PASN: Unexpected PASN M3 status code %u from peer "
+			   MACSTR,
+			   MAC2STR(mgmt->sa), status_code);
+		goto fail;
+	}
+
+	if (handle_auth_pasn_3(ctx->pasn, wpa_s->own_addr, mgmt->sa, mgmt,
+			       len) < 0) {
+		wpa_printf(MSG_ERROR, "IDP-PASN: Failed to process PASN M3");
+		goto fail;
+	}
+
+	ctx->state = IDP_PASN_COMPLETED;
+
+	if (wpas_idp_pasn_handle_success(ctx) < 0)
+		goto fail;
+
+	wpas_idp_pasn_deinit(session->pasn_ctx);
+	session->pasn_ctx = NULL;
+
+	return 0;
+
+fail:
+	wpas_idp_pasn_deinit(session->pasn_ctx);
+	session->pasn_ctx = NULL;
+	wpas_idp_state_machine(session, IDP_EVENT_PASN_FAILED);
+
+	return -1;
+}
+
+
+/**
  * wpas_idp_pasn_auth_rx - Handle a received IDP PASN Authentication frame
  * @wpa_s: wpa_supplicant structure
  * @mgmt: Received Authentication frame
@@ -946,6 +1179,10 @@ int wpas_idp_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 	switch (auth_transaction) {
 	case 1:
 		return idp_pasn_rx_m1(wpa_s, mgmt, len, freq);
+	case 2:
+		return idp_pasn_rx_m2(wpa_s, mgmt, len, status_code);
+	case 3:
+		return idp_pasn_rx_m3(wpa_s, mgmt, len, status_code);
 	default:
 		wpa_printf(MSG_DEBUG,
 			   "IDP-PASN: Unexpected transaction %u from " MACSTR,
