@@ -411,6 +411,140 @@ struct wpabuf * wpas_idp_build_resp_attrs(struct wpas_idp_session *session)
 
 
 /**
+ * idp_parse_attributes - Parse IDP attribute TLVs into the session
+ *
+ * The attributes arrive as raw NAN TLVs, already extracted from the NAN
+ * element in a PASN Auhentication frame. Each recognised attribute is decoded
+ * into the session; unknown attributes are skipped so that a peer advertising
+ * attributes we do not implement is still interoperable.
+ *
+ * @idp_id_present is set when the IDP ID attribute is seen, which is what
+ * tells the responder which role the initiator expects it to take.
+ */
+static void idp_parse_attributes(const u8 *attrs, size_t attrs_len,
+				 struct wpas_idp_session *session,
+				 bool *idp_id_present)
+{
+	const u8 *pos = attrs;
+	const u8 *end = attrs + attrs_len;
+
+	if (idp_id_present)
+		*idp_id_present = false;
+
+	while (end - pos >= NAN_ATTR_HDR_LEN) {
+		u8 id = *pos++;
+		u16 len = WPA_GET_LE16(pos);
+
+		pos += 2;
+		if (end - pos < len)
+			break;
+
+		switch (id) {
+		case NAN_ATTR_IDP_ID:
+			if (len < ETH_ALEN + 1) {
+				wpa_printf(MSG_DEBUG,
+					   "IDP: Too short IDP ID attribute");
+				break;
+			}
+			if (idp_id_present)
+				*idp_id_present = true;
+			os_memcpy(session->bssid, pos, ETH_ALEN);
+			session->ssid_len = pos[ETH_ALEN];
+			if (session->ssid_len <= SSID_MAX_LEN &&
+			    len >= ETH_ALEN + 1 + session->ssid_len)
+				os_memcpy(session->ssid, pos + ETH_ALEN + 1,
+					  session->ssid_len);
+			else
+				session->ssid_len = 0;
+
+			/*
+			 * Discoverability and the IDP Session ID follow the
+			 * SSID.
+			 */
+			if (len >= ETH_ALEN + 1 + session->ssid_len + 2) {
+				const u8 *tail;
+
+				tail = pos + ETH_ALEN + 1 + session->ssid_len;
+				session->discoverable = tail[0] != 0;
+				session->idp_session_id = tail[1];
+			}
+			break;
+		}
+
+		pos += len;
+	}
+}
+
+
+/**
+ * idp_generate_ssid - Generate an SSID for an IDP AP
+ * @session: IDP session
+ * Returns: 0 on success, -1 on failure
+ *
+ * The SSID is "NAN-IDP-" followed by a random suffix so that IDP APs started
+ * by different devices are unlikely to use the same SSID.
+ */
+static int idp_generate_ssid(struct wpas_idp_session *session)
+{
+	u8 rnd[4];
+	int res;
+
+	if (os_get_random(rnd, sizeof(rnd)) < 0) {
+		wpa_printf(MSG_INFO,
+			   "IDP: Could not generate random data for SSID");
+		return -1;
+	}
+
+	res = os_snprintf((char *) session->ssid, sizeof(session->ssid),
+			  "NAN-IDP-%02x%02x%02x%02x",
+			  rnd[0], rnd[1], rnd[2], rnd[3]);
+	if (os_snprintf_error(sizeof(session->ssid), res))
+		return -1;
+
+	session->ssid_len = res;
+	return 0;
+}
+
+
+/**
+ * wpas_idp_process_req_attrs - Process PASN M1 attributes on the responder side
+ * @session: IDP session
+ * @attrs: Raw NAN attribute TLVs
+ * @attrs_len: Length of attrs
+ * Returns: 0 on success, -1 on failure
+ *
+ * Determine the responder role based on the presence of the IDP ID attribute in
+ * PASN M1. If the attribute is present, the initiator has provided the AP
+ * identity and assumes the AP role, so the responder becomes the STA.
+ * Otherwise, the initiator requests the responder to operate as the AP, and the
+ * responder generates the SSID for the session.
+ */
+int wpas_idp_process_req_attrs(struct wpas_idp_session *session,
+			       const u8 *attrs, size_t attrs_len)
+{
+	bool idp_id_present = false;
+
+	if (!session)
+		return -1;
+
+	idp_parse_attributes(attrs, attrs_len, session, &idp_id_present);
+
+	if (idp_id_present) {
+		session->role = WPAS_IDP_ROLE_STA;
+	} else {
+		session->role = WPAS_IDP_ROLE_AP;
+
+		if (idp_generate_ssid(session) < 0)
+			return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "IDP: Responder role: %s",
+		   session->role == WPAS_IDP_ROLE_AP ? "AP" : "STA");
+	return 0;
+}
+
+
+/**
  * wpas_idp_set_pmk - Store PMK derived from PASN handshake
  * @session: IDP session
  * @pmk: PMK buffer
