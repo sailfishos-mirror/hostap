@@ -70,6 +70,9 @@ bool wpas_idp_pasn_has_session_for_peer(struct wpa_supplicant *wpa_s,
 					const u8 *peer_addr);
 int wpas_idp_pasn_auth_start(struct wpa_supplicant *wpa_s,
 			     const u8 *peer_addr, int freq);
+int wpas_idp_pasn_resume_m1(struct wpa_supplicant *wpa_s,
+			    struct wpas_idp_session *session,
+			    const struct wpabuf *m1_frame, int freq);
 int wpas_idp_pasn_send_reject(struct wpa_supplicant *wpa_s,
 			      const u8 *peer_addr, struct wpabuf *m1_frame);
 int wpas_idp_pasn_auth_rx(struct wpa_supplicant *wpa_s,
