@@ -11,6 +11,8 @@
 #include "utils/wpabuf.h"
 #include "common/ieee802_11_defs.h"
 #include "common/nan_defs.h"
+#include "rsn_supp/wpa.h"
+#include "rsn_supp/pmksa_cache.h"
 #include "ap/hostapd.h"
 #include "ap/ap_drv_ops.h"
 #include "ap/wpa_auth.h"
@@ -20,6 +22,14 @@
 #include "driver_i.h"
 #include "ap.h"
 #include "wpas_idp.h"
+
+
+/*
+ * Lifetime and reauthentication threshold for PMKSA entries derived
+ * from the PASN exchange.
+ */
+#define IDP_PMKSA_LIFETIME 43200
+#define IDP_PMKSA_REAUTH_THRESHOLD (IDP_PMKSA_LIFETIME * 70 / 100)
 
 
 /*
@@ -1294,6 +1304,8 @@ int wpas_idp_setup_sta(struct wpas_idp_session *session)
 {
 	struct wpa_supplicant *iface_wpa_s;
 	struct wpa_ssid *ssid_conf;
+	struct rsn_pmksa_cache_entry *pmksa;
+	struct os_reltime now;
 	char ssid_hex[SSID_MAX_LEN * 2 + 1];
 
 	if (!session) {
@@ -1331,6 +1343,13 @@ int wpas_idp_setup_sta(struct wpas_idp_session *session)
 		wpa_printf(MSG_ERROR,
 			   "IDP: Session %u: invalid SSID length %zu",
 			   session->id, session->ssid_len);
+		goto fail;
+	}
+
+	if (!session->nd_pmk_valid || !session->pmkid_valid) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: Session %u: no ND-PMK or PMKID for STA setup",
+			   session->id);
 		goto fail;
 	}
 
@@ -1405,6 +1424,49 @@ int wpas_idp_setup_sta(struct wpas_idp_session *session)
 				   session->channel.channel_number);
 		}
 	}
+
+	/*
+	 * Install a PMKSA entry derived from the PASN exchange. This allows
+	 * association using the cached PMKSA instead of performing SAE,
+	 * which has no credential for this network. Ownership of the entry
+	 * is transferred to the PMKSA cache.
+	 */
+	if (!iface_wpa_s->wpa) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: Session %u: no WPA state machine for STA setup",
+			   session->id);
+		goto fail_remove;
+	}
+
+	pmksa = os_zalloc(sizeof(*pmksa));
+	if (!pmksa) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: Session %u: failed to allocate STA PMKSA entry",
+			   session->id);
+		goto fail_remove;
+	}
+
+	os_memcpy(pmksa->aa, session->bssid, ETH_ALEN);
+	os_memcpy(pmksa->spa, iface_wpa_s->own_addr, ETH_ALEN);
+	os_memcpy(pmksa->pmkid, session->pmkid, PMKID_LEN);
+	os_memcpy(pmksa->pmk, session->nd_pmk, PMK_LEN);
+	pmksa->pmk_len = PMK_LEN;
+	pmksa->akmp = WPA_KEY_MGMT_SAE;
+	pmksa->network_ctx = ssid_conf;
+	os_get_reltime(&now);
+	pmksa->expiration = now.sec + IDP_PMKSA_LIFETIME;
+	pmksa->reauth_time = now.sec + IDP_PMKSA_REAUTH_THRESHOLD;
+	wpa_sm_pmksa_cache_add_entry(iface_wpa_s->wpa, pmksa);
+
+	/*
+	 * Mark the network as using a PASN-derived PMK so the connection
+	 * path selects the cached PMKSA instead of SAE authentication.
+	 */
+	ssid_conf->pmk_valid = true;
+
+	wpa_printf(MSG_DEBUG,
+		   "IDP: Session %u: ND-PMK cached for BSSID " MACSTR,
+		   session->id, MAC2STR(session->bssid));
 
 	session->network_id = ssid_conf->id;
 
