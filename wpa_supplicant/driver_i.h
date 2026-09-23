@@ -1134,6 +1134,14 @@ static inline int wpa_drv_set_tdls_mode(struct wpa_supplicant *wpa_s,
 					    tdls_external_control);
 }
 
+static inline int wpa_drv_set_twt_concurrency(struct wpa_supplicant *wpa_s,
+					      int enable)
+{
+	if (!wpa_s->driver->set_twt_concurrency)
+		return 0;
+	return wpa_s->driver->set_twt_concurrency(wpa_s->drv_priv, enable);
+}
+
 static inline struct wpa_bss_candidate_info *
 wpa_drv_get_bss_trans_status(struct wpa_supplicant *wpa_s,
 			     struct wpa_bss_trans_info *params)

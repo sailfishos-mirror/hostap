@@ -5647,6 +5647,14 @@ struct wpa_driver_ops {
 	int (*set_tdls_mode)(void *priv, int tdls_external_control);
 
 	/**
+	 * set_twt_concurrency - Enable or disable TWT concurrency
+	 * @priv: Private driver interface data
+	 * @enable: 1 = enable, 0 = disable
+	 * Returns: 0 on success, -1 on failure
+	 */
+	int (*set_twt_concurrency)(void *priv, int enable);
+
+	/**
 	 * get_bss_transition_status - Get candidate BSS's transition status
 	 * @priv: Private driver interface data
 	 * @params: Candidate BSS list

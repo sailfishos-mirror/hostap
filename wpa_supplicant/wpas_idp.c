@@ -1513,6 +1513,10 @@ int wpas_idp_setup_ap(struct wpas_idp_session *session)
 	}
 
 	iface_wpa_s->current_ssid = ssid_conf;
+
+	if (wpa_drv_set_twt_concurrency(iface_wpa_s, 1) < 0)
+		wpa_printf(MSG_DEBUG, "IDP: TWT concurrency not enabled on %s",
+			   iface_wpa_s->ifname);
 	if (wpa_supplicant_create_ap(iface_wpa_s, ssid_conf) < 0) {
 		wpa_printf(MSG_ERROR, "IDP: Session %u: failed to start AP",
 			   session->id);
@@ -1741,6 +1745,10 @@ int wpas_idp_setup_sta(struct wpas_idp_session *session)
 	session->network_id = ssid_conf->id;
 
 	iface_wpa_s->current_ssid = ssid_conf;
+
+	if (wpa_drv_set_twt_concurrency(iface_wpa_s, 1) < 0)
+		wpa_printf(MSG_DEBUG, "IDP: TWT concurrency not enabled on %s",
+			   iface_wpa_s->ifname);
 	wpa_supplicant_select_network(iface_wpa_s, ssid_conf);
 
 	wpa_printf(MSG_DEBUG, "IDP: Session %u: STA connecting on '%s' to "

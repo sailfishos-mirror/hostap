@@ -14242,6 +14242,50 @@ fail:
 }
 
 
+static int nl80211_set_twt_concurrency(void *priv, int enable)
+{
+	struct i802_bss *bss = priv;
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+	struct nl_msg *msg;
+	struct nlattr *params;
+	int ret;
+
+	wpa_printf(MSG_DEBUG, "nl80211: Set TWT concurrency=%d", enable);
+
+	if (!drv->set_wifi_conf_vendor_cmd_avail)
+		return -1;
+
+	msg = nl80211_bss_msg(bss, 0, NL80211_CMD_VENDOR);
+	if (!msg)
+		return -1;
+
+	if (nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, OUI_QCA) ||
+	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
+			QCA_NL80211_VENDOR_SUBCMD_SET_WIFI_CONFIGURATION))
+		goto fail;
+
+	params = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA);
+	if (!params ||
+	    nla_put_u8(msg, QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_CONCURRENCY_ENABLE,
+		       enable) ||
+	    nla_put_u8(msg, QCA_WLAN_VENDOR_ATTR_CONFIG_ALLOW_BTWT_ID0, 1))
+		goto fail;
+	nla_nest_end(msg, params);
+
+	ret = send_and_recv_cmd(drv, msg);
+	if (ret)
+		wpa_printf(MSG_ERROR,
+			   "nl80211: Set TWT concurrency failed: ret=%d (%s)",
+			   ret, strerror(-ret));
+
+	return ret;
+
+fail:
+	nlmsg_free(msg);
+	return -1;
+}
+
+
 #ifdef CONFIG_MBO
 
 static enum mbo_transition_reject_reason
@@ -17035,6 +17079,9 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.p2p_lo_stop = nl80211_p2p_lo_stop,
 	.set_default_scan_ies = nl80211_set_default_scan_ies,
 	.set_tdls_mode = nl80211_set_tdls_mode,
+#ifdef CONFIG_DRIVER_NL80211_QCA
+	.set_twt_concurrency = nl80211_set_twt_concurrency,
+#endif /* CONFIG_DRIVER_NL80211_QCA */
 #ifdef CONFIG_MBO
 	.ignore_assoc_disallow = nl80211_ignore_assoc_disallow,
 #endif /* CONFIG_MBO */
