@@ -2177,3 +2177,88 @@ int wpas_idp_response(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 
 	return ret;
 }
+
+
+static const char * idp_role_str(enum wpas_idp_role role)
+{
+	switch (role) {
+	case WPAS_IDP_ROLE_AP:
+		return "ap";
+	case WPAS_IDP_ROLE_STA:
+		return "sta";
+	}
+
+	return "unknown";
+}
+
+
+static const char * idp_state_str(enum idp_state state)
+{
+	switch (state) {
+	case IDP_STATE_NONE:
+		return "IDLE";
+	case IDP_STATE_NEGOTIATING:
+		return "NEGOTIATION_IN_PROGRESS";
+	case IDP_STATE_NEGOTIATED:
+		return "NEGOTIATION_DONE";
+	case IDP_STATE_CONFIGURING_AP:
+		return "CONFIGURING_AP";
+	case IDP_STATE_CONFIGURING_STA:
+		return "CONFIGURING_STA";
+	case IDP_STATE_ACTIVE_AP:
+		return "ACTIVE_AP";
+	case IDP_STATE_ACTIVE_STA:
+		return "ACTIVE_STA";
+	case IDP_STATE_PEER_CONNECTED:
+		return "PEER_CONNECTED";
+	case IDP_STATE_TERMINATING:
+		return "TERMINATING";
+	case IDP_STATE_TERM_WAIT_RESP:
+		return "TERMINATING_WAIT_RESP";
+	case IDP_STATE_TERM_WAIT_CONFIRM:
+		return "TERMINATING_WAIT_CONFIRM";
+	}
+
+	return "UNKNOWN";
+}
+
+
+/**
+ * wpas_idp_list - Write a listing of the IDP sessions
+ * @wpa_s: Interface holding the NAN context
+ * @buf: Reply buffer
+ * @buflen: Size of @buf
+ * Returns: Number of octets written to @buf
+ *
+ * Report all IDP sessions with their peer, local role, and current state. Since
+ * sessions are global, the same listing is returned on every interface.
+ */
+int wpas_idp_list(struct wpa_supplicant *wpa_s, char *buf, size_t buflen)
+{
+	struct wpas_idp_session *session;
+	size_t len;
+	int ret;
+
+	if (!wpa_s->global->idp)
+		return 0;
+
+	ret = os_snprintf(buf, buflen, "id peer role state idp_session_id\n");
+	if (os_snprintf_error(buflen, ret))
+		return 0;
+	len = ret;
+
+	dl_list_for_each(session, &wpa_s->global->idp->sessions,
+			 struct wpas_idp_session, list) {
+		ret = os_snprintf(buf + len, buflen - len,
+				  "%u " MACSTR " %s %s %u\n",
+				  session->id, MAC2STR(session->peer_addr),
+				  idp_role_str(session->role),
+				  idp_state_str(session->state),
+				  session->idp_session_id);
+		if (os_snprintf_error(buflen - len, ret))
+			return len;
+		len += ret;
+	}
+
+	return len;
+}
