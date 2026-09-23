@@ -3029,14 +3029,42 @@ static int sme_handle_external_auth_start(struct wpa_supplicant *wpa_s,
 		    ssid_str_len == ssid->ssid_len &&
 		    os_memcmp(ssid_str, ssid->ssid, ssid_str_len) == 0 &&
 		    wpa_key_mgmt_sae(ssid->key_mgmt)) {
-			/* Make sure PT is derived */
-			wpa_s_setup_sae_pt(wpa_s, ssid, false);
 			wpa_s->sme.ext_auth_wpa_ssid = ssid;
 			break;
 		}
 	}
-	if (!ssid ||
-	    sme_external_auth_send_sae_commit(wpa_s, ext_auth->bssid,
+	if (!ssid)
+		return -1;
+
+	/*
+	 * A PASN-derived PMK has no associated SAE credential, so an SAE
+	 * commit cannot be generated. If a matching PMKSA entry is available,
+	 * report successful external authentication with the cached PMKID and
+	 * allow the driver to associate using the cached PMKSA.
+	 */
+	if (ssid->pmk_valid &&
+	    pmksa_cache_set_current(wpa_s->wpa, NULL, ext_auth->bssid, ssid, 0,
+				    NULL, WPA_KEY_MGMT_SAE, false) == 0) {
+		struct rsn_pmksa_cache_entry *pmksa;
+
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"SAE: External auth served from cached PMKSA");
+		wpa_sm_set_pmk_from_pmksa(wpa_s->wpa);
+		wpa_s->sme.sae_pmksa_caching = 1;
+
+		pmksa = pmksa_cache_get_current(wpa_s->wpa);
+		if (pmksa)
+			os_memcpy(wpa_s->sme.sae.pmkid, pmksa->pmkid,
+				  PMKID_LEN);
+
+		sme_send_external_auth_status(wpa_s, WLAN_STATUS_SUCCESS);
+		return 0;
+	}
+
+	/* Make sure PT is derived */
+	wpa_s_setup_sae_pt(wpa_s, ssid, false);
+
+	if (sme_external_auth_send_sae_commit(wpa_s, ext_auth->bssid,
 					      ssid) < 0)
 		return -1;
 
