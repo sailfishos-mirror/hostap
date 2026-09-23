@@ -3510,6 +3510,44 @@ static int wpa_cli_cmd_nan_send_nik(struct wpa_ctrl *ctrl, int argc,
 #endif /* CONFIG_NAN */
 
 
+#ifdef CONFIG_NAN_IDP
+
+static int wpa_cli_cmd_idp_request(struct wpa_ctrl *ctrl, int argc,
+				   char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "IDP_REQUEST", 2, argc, argv);
+}
+
+
+static int wpa_cli_cmd_idp_response(struct wpa_ctrl *ctrl, int argc,
+				    char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "IDP_RESPONSE", 2, argc, argv);
+}
+
+
+static int wpa_cli_cmd_idp_terminate(struct wpa_ctrl *ctrl, int argc,
+				     char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "IDP_TERMINATE", 1, argc, argv);
+}
+
+
+static int wpa_cli_cmd_idp_term_response(struct wpa_ctrl *ctrl, int argc,
+					 char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "IDP_TERM_RESPONSE", 2, argc, argv);
+}
+
+
+static int wpa_cli_cmd_idp_list(struct wpa_ctrl *ctrl, int argc, char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "IDP_LIST");
+}
+
+#endif /* CONFIG_NAN_IDP */
+
+
 static int wpa_cli_cmd_generate_new_mac(struct wpa_ctrl *ctrl, int argc,
 					char *argv[])
 {
@@ -4335,6 +4373,22 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	  " = <peer_mac> = Send deferred NAN NIK follow-up to peer" },
 #endif /* CONFIG_PASN */
 #endif /* CONFIG_NAN */
+#ifdef CONFIG_NAN_IDP
+	{ "idp_request", wpa_cli_cmd_idp_request, NULL,
+	  cli_cmd_flag_none,
+	  "peer=<MAC address> role=<ap|sta> [handle=<h>] [instance_id=<id>] [freq=<MHz>] [discoverable=<0|1>] = Set up an IDP link with a NAN peer" },
+	{ "idp_response", wpa_cli_cmd_idp_response, NULL,
+	  cli_cmd_flag_none,
+	  "peer=<MAC address> <accept|reject> [handle=<h>] [freq=<MHz>] [discoverable=<0|1>] = Answer an incoming IDP request" },
+	{ "idp_list", wpa_cli_cmd_idp_list, NULL,
+	  cli_cmd_flag_none, "= List IDP sessions" },
+	{ "idp_terminate", wpa_cli_cmd_idp_terminate, NULL,
+	  cli_cmd_flag_none,
+	  "peer=<MAC address> [mode=<2|3>] [ndp=<0|1>] [reason=<0-3>] = Tear down an IDP link" },
+	{ "idp_term_response", wpa_cli_cmd_idp_term_response, NULL,
+	  cli_cmd_flag_none,
+		"peer=<MAC address> <accept|reject> = Answer a peer's IDP termination request" },
+#endif /* CONFIG_NAN_IDP */
 	{ "new_random_mac_address", wpa_cli_cmd_generate_new_mac, NULL,
 	  cli_cmd_flag_none, "= Generate new random MAC address" },
 	{ NULL, NULL, NULL, cli_cmd_flag_none, NULL }
