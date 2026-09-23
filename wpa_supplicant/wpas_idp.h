@@ -66,6 +66,11 @@ struct wpas_idp_session {
 	int handle; /* NAN service handle */
 
 	u8 bssid[ETH_ALEN];
+	u8 ssid[SSID_MAX_LEN];
+	size_t ssid_len;
+
+	/* IDP session identifier from the IDP ID attribute */
+	u8 idp_session_id;
 
 	/* Whether the AP advertises its SSID in beacons */
 	bool discoverable;

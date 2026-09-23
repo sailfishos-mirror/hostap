@@ -273,6 +273,44 @@ idp_build_channel_list_attr(struct wpas_idp_session *session)
 }
 
 
+/*
+ * Build the IDP ID attribute
+ *
+ * Carries the BSSID, SSID, hidden-SSID indication, and IDP Session ID.
+ * This attribute is transmitted only by the IDP AP, so the Session ID
+ * is carried in only one direction: PASN M1 when the AP is the initiator,
+ * otherwise PASN M2.
+ */
+static struct wpabuf *
+idp_build_idp_id_attr(struct wpas_idp_session *session)
+{
+	struct wpabuf *buf;
+	u8 *len_ptr;
+
+	if (session->ssid_len == 0 || session->ssid_len > SSID_MAX_LEN)
+		return NULL;
+
+	/*
+	 * Attr ID(1) + Length(2) + BSSID(6) + SSID Length(1) + SSID +
+	 * Discoverability(1) + IDP Session ID(1)
+	 */
+	buf = wpabuf_alloc(NAN_ATTR_HDR_LEN + ETH_ALEN + 1 + SSID_MAX_LEN + 2);
+	if (!buf)
+		return NULL;
+
+	wpabuf_put_u8(buf, NAN_ATTR_IDP_ID);
+	len_ptr = wpabuf_put(buf, 2);
+	wpabuf_put_data(buf, session->bssid, ETH_ALEN);
+	wpabuf_put_u8(buf, session->ssid_len);
+	wpabuf_put_data(buf, session->ssid, session->ssid_len);
+	wpabuf_put_u8(buf, session->discoverable ? 1 : 0);
+	wpabuf_put_u8(buf, session->idp_session_id);
+	WPA_PUT_LE16(len_ptr, wpabuf_len(buf) - NAN_ATTR_HDR_LEN);
+
+	return buf;
+}
+
+
 /* Build the IDP Operating Channel attribute */
 static struct wpabuf *
 idp_build_operating_channel_attr(struct wpas_idp_session *session)
@@ -296,7 +334,17 @@ idp_build_operating_channel_attr(struct wpas_idp_session *session)
 }
 
 
-/* Build the combined IDP attribute payload carried in PASN M1/M2 */
+/*
+ * Build the IDP attribute payload for PASN M1/M2
+ *
+ * The IDP ID attribute is only included when the local device takes the AP
+ * role, since it advertises the BSSID and SSID the peer is expected to
+ * connect to. Its presence is also what tells the peer which role to take:
+ * a peer that receives IDP ID becomes the STA.
+ *
+ * The IDP Operating Channel attribute identifies the channel the AP has
+ * settled on and it is included only by the AP.
+ */
 static struct wpabuf *
 idp_build_attributes_payload(struct wpas_idp_session *session)
 {
@@ -305,6 +353,14 @@ idp_build_attributes_payload(struct wpas_idp_session *session)
 	payload = wpabuf_alloc(300);
 	if (!payload)
 		return NULL;
+
+	if (session->role == WPAS_IDP_ROLE_AP) {
+		attr = idp_build_idp_id_attr(session);
+		if (attr) {
+			wpabuf_put_buf(payload, attr);
+			wpabuf_free(attr);
+		}
+	}
 
 	attr = idp_build_channel_list_attr(session);
 	if (attr) {
