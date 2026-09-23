@@ -14,6 +14,7 @@
 #include "ap/hostapd.h"
 #include "ap/ap_drv_ops.h"
 #include "ap/wpa_auth.h"
+#include "nan/nan.h"
 #include "config.h"
 #include "wpa_supplicant_i.h"
 #include "driver_i.h"
@@ -999,6 +1000,102 @@ int wpas_idp_state_machine(struct wpas_idp_session *session,
 
 
 /**
+ * idp_build_idp_information_attr - Build the IDP Information attribute
+ *
+ * The Control field indicates which optional subfields are present. Include the
+ * operating channel only when requested so the peer is not told to use a
+ * channel that has not yet been selected for the session.
+ */
+static struct wpabuf *
+idp_build_idp_information_attr(struct wpas_idp_session *session,
+			       bool include_op_channel)
+{
+	struct wpabuf *buf;
+	u8 *len_ptr, *ctrl_ptr;
+	u8 control = 0;
+
+	/* Attr ID(1) + Length(2) + Control(1) + optional channel triplet */
+	buf = wpabuf_alloc(4 + 3);
+	if (!buf)
+		return NULL;
+
+	wpabuf_put_u8(buf, NAN_ATTR_IDP_INFORMATION);
+	len_ptr = wpabuf_put(buf, 2);
+	ctrl_ptr = wpabuf_put(buf, 1);
+
+	if (include_op_channel) {
+		control |= NAN_IDP_INFO_CTRL_OP_CHAN_PRESENT;
+		wpabuf_put_u8(buf, session->channel.operating_class);
+		wpabuf_put_u8(buf, session->channel.channel_number);
+		wpabuf_put_u8(buf, 0); /* center frequency index of the second
+					* segment (80+80 MHz)*/
+	}
+
+	*ctrl_ptr = control;
+	WPA_PUT_LE16(len_ptr, wpabuf_len(buf) - 3);
+
+	return buf;
+}
+
+
+/**
+ * wpas_idp_set_ap_beacon_elems - Advertise IDP support in the AP beacon
+ * @session: IDP session in the AP role
+ * Returns: 0 on success, -1 on failure
+ *
+ * Build a NAN element containing the Device Capability Extension and IDP
+ * Information attributes and install it as AP vendor elements so it is included
+ * in Beacon and Probe Response frames. This allows NAN peers to identify the
+ * BSS as an IDP AP and discover the session operating channel.
+ */
+static int wpas_idp_set_ap_beacon_elems(struct wpas_idp_session *session)
+{
+	struct wpa_supplicant *ap_wpa_s;
+	struct wpabuf *attrs, *info_attr, *vendor_elem;
+
+	if (!session)
+		return -1;
+
+	ap_wpa_s = session->group_wpa_s ? session->group_wpa_s : session->wpa_s;
+	if (!ap_wpa_s || !ap_wpa_s->conf)
+		return -1;
+
+	attrs = wpabuf_alloc(108);
+	if (!attrs)
+		return -1;
+
+	if (session->wpa_s && session->wpa_s->nan)
+		nan_add_dev_capa_ext_attr(session->wpa_s->nan, attrs);
+
+	info_attr = idp_build_idp_information_attr(session, true);
+	if (!info_attr) {
+		wpabuf_free(attrs);
+		return -1;
+	}
+	if (wpabuf_resize(&attrs, wpabuf_len(info_attr)) < 0) {
+		wpabuf_free(info_attr);
+		wpabuf_free(attrs);
+		return -1;
+	}
+	wpabuf_put_buf(attrs, info_attr);
+	wpabuf_free(info_attr);
+
+	vendor_elem = wpas_idp_build_nan_elem(attrs);
+	wpabuf_free(attrs);
+	if (!vendor_elem)
+		return -1;
+
+	wpabuf_free(ap_wpa_s->conf->ap_vendor_elements);
+	ap_wpa_s->conf->ap_vendor_elements = vendor_elem;
+
+	wpa_printf(MSG_DEBUG, "IDP: Set AP beacon elements on '%s' (%zu bytes)",
+		   ap_wpa_s->ifname, wpabuf_len(vendor_elem));
+
+	return 0;
+}
+
+
+/**
  * wpas_idp_setup_ap - Start the AP for an IDP session
  * @session: IDP session
  * Returns: 0 on success, -1 on failure
@@ -1119,6 +1216,21 @@ int wpas_idp_setup_ap(struct wpas_idp_session *session)
 		   MACSTR,
 		   session->id, freq, session->channel.operating_class,
 		   session->channel.channel_number, MAC2STR(session->bssid));
+
+	/*
+	 * Advertise IDP AP operation and TWT concurrency support through
+	 * NAN and the AP beacon so peers can identify the BSS as an IDP
+	 * AP without first establishing a NAN session.
+	 */
+	if (session->wpa_s->nan)
+		nan_set_idp_twt_support(session->wpa_s->nan, true);
+
+	if (wpas_idp_set_ap_beacon_elems(session) < 0) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: Session %u: failed to set AP beacon elements",
+			   session->id);
+		goto fail_remove;
+	}
 
 	iface_wpa_s->current_ssid = ssid_conf;
 	if (wpa_supplicant_create_ap(iface_wpa_s, ssid_conf) < 0) {
