@@ -3041,6 +3041,54 @@ tear_down:
 
 
 /*
+ * idp_term_response_reject - Refuse a peer's termination request
+ * @session: Session whose peer asked for termination
+ * Returns: 0 on success, -1 if the refusal could not be built or sent
+ *
+ * The data path stays up, so the peer has to be told rather than left to
+ * decide for itself when the silence has gone on long enough. The session
+ * returns to the state it was in before the request arrived.
+ */
+static int idp_term_response_reject(struct wpas_idp_session *session)
+{
+	struct wpabuf *frame;
+	int ret;
+
+	if (!session->pending_termination)
+		return -1;
+
+	eloop_cancel_timeout(idp_term_request_timeout, session, NULL);
+
+	frame = idp_build_termination_attr(session, NAN_IDP_TERM_TYPE_RESPONSE,
+					   NAN_IDP_TERM_STATUS_REJECTED,
+					   session->termination.handshake_mode,
+					   session->termination.ndp_transition);
+
+	os_free(session->pending_termination);
+	session->pending_termination = NULL;
+	os_memset(&session->termination, 0, sizeof(session->termination));
+
+	if (!frame)
+		return -1;
+
+	ret = idp_send_termination_naf(session, frame);
+	wpabuf_free(frame);
+	if (ret < 0) {
+		wpa_printf(MSG_INFO,
+			   "IDP: Session %u: could not refuse termination",
+			   session->id);
+		return -1;
+	}
+
+	wpa_printf(MSG_INFO,
+		   "IDP: Session %u: refused " MACSTR "'s termination request",
+		   session->id, MAC2STR(session->peer_addr));
+
+	return 0;
+}
+
+
+/*
  * idp_term_request_timeout - The operator did not answer the peer in time
  *
  * If the peer does not respond after requesting termination, treat the timeout
@@ -3311,4 +3359,40 @@ int wpas_idp_terminate(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 
 	return wpas_idp_initiate_termination(session, reason, handshake_mode,
 					    ndp_transition);
+}
+
+
+/**
+ * wpas_idp_term_response - Answer a peer's IDP termination request
+ * @wpa_s: Interface holding the NAN context
+ * @peer_addr: Peer NAN management interface address
+ * @accept: Whether to accept the termination
+ * Returns: 0 on success, -1 on failure
+ *
+ * Repsond to the IDP-TERM-REQUEST event. Refusing keeps the link, but the peer
+ * is under no obligation to keep its own side up, so a refusal is not a
+ * guarantee the link survives.
+ */
+int wpas_idp_term_response(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+			   bool accept)
+{
+	struct wpas_idp_session *session;
+
+	if (!wpa_s->global->idp) {
+		wpa_printf(MSG_INFO, "IDP: Not initialized");
+		return -1;
+	}
+
+	session = wpas_idp_get_session_by_peer(wpa_s, peer_addr);
+	if (!session || !session->pending_termination) {
+		wpa_printf(MSG_INFO,
+			   "IDP: No termination request pending from " MACSTR,
+			   MAC2STR(peer_addr));
+		return -1;
+	}
+
+	if (accept)
+		return idp_term_response_accept(session);
+
+	return idp_term_response_reject(session);
 }

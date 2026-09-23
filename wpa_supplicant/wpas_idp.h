@@ -277,6 +277,8 @@ int wpas_idp_rx_action(struct wpa_supplicant *wpa_s,
 int wpas_idp_terminate(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 		       enum wpas_idp_termination_reason reason,
 		       u8 handshake_mode, bool ndp_transition);
+int wpas_idp_term_response(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+			   bool accept);
 int wpas_idp_request(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 		     enum wpas_idp_role role, int handle, u8 instance_id,
 		     int freq, bool discoverable);

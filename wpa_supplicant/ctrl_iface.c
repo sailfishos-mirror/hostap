@@ -14072,6 +14072,45 @@ static int wpas_ctrl_idp_terminate(struct wpa_supplicant *wpa_s,
 }
 
 
+/*
+ * wpas_ctrl_idp_term_response - Control interface handler for IDP_TERM_RESPONSE
+ * @wpa_s: Interface the command arrived on
+ * @cmd: Command string following "IDP_TERM_RESPONSE "
+ * Returns: 0 on success, -1 on failure
+ *
+ * Format: peer=<MAC address> <accept|reject>
+ */
+static int wpas_ctrl_idp_term_response(struct wpa_supplicant *wpa_s,
+				       const char *cmd)
+{
+	const char *peer_str = os_strstr(cmd, "peer=");
+	u8 peer_addr[ETH_ALEN];
+	bool accept;
+
+	if (!peer_str) {
+		wpa_printf(MSG_ERROR, "IDP: IDP_TERM_RESPONSE needs peer");
+		return -1;
+	}
+
+	if (hwaddr_aton(peer_str + 5, peer_addr) < 0) {
+		wpa_printf(MSG_ERROR, "IDP: Invalid peer MAC address");
+		return -1;
+	}
+
+	if (os_strstr(cmd, " accept")) {
+		accept = true;
+	} else if (os_strstr(cmd, " reject")) {
+		accept = false;
+	} else {
+		wpa_printf(MSG_ERROR,
+			   "IDP: IDP_TERM_RESPONSE needs accept or reject");
+		return -1;
+	}
+
+	return wpas_idp_term_response(wpa_s, peer_addr, accept);
+}
+
+
 #ifdef CONFIG_TESTING_OPTIONS
 /*
  * wpas_ctrl_idp_get - Control interface handler for IDP_GET
@@ -15170,6 +15209,9 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 			reply_len = -1;
 	} else if (os_strncmp(buf, "IDP_TERMINATE ", 14) == 0) {
 		if (wpas_ctrl_idp_terminate(wpa_s, buf + 14) < 0)
+			reply_len = -1;
+	} else if (os_strncmp(buf, "IDP_TERM_RESPONSE ", 18) == 0) {
+		if (wpas_ctrl_idp_term_response(wpa_s, buf + 18) < 0)
 			reply_len = -1;
 	} else if (os_strcmp(buf, "IDP_LIST") == 0) {
 		reply_len = wpas_idp_list(wpa_s, reply, reply_size);
