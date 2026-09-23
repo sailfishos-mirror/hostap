@@ -21,6 +21,7 @@
 #include "wpa_supplicant_i.h"
 #include "driver_i.h"
 #include "ap.h"
+#include "notify.h"
 #include "wpas_idp.h"
 #include "wpas_idp_pasn.h"
 
@@ -1111,10 +1112,25 @@ int wpas_idp_state_machine(struct wpas_idp_session *session,
 		}
 		break;
 	case IDP_STATE_CONFIGURING_STA:
-		if (event == IDP_EVENT_FAILURE) {
+		if (event == IDP_EVENT_STA_CONNECTED) {
+			session->state = IDP_STATE_ACTIVE_STA;
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: CONFIGURING_STA -> ACTIVE_STA",
+				   session->id);
+		} else if (event == IDP_EVENT_FAILURE) {
 			session->state = IDP_STATE_TERMINATING;
 			wpa_printf(MSG_DEBUG,
 				   "IDP: Session %u: CONFIGURING_STA -> TERMINATING",
+				   session->id);
+		}
+		break;
+	case IDP_STATE_ACTIVE_AP:
+	case IDP_STATE_ACTIVE_STA:
+		if (event == IDP_EVENT_DISCONNECTED ||
+		    event == IDP_EVENT_FAILURE) {
+			session->state = IDP_STATE_TERMINATING;
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: ACTIVE -> TERMINATING",
 				   session->id);
 		}
 		break;
@@ -1896,4 +1912,94 @@ void wpas_idp_deinit(struct wpa_global *global)
 	global->idp = NULL;
 
 	wpa_printf(MSG_DEBUG, "IDP: Module deinitialized");
+}
+
+
+/**
+ * idp_session_for_iface - Find the IDP session running on an interface
+ * @wpa_s: Interface an event arrived on
+ * Returns: Matching session, or NULL if the interface carries none
+ *
+ * Sessions are identified by the interface on which they operate. When multiple
+ * sessions share an interface, use the reported BSSID to select the correct
+ * session.
+ */
+static struct wpas_idp_session *
+idp_session_for_iface(struct wpa_supplicant *wpa_s)
+{
+	struct wpas_idp_info *idp = wpa_s->global->idp;
+	struct wpas_idp_session *session, *match = NULL;
+
+	if (!idp)
+		return NULL;
+
+	dl_list_for_each(session, &idp->sessions, struct wpas_idp_session,
+			 list) {
+		if (session->group_wpa_s != wpa_s)
+			continue;
+		if (!is_zero_ether_addr(wpa_s->bssid) &&
+		    ether_addr_equal(wpa_s->bssid, session->bssid))
+			return session;
+		if (!match)
+			match = session;
+	}
+
+	return match;
+}
+
+
+/**
+ * wpas_idp_event - Drive IDP sessions from wpa_supplicant events
+ * @wpa_s: Interface the event arrived on
+ * @event: Event type
+ *
+ * Once configured, an IDP behaves as a normal infrastructure BSS. Association
+ * and disconnection events are therefore used to track when the session comes
+ * up and when it terminates.
+ */
+void wpas_idp_event(struct wpa_supplicant *wpa_s, enum wpa_event_type event)
+{
+	struct wpas_idp_session *session;
+
+	if (!wpa_s->global->idp)
+		return;
+
+	session = idp_session_for_iface(wpa_s);
+	if (!session)
+		return;
+
+	switch (event) {
+	case EVENT_ASSOC:
+		/*
+		 * Only the STA learns that the link is up through an
+		 * association event. The AP reports link establishment during
+		 * its own setup, and peer associations are handled separately.
+		 */
+		if (session->role != WPAS_IDP_ROLE_STA)
+			break;
+
+		/*
+		 * Report session establishment only for the association
+		 * that brings the link up.
+		 */
+		if (session->state != IDP_STATE_CONFIGURING_STA)
+			break;
+
+		wpas_idp_state_machine(session, IDP_EVENT_STA_CONNECTED);
+
+		wpa_printf(MSG_DEBUG, "IDP: Session %u: STA associated to "
+			   MACSTR, session->id, MAC2STR(wpa_s->bssid));
+
+		wpas_notify_idp_established(session->wpa_s, "sta",
+					    session->peer_addr, wpa_s->bssid);
+		break;
+	case EVENT_DISASSOC:
+	case EVENT_DEAUTH:
+		wpa_printf(MSG_DEBUG, "IDP: Session %u: link lost",
+			   session->id);
+		wpas_idp_state_machine(session, IDP_EVENT_DISCONNECTED);
+		break;
+	default:
+		break;
+	}
 }

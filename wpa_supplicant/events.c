@@ -55,6 +55,7 @@
 #include "dpp_supplicant.h"
 #include "pr_supplicant.h"
 #include "nan_supplicant.h"
+#include "wpas_idp.h"
 #include "wpas_idp_pasn.h"
 
 
@@ -7275,12 +7276,15 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 				WPA_EVENT_SUBNET_STATUS_UPDATE "status=%u",
 				data->assoc_info.subnet_status);
 		}
+		wpas_idp_event(wpa_s, event);
 		break;
 	case EVENT_DISASSOC:
+		wpas_idp_event(wpa_s, event);
 		wpas_event_disassoc(wpa_s,
 				    data ? &data->disassoc_info : NULL);
 		break;
 	case EVENT_DEAUTH:
+		wpas_idp_event(wpa_s, event);
 #ifdef CONFIG_TESTING_OPTIONS
 		if (wpa_s->ignore_auth_resp) {
 			wpa_printf(MSG_INFO,

@@ -206,4 +206,14 @@ void wpas_idp_remove_interface(struct wpa_supplicant *wpa_s,
 int wpas_idp_setup_ap(struct wpas_idp_session *session);
 int wpas_idp_setup_sta(struct wpas_idp_session *session);
 
+/* Event handling */
+#ifdef CONFIG_NAN_IDP
+void wpas_idp_event(struct wpa_supplicant *wpa_s, enum wpa_event_type event);
+#else /* CONFIG_NAN_IDP */
+static inline void wpas_idp_event(struct wpa_supplicant *wpa_s,
+				  enum wpa_event_type event)
+{
+}
+#endif /* CONFIG_NAN_IDP */
+
 #endif /* WPAS_IDP_H */
