@@ -2302,3 +2302,36 @@ int wpas_idp_flush(struct wpa_supplicant *wpa_s)
 
 	return 0;
 }
+
+
+#ifdef CONFIG_TESTING_OPTIONS
+/**
+ * wpas_idp_get_nd_pmk - Write the ND-PMK held for a peer as hex
+ * @wpa_s: Interface holding the NAN context
+ * @peer_addr: Peer NAN management interface address
+ * @buf: Reply buffer
+ * @buflen: Size of @buf
+ * Returns: Number of octets written to @buf, or -1 on failure
+ *
+ * The ND-PMK is what a NAN data path set up over this link is keyed from, and
+ * the component establishing it is not this one, so a test needs a way to read
+ * it back out. Exposing keys is for testing only.
+ */
+int wpas_idp_get_nd_pmk(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+			char *buf, size_t buflen)
+{
+	struct wpas_idp_session *session;
+
+	if (!wpa_s->global->idp)
+		return -1;
+
+	session = wpas_idp_get_session_by_peer(wpa_s, peer_addr);
+	if (!session || !session->nd_pmk_valid) {
+		wpa_printf(MSG_DEBUG, "IDP: No ND-PMK held for " MACSTR,
+			   MAC2STR(peer_addr));
+		return -1;
+	}
+
+	return wpa_snprintf_hex(buf, buflen, session->nd_pmk, PMK_LEN);
+}
+#endif /* CONFIG_TESTING_OPTIONS */

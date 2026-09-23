@@ -14016,6 +14016,38 @@ static int wpas_ctrl_idp_response(struct wpa_supplicant *wpa_s,
 				 discoverable);
 }
 
+
+#ifdef CONFIG_TESTING_OPTIONS
+/*
+ * wpas_ctrl_idp_get - Control interface handler for IDP_GET
+ * @wpa_s: Interface the command arrived on
+ * @cmd: Command string following "IDP_GET "
+ * @buf: Reply buffer
+ * @buflen: Size of @buf
+ * Returns: Number of octets written to @buf, or -1 on failure
+ *
+ * Supported query:
+ *   pmk <peer>  ND-PMK for the session with that peer, as hex
+ */
+static int wpas_ctrl_idp_get(struct wpa_supplicant *wpa_s, const char *cmd,
+			     char *buf, size_t buflen)
+{
+	u8 peer_addr[ETH_ALEN];
+
+	if (os_strncmp(cmd, "pmk ", 4) != 0) {
+		wpa_printf(MSG_ERROR, "IDP: Unknown IDP_GET query '%s'", cmd);
+		return -1;
+	}
+
+	if (hwaddr_aton(cmd + 4, peer_addr) < 0) {
+		wpa_printf(MSG_ERROR, "IDP: Invalid peer MAC address");
+		return -1;
+	}
+
+	return wpas_idp_get_nd_pmk(wpa_s, peer_addr, buf, buflen);
+}
+#endif /* CONFIG_TESTING_OPTIONS */
+
 #endif /* CONFIG_NAN_IDP */
 
 
@@ -15086,6 +15118,11 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strcmp(buf, "IDP_FLUSH") == 0) {
 		if (wpas_idp_flush(wpa_s) < 0)
 			reply_len = -1;
+#ifdef CONFIG_TESTING_OPTIONS
+	} else if (os_strncmp(buf, "IDP_GET ", 8) == 0) {
+		reply_len = wpas_ctrl_idp_get(wpa_s, buf + 8, reply,
+					      reply_size);
+#endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_NAN_IDP */
 #ifdef CONFIG_PASN
 	} else if (os_strncmp(buf, "PASN_START ", 11) == 0) {
