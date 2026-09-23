@@ -59,6 +59,11 @@ struct idp_pasn_context * wpas_idp_pasn_init(struct wpa_supplicant *wpa_s,
 					     bool is_initiator);
 void wpas_idp_pasn_deinit(struct idp_pasn_context *ctx);
 
+bool wpas_idp_pasn_is_idp_auth_frame(const u8 *frame_body,
+				     size_t frame_body_len);
+bool wpas_idp_pasn_has_session_for_peer(struct wpa_supplicant *wpa_s,
+					const u8 *peer_addr);
+
 #else /* CONFIG_PASN */
 
 static inline void wpas_idp_pasn_deinit(struct idp_pasn_context *ctx)
