@@ -163,6 +163,8 @@ static void wpas_idp_free_session(struct wpas_idp_session *session)
 
 	dl_list_del(&session->list);
 
+	forced_memzero(session->pmk, sizeof(session->pmk));
+
 	os_free(session);
 }
 
@@ -405,6 +407,32 @@ struct wpabuf * wpas_idp_build_resp_attrs(struct wpas_idp_session *session)
 		return NULL;
 
 	return idp_build_attributes_payload(session);
+}
+
+
+/**
+ * wpas_idp_set_pmk - Store PMK derived from PASN handshake
+ * @session: IDP session
+ * @pmk: PMK buffer
+ * @pmk_len: Length of PMK, must not exceed PMK_LEN
+ * Returns: 0 on success, -1 on invalid parameters
+ */
+int wpas_idp_set_pmk(struct wpas_idp_session *session,
+		     const u8 *pmk, size_t pmk_len)
+{
+	if (!session || !pmk || !pmk_len || pmk_len > PMK_LEN) {
+		wpa_printf(MSG_ERROR, "IDP: Invalid parameters for PMK setup");
+		return -1;
+	}
+
+	os_memcpy(session->pmk, pmk, pmk_len);
+	session->pmk_len = pmk_len;
+
+	wpa_printf(MSG_DEBUG, "IDP: PMK set for session %u (len=%zu)",
+		   session->id, session->pmk_len);
+	wpa_hexdump_key(MSG_DEBUG, "IDP: PMK", session->pmk, session->pmk_len);
+
+	return 0;
 }
 
 

@@ -94,6 +94,10 @@ struct wpas_idp_session {
 	/* Whether the AP advertises its SSID in beacons */
 	bool discoverable;
 
+	/* PMK derived from the PASN handshake */
+	u8 pmk[PMK_LEN];
+	size_t pmk_len;
+
 	/* Network ID used by the STA */
 	int network_id;
 
@@ -152,6 +156,9 @@ wpas_idp_get_pending_request_by_peer(struct wpa_supplicant *wpa_s,
 struct wpabuf * wpas_idp_build_nan_elem(const struct wpabuf *attrs);
 struct wpabuf * wpas_idp_build_req_attrs(struct wpas_idp_session *session);
 struct wpabuf * wpas_idp_build_resp_attrs(struct wpas_idp_session *session);
+
+int wpas_idp_set_pmk(struct wpas_idp_session *session,
+		     const u8 *pmk, size_t pmk_len);
 
 int wpas_idp_state_machine(struct wpas_idp_session *session,
 			   enum wpas_idp_event event);
