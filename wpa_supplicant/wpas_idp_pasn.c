@@ -306,6 +306,219 @@ fail:
 
 
 /**
+ * wpas_idp_pasn_build_nan_elem - Build the NAN element for an IDP
+ * Authentication frame
+ * @wpa_s: wpa_supplicant structure
+ * @ctx: IDP PASN context, already initialized
+ * @handle: NAN service handle the session was discovered through, or 0
+ * @is_responder_frame: Whether this element goes into a responder frame
+ * @idp_attrs: IDP attributes to include in the NAN element
+ * Returns: Newly allocated element, or NULL on failure
+ *
+ * Carries the cipher suite list, the NIRA identifying the pairing key,
+ * and the service identifier, as in NAN pairing verification frames,
+ * followed by the IDP attributes in the same NAN element.
+ *
+ * A responder advertises the cipher suites offered by its publish
+ * service, while an initiator advertises only the cipher suite selected
+ * for the handshake.
+ */
+static struct wpabuf *
+wpas_idp_pasn_build_nan_elem(struct wpa_supplicant *wpa_s,
+			     struct idp_pasn_context *ctx, int handle,
+			     bool is_responder_frame,
+			     const struct wpabuf *idp_attrs)
+{
+	struct nan_cipher_suite cs_list[NAN_CS_MAX];
+	size_t cs_count = 0;
+	struct wpabuf *buf, *elem;
+	const u8 *npkid;
+
+	if (!ctx->pasn || !idp_attrs)
+		return NULL;
+
+	npkid = ctx->pasn->custom_pmkid;
+
+	buf = wpabuf_alloc(NAN_ATTR_HDR_LEN + 1 +
+			   NAN_CS_MAX * sizeof(struct nan_cipher_suite) +
+			   NAN_ATTR_HDR_LEN + 1 + NAN_NIRA_NONCE_LEN +
+			   NAN_NIRA_TAG_LEN +
+			   NAN_ATTR_HDR_LEN + NAN_SERVICE_ID_LEN +
+			   wpabuf_len(idp_attrs));
+	if (!buf)
+		return NULL;
+
+	if (is_responder_frame && handle > 0 && wpa_s->nan_de) {
+		const int *cs_ids = nan_de_get_cipher_suites_list(wpa_s->nan_de,
+								  handle);
+		unsigned int i;
+
+		for (i = 0; cs_ids && cs_ids[i] && cs_count < NAN_CS_MAX; i++) {
+			if (cs_ids[i] <= NAN_CS_NONE || cs_ids[i] >= NAN_CS_MAX)
+				continue;
+			cs_list[cs_count].csid = cs_ids[i];
+			cs_list[cs_count].instance_id = handle;
+			cs_count++;
+		}
+	}
+
+	if (!cs_count) {
+		cs_list[0].csid = ctx->pasn->cipher == WPA_CIPHER_GCMP_256 ?
+			NAN_CS_PK_PASN_256 : NAN_CS_PK_PASN_128;
+		cs_list[0].instance_id = handle;
+		cs_count = 1;
+	}
+
+	/*
+	 * The peer cannot tell which pairing key to verify with, nor which
+	 * cipher to use, if either of these is missing.
+	 */
+	if (nan_add_csia(buf, 0, cs_count, cs_list) < 0 ||
+	    nan_add_nira(buf, &npkid[NAN_NIRA_NONCE_LEN], npkid) < 0) {
+		wpabuf_free(buf);
+		return NULL;
+	}
+
+	if (handle > 0 && wpa_s->nan_de) {
+		const u8 *svc_id = nan_de_get_service_id(wpa_s->nan_de, handle);
+
+		if (svc_id) {
+			wpabuf_put_u8(buf, NAN_ATTR_NAN_ATTR_SERVICE_ID_LIST);
+			wpabuf_put_le16(buf, NAN_SERVICE_ID_LEN);
+			wpabuf_put_data(buf, svc_id, NAN_SERVICE_ID_LEN);
+		}
+	}
+
+	wpabuf_put_buf(buf, idp_attrs);
+	elem = wpas_idp_build_nan_elem(buf);
+	wpabuf_free(buf);
+
+	return elem;
+}
+
+
+/**
+ * wpas_idp_pasn_auth_start - Start IDP pairing verification as the initiator
+ * @wpa_s: wpa_supplicant structure
+ * @peer_addr: Peer NAN management interface address
+ * @freq: Frequency to send PASN M1 on
+ * Returns: 0 if PASN M1 was sent, -1 on failure
+ *
+ * The IDP interface is created before PASN M1 is sent, because when this device
+ * takes the AP role the BSSID advertised in PASN M1 is that interface's
+ * address.
+ */
+int wpas_idp_pasn_auth_start(struct wpa_supplicant *wpa_s,
+			     const u8 *peer_addr, int freq)
+{
+	struct wpas_idp_session *session;
+	struct idp_pasn_context *ctx;
+	struct wpabuf *idp_attrs, *extra_ies = NULL;
+	struct hostapd_sta_add_params sta_params;
+	bool separate_iface;
+
+	if (!wpa_s || !peer_addr)
+		return -1;
+
+	session = wpas_idp_get_session_by_peer(wpa_s, peer_addr);
+	if (!session) {
+		wpa_printf(MSG_ERROR, "IDP-PASN: No session for peer " MACSTR,
+			   MAC2STR(peer_addr));
+		return -1;
+	}
+
+	/* A retry must not leave the context of the previous attempt behind */
+	wpas_idp_pasn_deinit(session->pasn_ctx);
+	session->pasn_ctx = NULL;
+
+	ctx = wpas_idp_pasn_init(wpa_s, session, peer_addr, true);
+	if (!ctx)
+		return -1;
+	session->pasn_ctx = ctx;
+
+	if (wpas_idp_pasn_initialize(ctx) < 0) {
+		wpa_printf(MSG_ERROR, "IDP-PASN: Failed to set up PASN");
+		goto fail;
+	}
+
+	separate_iface = wpas_idp_need_separate_iface(wpa_s);
+	if (separate_iface && !session->group_wpa_s) {
+		enum wpa_driver_if_type iface_type =
+			session->role == WPAS_IDP_ROLE_AP ?
+			WPA_IF_AP_BSS : WPA_IF_STATION;
+
+		if (wpas_idp_add_interface(wpa_s, session, iface_type) < 0) {
+			wpa_printf(MSG_ERROR,
+				   "IDP-PASN: Failed to create interface");
+			goto fail;
+		}
+		if (!wpas_idp_init_interface(wpa_s, session)) {
+			wpa_printf(MSG_ERROR,
+				   "IDP-PASN: Failed to initialize interface");
+			wpas_idp_remove_interface(wpa_s, session);
+			goto fail;
+		}
+		if (session->role == WPAS_IDP_ROLE_AP)
+			os_memcpy(session->bssid, session->iface_addr,
+				  ETH_ALEN);
+	} else if (!separate_iface) {
+		session->group_wpa_s = wpa_s;
+		if (session->role == WPAS_IDP_ROLE_AP)
+			os_memcpy(session->bssid, wpa_s->own_addr, ETH_ALEN);
+	}
+
+	/* Pairing and IDP attributes are carried in the same NAN element */
+	idp_attrs = wpas_idp_build_req_attrs(session);
+	if (!idp_attrs) {
+		wpa_printf(MSG_ERROR,
+			   "IDP-PASN: Failed to build PASN M1 attributes");
+		goto fail;
+	}
+
+	extra_ies = wpas_idp_pasn_build_nan_elem(wpa_s, ctx, session->handle,
+						  false, idp_attrs);
+	wpabuf_free(idp_attrs);
+	if (!extra_ies) {
+		wpa_printf(MSG_ERROR,
+			   "IDP-PASN: Failed to build PASN M1 element");
+		goto fail;
+	}
+
+	pasn_set_extra_ies(ctx->pasn, wpabuf_head_u8(extra_ies),
+			   wpabuf_len(extra_ies));
+	wpabuf_free(extra_ies);
+
+	os_memset(&sta_params, 0, sizeof(sta_params));
+	sta_params.addr = peer_addr;
+	sta_params.flags = WPA_STA_MFP;
+	sta_params.set = 1;
+	if (wpa_drv_sta_add(wpa_s, &sta_params) < 0)
+		wpa_printf(MSG_DEBUG, "IDP-PASN: sta_add() failed, continuing");
+
+	if (wpa_pasn_verify(ctx->pasn, ctx->pasn->own_addr,
+			    ctx->pasn->peer_addr, ctx->pasn->bssid,
+			    ctx->pasn->akmp, ctx->pasn->cipher,
+			    ctx->pasn->group, freq, NULL, 0, NULL, 0,
+			    NULL) < 0) {
+		wpa_printf(MSG_ERROR, "IDP-PASN: Failed to send PASN M1");
+		goto fail;
+	}
+
+	ctx->state = IDP_PASN_M1_SENT;
+	wpa_printf(MSG_DEBUG, "IDP-PASN: M1 sent to " MACSTR " on %d MHz",
+		   MAC2STR(peer_addr), freq);
+
+	return 0;
+
+fail:
+	wpas_idp_pasn_deinit(ctx);
+	session->pasn_ctx = NULL;
+
+	return -1;
+}
+
+
+/**
  * wpas_idp_pasn_send_reject - Refuse an incoming IDP PASN handshake
  * @wpa_s: wpa_supplicant structure
  * @peer_addr: Peer NAN management interface address

@@ -22,6 +22,7 @@
 #include "driver_i.h"
 #include "ap.h"
 #include "wpas_idp.h"
+#include "wpas_idp_pasn.h"
 
 
 /*
@@ -207,6 +208,9 @@ static void wpas_idp_free_session(struct wpas_idp_session *session)
 		   session->id, MAC2STR(session->peer_addr));
 
 	dl_list_del(&session->list);
+
+	wpas_idp_pasn_deinit(session->pasn_ctx);
+	session->pasn_ctx = NULL;
 
 	forced_memzero(session->pmk, sizeof(session->pmk));
 	forced_memzero(session->nd_pmk, sizeof(session->nd_pmk));
