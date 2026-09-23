@@ -98,6 +98,12 @@ struct wpas_idp_session {
 	/* PMK derived from the PASN handshake */
 	u8 pmk[PMK_LEN];
 	size_t pmk_len;
+	u8 pmkid[PMKID_LEN];
+	bool pmkid_valid;
+
+	/* ND-PMK derived for the infrastructure connection */
+	u8 nd_pmk[PMK_LEN];
+	bool nd_pmk_valid;
 
 	/* Network ID used by the STA */
 	int network_id;

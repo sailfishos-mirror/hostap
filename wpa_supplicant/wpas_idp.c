@@ -11,6 +11,9 @@
 #include "utils/wpabuf.h"
 #include "common/ieee802_11_defs.h"
 #include "common/nan_defs.h"
+#include "ap/hostapd.h"
+#include "ap/ap_drv_ops.h"
+#include "ap/wpa_auth.h"
 #include "config.h"
 #include "wpa_supplicant_i.h"
 #include "driver_i.h"
@@ -195,6 +198,7 @@ static void wpas_idp_free_session(struct wpas_idp_session *session)
 	dl_list_del(&session->list);
 
 	forced_memzero(session->pmk, sizeof(session->pmk));
+	forced_memzero(session->nd_pmk, sizeof(session->nd_pmk));
 
 	os_free(session);
 }
@@ -1028,6 +1032,13 @@ int wpas_idp_setup_ap(struct wpas_idp_session *session)
 		goto fail;
 	}
 
+	if (!session->nd_pmk_valid || !session->pmkid_valid) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: Session %u: no ND-PMK or PMKID for AP setup",
+			   session->id);
+		goto fail;
+	}
+
 	if (session->ssid_len == 0 || session->ssid_len > SSID_MAX_LEN) {
 		wpa_printf(MSG_ERROR,
 			   "IDP: Session %u: invalid SSID length %zu",
@@ -1119,6 +1130,30 @@ int wpas_idp_setup_ap(struct wpas_idp_session *session)
 
 	wpa_printf(MSG_INFO, "IDP: AP started on interface '%s'",
 		   iface_wpa_s->ifname);
+
+	/*
+	 * The peer authenticates using the ND-PMK derived from PASN, so
+	 * install a PMKSA entry to allow association without performing
+	 * SAE. The address the peer uses for association is not known yet,
+	 * so the entry is stored under the peer NMI and it is matched by
+	 * its PMKID once the peer associates.
+	 */
+	if (iface_wpa_s->ap_iface && iface_wpa_s->ap_iface->num_bss > 0) {
+		struct hostapd_data *hapd = iface_wpa_s->ap_iface->bss[0];
+
+		wpa_auth_pmksa_add_pmkid_only(hapd->wpa_auth,
+					      session->peer_addr,
+					      session->nd_pmk, PMK_LEN,
+					      session->pmkid,
+					      WPA_KEY_MGMT_SAE);
+		hostapd_add_pmkid(hapd, session->peer_addr,
+				  session->nd_pmk, PMK_LEN,
+				  session->pmkid, WPA_KEY_MGMT_SAE);
+
+		wpa_printf(MSG_DEBUG,
+			   "IDP: Session %u: ND-PMK cached for peer " MACSTR,
+			   session->id, MAC2STR(session->peer_addr));
+	}
 
 	wpas_idp_state_machine(session, IDP_EVENT_AP_UP);
 
