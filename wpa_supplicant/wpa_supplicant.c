@@ -5914,6 +5914,23 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 			params.sae_password_id = ssid->sae_password_id;
 		} else if (ssid->passphrase) {
 			params.passphrase = ssid->passphrase;
+		} else if (ssid->pmk_valid &&
+			   pmksa_cache_set_current(wpa_s->wpa, NULL,
+						   bss ? bss->bssid :
+						   wpa_s->bssid,
+						   ssid, 0, NULL,
+						   WPA_KEY_MGMT_SAE,
+						   false) == 0) {
+			/*
+			 * This network uses a PASN-derived PMK and has no SAE
+			 * credential. Override SAE authentication and use the
+			 * cached PMKSA so the driver can associate without
+			 * running SAE.
+			 */
+			wpa_dbg(wpa_s, MSG_DEBUG,
+				"SAE offload: use cached PMKSA instead of SAE");
+			wpa_sm_set_pmk_from_pmksa(wpa_s->wpa);
+			params.auth_alg = WPA_AUTH_ALG_OPEN;
 		}
 	}
 
