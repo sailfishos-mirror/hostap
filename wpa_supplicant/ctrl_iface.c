@@ -14017,6 +14017,61 @@ static int wpas_ctrl_idp_response(struct wpa_supplicant *wpa_s,
 }
 
 
+/*
+ * wpas_ctrl_idp_terminate - Control interface handler for IDP_TERMINATE
+ * @wpa_s: Interface the command arrived on
+ * @cmd: Command string following "IDP_TERMINATE "
+ * Returns: 0 on success, -1 on failure
+ *
+ * Format: peer=<MAC address> [mode=<2|3>] [ndp=<0|1>] [reason=<0-3>]
+ */
+static int wpas_ctrl_idp_terminate(struct wpa_supplicant *wpa_s,
+				   const char *cmd)
+{
+	const char *peer_str = os_strstr(cmd, "peer=");
+	const char *mode_str = os_strstr(cmd, "mode=");
+	const char *ndp_str = os_strstr(cmd, "ndp=");
+	const char *reason_str = os_strstr(cmd, "reason=");
+	u8 peer_addr[ETH_ALEN];
+	int mode = 2, reason = IDP_TERM_REASON_USER_REQUEST;
+	bool ndp_transition = false;
+
+	if (!peer_str) {
+		wpa_printf(MSG_ERROR, "IDP: IDP_TERMINATE needs peer");
+		return -1;
+	}
+
+	if (hwaddr_aton(peer_str + 5, peer_addr) < 0) {
+		wpa_printf(MSG_ERROR, "IDP: Invalid peer MAC address");
+		return -1;
+	}
+
+	if (mode_str) {
+		mode = atoi(mode_str + 5);
+		if (mode != 2 && mode != 3) {
+			wpa_printf(MSG_ERROR,
+				   "IDP: mode must be 2 or 3, not %d", mode);
+			return -1;
+		}
+	}
+
+	if (ndp_str)
+		ndp_transition = atoi(ndp_str + 4) != 0;
+
+	if (reason_str) {
+		reason = atoi(reason_str + 7);
+
+		if (reason < 0 || reason > IDP_TERM_REASON_PEER_REQUEST) {
+			wpa_printf(MSG_ERROR, "IDP: Invalid reason %d", reason);
+			return -1;
+		}
+	}
+
+	return wpas_idp_terminate(wpa_s, peer_addr, reason, mode,
+				  ndp_transition);
+}
+
+
 #ifdef CONFIG_TESTING_OPTIONS
 /*
  * wpas_ctrl_idp_get - Control interface handler for IDP_GET
@@ -15112,6 +15167,9 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 			reply_len = -1;
 	} else if (os_strncmp(buf, "IDP_RESPONSE ", 13) == 0) {
 		if (wpas_ctrl_idp_response(wpa_s, buf + 13) < 0)
+			reply_len = -1;
+	} else if (os_strncmp(buf, "IDP_TERMINATE ", 14) == 0) {
+		if (wpas_ctrl_idp_terminate(wpa_s, buf + 14) < 0)
 			reply_len = -1;
 	} else if (os_strcmp(buf, "IDP_LIST") == 0) {
 		reply_len = wpas_idp_list(wpa_s, reply, reply_size);
