@@ -213,6 +213,7 @@ int wpas_idp_request(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 int wpas_idp_response(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 		      bool accept, int handle, int freq, int discoverable);
 int wpas_idp_list(struct wpa_supplicant *wpa_s, char *buf, size_t buflen);
+int wpas_idp_flush(struct wpa_supplicant *wpa_s);
 
 /* Event handling */
 #ifdef CONFIG_NAN_IDP

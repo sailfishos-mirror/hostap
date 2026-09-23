@@ -2262,3 +2262,43 @@ int wpas_idp_list(struct wpa_supplicant *wpa_s, char *buf, size_t buflen)
 
 	return len;
 }
+
+
+/**
+ * wpas_idp_flush - Drop every IDP session and held request
+ * @wpa_s: Interface holding the NAN context
+ * Returns: 0
+ *
+ * Remove all IDP sessions and pending requests without notifying peers.
+ * Intended for local cleanup and testing rather than normal session
+ * termination.
+ */
+int wpas_idp_flush(struct wpa_supplicant *wpa_s)
+{
+	struct wpas_idp_info *idp = wpa_s->global->idp;
+	struct wpas_idp_session *session, *stmp;
+	struct wpas_idp_pending_request *req, *rtmp;
+	unsigned int sessions = 0, requests = 0;
+
+	if (!idp)
+		return 0;
+
+	dl_list_for_each_safe(session, stmp, &idp->sessions,
+			      struct wpas_idp_session, list) {
+		wpas_idp_remove_interface(wpa_s, session);
+		wpas_idp_free_session(session);
+		sessions++;
+	}
+
+	dl_list_for_each_safe(req, rtmp, &idp->pending_requests,
+			      struct wpas_idp_pending_request, list) {
+		wpas_idp_free_pending_request(req);
+		requests++;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "IDP: Flushed %u session(s) and %u held request(s)",
+		   sessions, requests);
+
+	return 0;
+}

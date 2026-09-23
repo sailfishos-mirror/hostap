@@ -15083,6 +15083,9 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 			reply_len = -1;
 	} else if (os_strcmp(buf, "IDP_LIST") == 0) {
 		reply_len = wpas_idp_list(wpa_s, reply, reply_size);
+	} else if (os_strcmp(buf, "IDP_FLUSH") == 0) {
+		if (wpas_idp_flush(wpa_s) < 0)
+			reply_len = -1;
 #endif /* CONFIG_NAN_IDP */
 #ifdef CONFIG_PASN
 	} else if (os_strncmp(buf, "PASN_START ", 11) == 0) {
