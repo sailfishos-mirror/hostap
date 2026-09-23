@@ -1227,6 +1227,16 @@ int wpas_idp_state_machine(struct wpas_idp_session *session,
 				   session->id);
 		}
 		break;
+	case IDP_STATE_TERM_WAIT_CONFIRM:
+		if (event == IDP_EVENT_TERM_CONFIRM_RX ||
+		    event == IDP_EVENT_TERM_TIMEOUT ||
+		    event == IDP_EVENT_FAILURE) {
+			session->state = IDP_STATE_TERMINATING;
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: TERM_WAIT_CONFIRM -> TERMINATING",
+				   session->id);
+		}
+		break;
 	case IDP_STATE_TERM_WAIT_RESP:
 		if (event == IDP_EVENT_TERM_TIMEOUT ||
 		    event == IDP_EVENT_FAILURE) {
@@ -3111,6 +3121,36 @@ static int idp_process_termination_request(struct wpas_idp_session *session,
 
 
 /*
+ * idp_process_termination_confirm - Handle termination confirmation
+ *
+ * Process the final confirmation of a three-message termination exchange only
+ * when the session is waiting for it. Ignore unsolicited confirmation frames.
+ */
+static int idp_process_termination_confirm(struct wpas_idp_session *session)
+{
+	if (!session->termination.termination_in_progress ||
+	    session->termination.is_initiator ||
+	    session->termination.expected_response !=
+	    NAN_IDP_TERM_TYPE_CONFIRM) {
+		wpa_printf(MSG_DEBUG,
+			   "IDP: Session %u was not waiting for a termination confirm",
+			   session->id);
+		return -1;
+	}
+
+	wpa_printf(MSG_INFO,
+		   "IDP: Session %u: " MACSTR " confirmed termination",
+		   session->id, MAC2STR(session->peer_addr));
+
+	eloop_cancel_timeout(idp_termination_timeout, session, NULL);
+	wpas_idp_state_machine(session, IDP_EVENT_TERM_CONFIRM_RX);
+	idp_complete_termination(session);
+
+	return 0;
+}
+
+
+/*
  * idp_termination_rx - Act on a received IDP Termination attribute
  * @wpa_s: Interface the frame arrived on
  * @src: Address the frame came from
@@ -3185,6 +3225,8 @@ static int idp_termination_rx(struct wpa_supplicant *wpa_s, const u8 *src,
 	case NAN_IDP_TERM_TYPE_RESPONSE:
 		return idp_process_termination_response(session,
 							handshake_mode);
+	case NAN_IDP_TERM_TYPE_CONFIRM:
+		return idp_process_termination_confirm(session);
 	default:
 		wpa_printf(MSG_DEBUG,
 			   "IDP: Session %u: nothing to do with termination step %u",
