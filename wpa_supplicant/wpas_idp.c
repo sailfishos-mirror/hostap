@@ -1375,6 +1375,37 @@ int wpas_idp_setup_sta(struct wpas_idp_session *session)
 	ssid_conf->ieee80211w = MGMT_FRAME_PROTECTION_REQUIRED;
 	ssid_conf->sae_pwe = SAE_PWE_HASH_TO_ELEMENT;
 
+	/*
+	 * If the IDP AP is known to be on a single channel, restrict scanning
+	 * accordingly. This reduces scan time and avoids unnecessary disruption
+	 * to NAN operation on other channels. Failure to do so is not fatal and
+	 * only results in a full scan.
+	 */
+	if (session->channel.operating_class &&
+	    session->channel.channel_number) {
+		int freq;
+		int *scan_freq = NULL;
+
+		freq = ieee80211_chan_to_freq(NULL,
+					      session->channel.operating_class,
+					      session->channel.channel_number);
+
+		if (freq > 0)
+			scan_freq = os_zalloc(2 * sizeof(int));
+
+		if (scan_freq) {
+			scan_freq[0] = freq;
+			os_free(ssid_conf->scan_freq);
+			ssid_conf->scan_freq = scan_freq;
+		} else {
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: STA scan could not be restricted to opclass %u ch %u",
+				   session->id,
+				   session->channel.operating_class,
+				   session->channel.channel_number);
+		}
+	}
+
 	session->network_id = ssid_conf->id;
 
 	iface_wpa_s->current_ssid = ssid_conf;
