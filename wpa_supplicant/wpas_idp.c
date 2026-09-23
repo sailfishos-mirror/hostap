@@ -336,6 +336,98 @@ idp_build_operating_channel_attr(struct wpas_idp_session *session)
 }
 
 
+/**
+ * idp_country_string_unset - Whether a session still has no country code
+ *
+ * Both channel attributes include a country code and may be present in
+ * the same frame. The channel is taken from the first attribute that
+ * provides one, so the country code follows the same rule rather than
+ * being overwritten by a later attribute.
+ */
+static bool idp_country_string_unset(const struct wpas_idp_session *session)
+{
+	const u8 *cs = session->channel.country_string;
+
+	return cs[0] == 0 && cs[1] == 0;
+}
+
+
+/**
+ * idp_parse_channel_list - Parse the IDP Channel List attribute
+ *
+ * The attribute carries a country code followed by a sequence of
+ * (operating class, channel count, channels) entries. The first advertised
+ * channel is selected as the session channel, so a previously selected channel
+ * is not overridden by later entries.
+ */
+static int idp_parse_channel_list(const u8 *data, size_t len,
+				  struct wpas_idp_session *session)
+{
+	const u8 *pos = data;
+
+	if (len < 3)
+		return -1;
+
+	if (idp_country_string_unset(session))
+		os_memcpy(session->channel.country_string, pos, 3);
+	pos += 3;
+	len -= 3;
+
+	while (len >= 2) {
+		u8 oc = *pos++;
+		u8 num = *pos++;
+
+		len -= 2;
+		if (len < num)
+			break;
+
+		if (num > 0 && session->channel.operating_class == 0) {
+			session->channel.operating_class = oc;
+			session->channel.channel_number = *pos;
+			break;
+		}
+
+		pos += num;
+		len -= num;
+	}
+
+	return 0;
+}
+
+
+/**
+ * idp_parse_operating_channel - Parse the IDP Operating Channel attribute
+ *
+ * Carries the country code, a channel count, and that many (operating
+ * class, channel) pairs. As with the channel list, a channel already recorded
+ * for the session is left alone.
+ */
+static int
+idp_parse_operating_channel(const u8 *data, size_t len,
+			    struct wpas_idp_session *session)
+{
+	u8 num_channels;
+
+	/* Country String(3) + Number of Operating Channels(1) */
+	if (len < 4)
+		return -1;
+
+	num_channels = data[3];
+	if (len < 4U + num_channels * 2)
+		return -1;
+
+	if (idp_country_string_unset(session))
+		os_memcpy(session->channel.country_string, data, 3);
+
+	if (num_channels > 0 && session->channel.operating_class == 0) {
+		session->channel.operating_class = data[4];
+		session->channel.channel_number = data[5];
+	}
+
+	return 0;
+}
+
+
 /*
  * Build the IDP attribute payload for PASN M1/M2
  *
@@ -468,6 +560,12 @@ static void idp_parse_attributes(const u8 *attrs, size_t attrs_len,
 				session->discoverable = tail[0] != 0;
 				session->idp_session_id = tail[1];
 			}
+			break;
+		case NAN_ATTR_IDP_CHANNEL_LIST:
+			idp_parse_channel_list(pos, len, session);
+			break;
+		case NAN_ATTR_IDP_OPERATING_CHANNEL:
+			idp_parse_operating_channel(pos, len, session);
 			break;
 		}
 
