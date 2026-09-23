@@ -2091,3 +2091,89 @@ int wpas_idp_request(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 
 	return 0;
 }
+
+
+/**
+ * wpas_idp_response - Accept or reject a held IDP request from a peer
+ * @wpa_s: Interface holding the NAN context
+ * @peer_addr: Peer NAN management interface address
+ * @accept: Whether to accept the request
+ * @handle: Local NAN service handle, or 0 to keep the one the request matched
+ * @freq: Frequency in MHz to bring the AP up on, or 0 to keep the one the peer
+ *	proposed
+ * @discoverable: 1 or 0 to set whether the AP advertises its SSID in Beacon
+ *	frames, or -1 to leave it unchanged
+ * Returns: 0 on success, -1 on failure
+ *
+ * @freq and @discoverable apply only when this device takes the AP role.
+ */
+int wpas_idp_response(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+		      bool accept, int handle, int freq, int discoverable)
+{
+	struct wpas_idp_pending_request *pending;
+	struct wpas_idp_session *session;
+	int ret;
+
+	if (!wpa_s->global->idp) {
+		wpa_printf(MSG_ERROR, "IDP: Not initialized");
+		return -1;
+	}
+
+	pending = wpas_idp_get_pending_request_by_peer(wpa_s, peer_addr);
+	if (!pending) {
+		wpa_printf(MSG_INFO, "IDP: No request pending from " MACSTR,
+			   MAC2STR(peer_addr));
+		return -1;
+	}
+
+	if (!accept) {
+		wpa_printf(MSG_DEBUG, "IDP: Rejecting request from " MACSTR,
+			   MAC2STR(peer_addr));
+		wpas_idp_pasn_send_reject(wpa_s, peer_addr, pending->m1_frame);
+		wpas_idp_free_pending_request(pending);
+		return 0;
+	}
+
+	session = wpas_idp_alloc_session(wpa_s, peer_addr,
+					 pending->proposed_role);
+	if (!session) {
+		wpa_printf(MSG_INFO,
+			   "IDP: No session available for " MACSTR,
+			   MAC2STR(peer_addr));
+		wpas_idp_pasn_send_reject(wpa_s, peer_addr, pending->m1_frame);
+		wpas_idp_free_pending_request(pending);
+		return -1;
+	}
+
+	/*
+	 * An explicit handle names the local service this link belongs to.
+	 * Without one the session inherits the handle the peer's request was
+	 * matched against.
+	 */
+	session->handle = handle > 0 ? handle : pending->handle;
+
+	if (discoverable >= 0)
+		session->discoverable = discoverable != 0;
+
+	if (session->role == WPAS_IDP_ROLE_AP)
+		idp_set_channel_from_freq(session, freq);
+
+	wpa_printf(MSG_DEBUG, "IDP: Accepting request from " MACSTR
+		   " as session %u role=%s", MAC2STR(peer_addr), session->id,
+		   session->role == WPAS_IDP_ROLE_AP ? "ap" : "sta");
+
+	ret = wpas_idp_pasn_resume_m1(wpa_s, session, pending->m1_frame,
+				      pending->freq);
+	wpas_idp_free_pending_request(pending);
+
+	/*
+	 * A session still in NONE never started, so there is nothing for
+	 * termination to tear down and it would otherwise sit in the list
+	 * forever.  Anything further along has already been moved on to
+	 * TERMINATING by the resume path.
+	 */
+	if (ret < 0 && session->state == IDP_STATE_NONE)
+		wpas_idp_free_session(session);
+
+	return ret;
+}

@@ -210,6 +210,8 @@ int wpas_idp_setup_sta(struct wpas_idp_session *session);
 int wpas_idp_request(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 		     enum wpas_idp_role role, int handle, u8 instance_id,
 		     int freq, bool discoverable);
+int wpas_idp_response(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+		      bool accept, int handle, int freq, int discoverable);
 
 /* Event handling */
 #ifdef CONFIG_NAN_IDP

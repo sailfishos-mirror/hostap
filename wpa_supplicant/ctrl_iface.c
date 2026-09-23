@@ -13957,6 +13957,65 @@ static int wpas_ctrl_idp_request(struct wpa_supplicant *wpa_s, const char *cmd)
 				freq, discoverable);
 }
 
+
+/*
+ * wpas_ctrl_idp_response - Control interface handler for IDP_RESPONSE
+ * @wpa_s: Interface the command arrived on
+ * @cmd: Command string following "IDP_RESPONSE "
+ * Returns: 0 on success, -1 on failure
+ *
+ * Format: peer=<MAC address> <accept|reject> [handle=<handle>] [freq=<MHz>]
+ *         [discoverable=<0|1>]
+ *
+ * Respond to the IDP-REQUEST event raised for a peer's PASN M1. freq= and
+ * discoverable= apply only when this device takes the AP role; freq=
+ * overrides the channel the peer proposed in PASN M1, and discoverable=0 keeps
+ * the SSID out of the Beacon frames.
+ */
+static int wpas_ctrl_idp_response(struct wpa_supplicant *wpa_s,
+				  const char *cmd)
+{
+	const char *peer_str = os_strstr(cmd, "peer=");
+	const char *handle_str = os_strstr(cmd, "handle=");
+	const char *freq_str = os_strstr(cmd, "freq=");
+	const char *disc_str = os_strstr(cmd, "discoverable=");
+	u8 peer_addr[ETH_ALEN];
+	bool accept;
+	int handle = 0, freq = 0, discoverable = -1;
+
+	if (!peer_str) {
+		wpa_printf(MSG_ERROR, "IDP: IDP_RESPONSE needs peer");
+		return -1;
+	}
+
+	if (hwaddr_aton(peer_str + 5, peer_addr) < 0) {
+		wpa_printf(MSG_ERROR, "IDP: Invalid peer MAC address");
+		return -1;
+	}
+
+	if (os_strstr(cmd, " accept")) {
+		accept = true;
+	} else if (os_strstr(cmd, " reject")) {
+		accept = false;
+	} else {
+		wpa_printf(MSG_ERROR,
+			   "IDP: IDP_RESPONSE needs accept or reject");
+		return -1;
+	}
+
+	if (handle_str)
+		handle = atoi(handle_str + 7);
+
+	if (freq_str)
+		freq = atoi(freq_str + 5);
+
+	if (disc_str)
+		discoverable = atoi(disc_str + 13) != 0;
+
+	return wpas_idp_response(wpa_s, peer_addr, accept, handle, freq,
+				 discoverable);
+}
+
 #endif /* CONFIG_NAN_IDP */
 
 
@@ -15018,6 +15077,9 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_NAN_IDP
 	} else if (os_strncmp(buf, "IDP_REQUEST ", 12) == 0) {
 		if (wpas_ctrl_idp_request(wpa_s, buf + 12) < 0)
+			reply_len = -1;
+	} else if (os_strncmp(buf, "IDP_RESPONSE ", 13) == 0) {
+		if (wpas_ctrl_idp_response(wpa_s, buf + 13) < 0)
 			reply_len = -1;
 #endif /* CONFIG_NAN_IDP */
 #ifdef CONFIG_PASN
