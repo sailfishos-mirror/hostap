@@ -13,7 +13,37 @@
 #include "common/nan_defs.h"
 #include "config.h"
 #include "wpa_supplicant_i.h"
+#include "driver_i.h"
 #include "wpas_idp.h"
+
+
+/*
+ * idp_set_channel_from_freq - Settle a session's channel on a given frequency
+ * @session: Session to configure
+ * @freq: Frequency in MHz, or 0 if the caller did not name one
+ * Returns: 0 if the channel was set, -1 if the caller should pick a default
+ */
+static int idp_set_channel_from_freq(struct wpas_idp_session *session, int freq)
+{
+	u8 op_class = 0, channel = 0;
+
+	if (freq <= 0)
+		return -1;
+
+	if (ieee80211_freq_to_channel_ext(freq, 0, CONF_OPER_CHWIDTH_USE_HT,
+					  &op_class, &channel) ==
+	    NUM_HOSTAPD_MODES || !op_class || !channel) {
+		wpa_printf(MSG_WARNING,
+			   "IDP: Session %u: No operating class for freq %d MHz",
+			   session->id, freq);
+		return -1;
+	}
+
+	session->channel.channel_number = channel;
+	session->channel.operating_class = op_class;
+
+	return 0;
+}
 
 
 /**
@@ -575,6 +605,188 @@ static void idp_parse_attributes(const u8 *attrs, size_t attrs_len,
 
 
 /**
+ * idp_op_class_priority - Return band priority for an operating class
+ * @op_class: Global operating class
+ * Returns: 3 for 6 GHz, 2 for 5 GHz, 1 for 2.4 GHz, or -1 otherwise.
+ */
+static int idp_op_class_priority(u8 op_class)
+{
+	if (op_class >= 131 && op_class <= 137)
+		return 3; /* 6 GHz */
+	if (op_class >= 115 && op_class <= 130)
+		return 2; /* 5 GHz */
+	if (op_class >= 81 && op_class <= 84)
+		return 1; /* 2.4 GHz */
+
+	return -1;
+}
+
+
+static bool idp_chan_usable(const struct hostapd_channel_data *chan)
+{
+	return !(chan->flag & (HOSTAPD_CHAN_DISABLED | HOSTAPD_CHAN_NO_IR |
+			       HOSTAPD_CHAN_RADAR));
+}
+
+
+static bool idp_freq_usable(struct wpa_supplicant *wpa_s, int freq)
+{
+	u16 i;
+
+	for (i = 0; i < wpa_s->hw.num_modes; i++) {
+		struct hostapd_hw_modes *mode = &wpa_s->hw.modes[i];
+		int j;
+
+		for (j = 0; j < mode->num_channels; j++) {
+			struct hostapd_channel_data *chan = &mode->channels[j];
+
+			if (chan->freq == freq)
+				return idp_chan_usable(chan);
+		}
+	}
+
+	return false;
+}
+
+
+/**
+ * idp_freq_score - Rank a frequency for local IDP AP channel selection
+ * @freq: Frequency in MHz
+ * Returns: Score (higher is better), or -1 if the frequency cannot be used
+ *
+ * Higher bands are preferred. Within a band, prefer the 2.4 GHz social
+ * channels 1, 6, and 11, the 5 GHz U-NII-1 channels, and the 6 GHz PSC
+ * channels.
+ */
+static int idp_freq_score(int freq)
+{
+	u8 op_class = 0, channel = 0;
+	int priority;
+	bool preferred;
+
+	if (ieee80211_freq_to_channel_ext(freq, 0, CONF_OPER_CHWIDTH_USE_HT,
+					  &op_class, &channel) ==
+	    NUM_HOSTAPD_MODES)
+		return -1;
+
+	priority = idp_op_class_priority(op_class);
+	if (priority < 0)
+		return -1;
+
+	preferred = freq == 2412 || freq == 2437 || freq == 2462 ||
+		(freq >= 5180 && freq <= 5240) ||
+		is_6ghz_psc_frequency(freq);
+
+	return priority * 2 + preferred;
+}
+
+
+/* Return the first usable entry in the driver preferred frequency list */
+static int idp_select_pref_freq(struct wpa_supplicant *wpa_s)
+{
+	struct weighted_pcl pref_list[100];
+	unsigned int size = ARRAY_SIZE(pref_list);
+	unsigned int i;
+
+	if (wpa_drv_get_pref_freq_list(wpa_s, WPA_IF_AP_BSS, &size,
+				       pref_list) < 0 || !size) {
+		wpa_printf(MSG_DEBUG,
+			   "IDP: No preferred frequency list available from the driver");
+		return 0;
+	}
+
+	for (i = 0; i < size; i++) {
+		int freq = pref_list[i].freq;
+
+		if ((pref_list[i].flag & WEIGHTED_PCL_EXCLUDE) ||
+		    idp_freq_score(freq) < 0 ||
+		    !idp_freq_usable(wpa_s, freq)) {
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Driver preferred frequency %d MHz not allowed",
+				   freq);
+			continue;
+		}
+
+		return freq;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "IDP: All driver preferred frequencies are disallowed");
+	return 0;
+}
+
+
+/* Return the best usable frequency in the hardware channel list */
+static int idp_select_hw_freq(struct wpa_supplicant *wpa_s)
+{
+	int best_freq = 0, best_score = -1;
+	u16 i;
+
+	for (i = 0; i < wpa_s->hw.num_modes; i++) {
+		struct hostapd_hw_modes *mode = &wpa_s->hw.modes[i];
+		int j;
+
+		for (j = 0; j < mode->num_channels; j++) {
+			struct hostapd_channel_data *chan = &mode->channels[j];
+			int score;
+
+			if (!idp_chan_usable(chan))
+				continue;
+
+			score = idp_freq_score(chan->freq);
+			if (score > best_score) {
+				best_score = score;
+				best_freq = chan->freq;
+			}
+		}
+	}
+
+	return best_freq;
+}
+
+
+/**
+ * idp_select_default_channel - Select a default IDP channel
+ * @session: IDP session
+ * Returns: 0 on success, -1 if no usable channel is available
+ *
+ * Use the first usable frequency from the driver preferred frequency list,
+ * if one is available. Otherwise, select the highest ranked usable channel
+ * from the hardware channel list (see idp_freq_score()).
+ */
+static int idp_select_default_channel(struct wpas_idp_session *session)
+{
+	struct wpa_supplicant *wpa_s = session->wpa_s;
+	u8 country[3];
+	int freq;
+
+	if (!wpa_s->hw.modes || !wpa_s->hw.num_modes) {
+		wpa_printf(MSG_DEBUG, "IDP: No hardware channel list available");
+		return -1;
+	}
+
+	freq = idp_select_pref_freq(wpa_s);
+	if (!freq)
+		freq = idp_select_hw_freq(wpa_s);
+	if (!freq) {
+		wpa_printf(MSG_INFO, "IDP: No usable channel for AP operation");
+		return -1;
+	}
+
+	if (idp_set_channel_from_freq(session, freq) < 0)
+		return -1;
+
+	idp_get_country_string(wpa_s, country);
+	os_memcpy(session->channel.country_string, country, 3);
+
+	wpa_printf(MSG_DEBUG, "IDP: Selected channel %d MHz (class=%u ch=%u)",
+		   freq, session->channel.operating_class,
+		   session->channel.channel_number);
+	return 0;
+}
+
+
+/**
  * idp_generate_ssid - Generate an SSID for an IDP AP
  * @session: IDP session
  * Returns: 0 on success, -1 on failure
@@ -633,6 +845,10 @@ int wpas_idp_process_req_attrs(struct wpas_idp_session *session,
 		session->role = WPAS_IDP_ROLE_AP;
 
 		if (idp_generate_ssid(session) < 0)
+			return -1;
+
+		if (session->channel.operating_class == 0 &&
+		    idp_select_default_channel(session) < 0)
 			return -1;
 	}
 
