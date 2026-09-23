@@ -69,6 +69,28 @@ struct wpas_idp_session {
 };
 
 /**
+ * struct wpas_idp_pending_request - Pending incoming PASN M1 request
+ *
+ * Stores the request until the user accepts or rejects it with IDP_RESPONSE.
+ * No session or interface is created before acceptance.
+ *
+ * @list: Entry in the pending request list (wpas_idp_info::pending_requests)
+ * @peer_addr: Initiator's NAN management address
+ * @proposed_role: Local role if the request is accepted
+ * @m1_frame: PASN M1 frame used to resume authentication
+ * @freq: Frequency on which PASN M1 was received
+ * @handle: Matching local NAN service handle
+ */
+struct wpas_idp_pending_request {
+	struct dl_list list;
+	u8 peer_addr[ETH_ALEN];
+	enum wpas_idp_role proposed_role;
+	struct wpabuf *m1_frame;
+	int freq;
+	int handle;
+};
+
+/**
  * struct wpas_idp_info - Global IDP context
  */
 struct wpas_idp_info {
@@ -76,6 +98,7 @@ struct wpas_idp_info {
 	struct dl_list sessions; /* Active IDP sessions,
 				  * struct wpas_idp_session */
 	unsigned int next_id; /* Next session ID */
+	struct dl_list pending_requests; /* Requests awaiting a response */
 };
 
 int wpas_idp_init(struct wpa_global *global);
@@ -85,5 +108,8 @@ wpas_idp_get_session_by_peer(struct wpa_supplicant *wpa_s, const u8 *peer_addr);
 struct wpas_idp_session *
 wpas_idp_alloc_session(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 		       enum wpas_idp_role role);
+struct wpas_idp_pending_request *
+wpas_idp_get_pending_request_by_peer(struct wpa_supplicant *wpa_s,
+				     const u8 *peer_addr);
 
 #endif /* WPAS_IDP_H */

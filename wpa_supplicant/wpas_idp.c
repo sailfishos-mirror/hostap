@@ -8,6 +8,7 @@
 
 #include "utils/includes.h"
 #include "utils/common.h"
+#include "utils/wpabuf.h"
 #include "wpa_supplicant_i.h"
 #include "wpas_idp.h"
 
@@ -164,6 +165,46 @@ static void wpas_idp_free_session(struct wpas_idp_session *session)
 
 
 /**
+ * wpas_idp_get_pending_request_by_peer - Find a pending request by peer
+ * @wpa_s: wpa_supplicant context
+ * @peer_addr: Peer NMI address
+ * Returns: Matching pending request or NULL if not found
+ */
+struct wpas_idp_pending_request *
+wpas_idp_get_pending_request_by_peer(struct wpa_supplicant *wpa_s,
+				     const u8 *peer_addr)
+{
+	struct wpas_idp_pending_request *req;
+
+	if (!wpa_s || !wpa_s->global || !wpa_s->global->idp || !peer_addr)
+		return NULL;
+
+	dl_list_for_each(req, &wpa_s->global->idp->pending_requests,
+			 struct wpas_idp_pending_request, list) {
+		if (ether_addr_equal(req->peer_addr, peer_addr))
+			return req;
+	}
+
+	return NULL;
+}
+
+
+/**
+ * wpas_idp_free_pending_request - Free a pending incoming PASN M1 request
+ * @req: Pending request to free
+ */
+static void wpas_idp_free_pending_request(struct wpas_idp_pending_request *req)
+{
+	if (!req)
+		return;
+
+	dl_list_del(&req->list);
+	wpabuf_free(req->m1_frame);
+	os_free(req);
+}
+
+
+/**
  * wpas_idp_init - Initialize IDP module
  * @global: Pointer to global wpa_supplicant context
  * Returns: 0 on success, -1 on failure
@@ -190,6 +231,7 @@ int wpas_idp_init(struct wpa_global *global)
 
 	idp->global = global;
 	dl_list_init(&idp->sessions);
+	dl_list_init(&idp->pending_requests);
 
 	global->idp = idp;
 
@@ -202,12 +244,14 @@ int wpas_idp_init(struct wpa_global *global)
  * wpas_idp_deinit - Deinitialize IDP module
  * @global: Pointer to global wpa_supplicant context
  *
- * Frees all remaining sessions and the global IDP context.
+ * Frees all remaining sessions and pending requests, and the global IDP
+ * context.
  */
 void wpas_idp_deinit(struct wpa_global *global)
 {
 	struct wpas_idp_info *idp;
 	struct wpas_idp_session *session, *tmp;
+	struct wpas_idp_pending_request *req, *req_tmp;
 
 	if (!global || !global->idp)
 		return;
@@ -217,6 +261,10 @@ void wpas_idp_deinit(struct wpa_global *global)
 	dl_list_for_each_safe(session, tmp, &idp->sessions,
 			      struct wpas_idp_session, list)
 		wpas_idp_free_session(session);
+
+	dl_list_for_each_safe(req, req_tmp, &idp->pending_requests,
+			      struct wpas_idp_pending_request, list)
+		wpas_idp_free_pending_request(req);
 
 	os_free(idp);
 	global->idp = NULL;
