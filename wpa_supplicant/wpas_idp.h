@@ -189,4 +189,7 @@ wpas_idp_init_interface(struct wpa_supplicant *wpa_s,
 void wpas_idp_remove_interface(struct wpa_supplicant *wpa_s,
 			       struct wpas_idp_session *session);
 
+/* AP and STA bring-up */
+int wpas_idp_setup_ap(struct wpas_idp_session *session);
+
 #endif /* WPAS_IDP_H */

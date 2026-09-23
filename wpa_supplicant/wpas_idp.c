@@ -14,6 +14,7 @@
 #include "config.h"
 #include "wpa_supplicant_i.h"
 #include "driver_i.h"
+#include "ap.h"
 #include "wpas_idp.h"
 
 
@@ -990,6 +991,145 @@ int wpas_idp_state_machine(struct wpas_idp_session *session,
 		   session->id, session->state);
 
 	return 0;
+}
+
+
+/**
+ * wpas_idp_setup_ap - Start the AP for an IDP session
+ * @session: IDP session
+ * Returns: 0 on success, -1 on failure
+ *
+ * Configure and start a WPA3-SAE AP on the session interface using the
+ * negotiated BSSID, SSID, and operating channel. Report the result to the state
+ * machine through IDP_EVENT_AP_UP on success or IDP_EVENT_FAILURE on failure.
+ */
+int wpas_idp_setup_ap(struct wpas_idp_session *session)
+{
+	struct wpa_supplicant *iface_wpa_s;
+	struct wpa_ssid *ssid_conf;
+	char ssid_hex[SSID_MAX_LEN * 2 + 1];
+	int freq;
+
+	if (!session) {
+		wpa_printf(MSG_ERROR, "IDP: No session for AP setup");
+		return -1;
+	}
+
+	if (session->pmk_len != PMK_LEN) {
+		wpa_printf(MSG_ERROR, "IDP: Session %u: no PMK for AP setup",
+			   session->id);
+		goto fail;
+	}
+
+	if (!session->group_wpa_s) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: Session %u: no interface for AP setup",
+			   session->id);
+		goto fail;
+	}
+
+	if (session->ssid_len == 0 || session->ssid_len > SSID_MAX_LEN) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: Session %u: invalid SSID length %zu",
+			   session->id, session->ssid_len);
+		goto fail;
+	}
+
+	iface_wpa_s = session->group_wpa_s;
+
+	/*
+	 * Operating frequency comes from the negotiated operating class and
+	 * channel. Fall back to a locally chosen channel if the pair does not
+	 * map to a frequency in the current regulatory domain.
+	 */
+	freq = ieee80211_chan_to_freq(NULL, session->channel.operating_class,
+				      session->channel.channel_number);
+	if (freq <= 0) {
+		if (idp_select_default_channel(session) < 0)
+			goto fail;
+		freq = ieee80211_chan_to_freq(NULL,
+					      session->channel.operating_class,
+					      session->channel.channel_number);
+	}
+	if (freq <= 0) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: Session %u: no frequency for operating class=%u ch=%u",
+			   session->id, session->channel.operating_class,
+			   session->channel.channel_number);
+		goto fail;
+	}
+
+	ssid_conf = wpa_config_add_network(iface_wpa_s->conf);
+	if (!ssid_conf) {
+		wpa_printf(MSG_ERROR,
+			   "IDP: Session %u: failed to add AP network block",
+			   session->id);
+		goto fail;
+	}
+
+	wpa_config_set_network_defaults(ssid_conf);
+	ssid_conf->mode = WPAS_MODE_AP;
+	ssid_conf->disabled = 0;
+	ssid_conf->eht = 1;
+	ssid_conf->frequency = freq;
+
+	/* The interface MAC address is the BSSID the peer will associate to */
+	if (!is_zero_ether_addr(session->iface_addr))
+		os_memcpy(session->bssid, session->iface_addr, ETH_ALEN);
+	os_memcpy(ssid_conf->bssid, session->bssid, ETH_ALEN);
+	ssid_conf->bssid_set = 1;
+
+	wpa_snprintf_hex(ssid_hex, sizeof(ssid_hex), session->ssid,
+			 session->ssid_len);
+	if (wpa_config_set(ssid_conf, "ssid", ssid_hex, 0) < 0) {
+		wpa_printf(MSG_ERROR, "IDP: Session %u: failed to set AP SSID",
+			   session->id);
+		goto fail_remove;
+	}
+
+	/*
+	 * A session the peer was told is not discoverable keeps its SSID out
+	 * of the Beacon frames, which still leaves it reachable to a peer that
+	 * probes for it by name.
+	 */
+	ssid_conf->ignore_broadcast_ssid = session->discoverable ? 0 : 1;
+
+	/* WPA3-SAE with CCMP and management frame protection required */
+	ssid_conf->key_mgmt = WPA_KEY_MGMT_SAE;
+	ssid_conf->auth_alg = WPA_AUTH_ALG_OPEN;
+	ssid_conf->proto = WPA_PROTO_RSN;
+	ssid_conf->pairwise_cipher = WPA_CIPHER_CCMP;
+	ssid_conf->group_cipher = WPA_CIPHER_CCMP;
+	ssid_conf->ieee80211w = MGMT_FRAME_PROTECTION_REQUIRED;
+	ssid_conf->sae_pwe = SAE_PWE_HASH_TO_ELEMENT;
+
+	wpa_printf(MSG_DEBUG,
+		   "IDP: Session %u: AP freq=%d MHz class=%u ch=%u bssid="
+		   MACSTR,
+		   session->id, freq, session->channel.operating_class,
+		   session->channel.channel_number, MAC2STR(session->bssid));
+
+	iface_wpa_s->current_ssid = ssid_conf;
+	if (wpa_supplicant_create_ap(iface_wpa_s, ssid_conf) < 0) {
+		wpa_printf(MSG_ERROR, "IDP: Session %u: failed to start AP",
+			   session->id);
+		iface_wpa_s->current_ssid = NULL;
+		goto fail_remove;
+	}
+
+	wpa_printf(MSG_INFO, "IDP: AP started on interface '%s'",
+		   iface_wpa_s->ifname);
+
+	wpas_idp_state_machine(session, IDP_EVENT_AP_UP);
+
+	return 0;
+
+fail_remove:
+	wpa_config_remove_network(iface_wpa_s->conf, ssid_conf->id);
+fail:
+	wpas_idp_state_machine(session, IDP_EVENT_FAILURE);
+
+	return -1;
 }
 
 
