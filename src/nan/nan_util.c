@@ -530,9 +530,11 @@ void nan_add_dev_capa_ext_attr(struct nan_data *nan, struct wpabuf *buf)
 	if (nan->cfg->pairing_cfg.npk_caching)
 		pairing_and_npk_caching |=
 			NAN_DEV_CAPA_EXT_INFO_1_NPK_NIK_CACHING;
-	if (nan->cfg->pairing_cfg.pik_caching)
+	if (nan->cfg->pairing_cfg.pik_caching) {
 		pairing_and_npk_caching |=
 			NAN_DEV_CAPA_EXT_INFO_1_PIK_CACHING;
+		byte2 |= NAN_DEV_CAPA_EXT_INFO_2_PIK_SUPPORT;
+	}
 	if (wifi_gen_valid)
 		pairing_and_npk_caching |=
 			nan->cfg->wifi_gen <<
