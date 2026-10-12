@@ -28,6 +28,24 @@ def test_nan_usd_publish_invalid_param(dev):
     if "FAIL" not in id0:
         raise Exception("NAN_PUBLISH accepts both solicited=0 and unsolicited=0")
 
+def test_nan_usd_pairing_setup_info_preserves_parameters(dev):
+    """NAN USD pairing setup info preserves following parameters"""
+    check_nan_usd_capab(dev[0])
+
+    cmd = "NAN_PUBLISH service_name=_test pairing_setup_info=key=value ttl=1"
+    publish_id = dev[0].request(cmd)
+    if "FAIL" in publish_id:
+        raise Exception("NAN_PUBLISH with pairing setup info failed")
+
+    try:
+        ev = dev[0].wait_event(["NAN-PUBLISH-TERMINATED"], timeout=4)
+        if ev is None:
+            raise Exception("Publish did not honor the following ttl parameter")
+        if "publish_id=" + publish_id not in ev:
+            raise Exception("Unexpected publish_id: " + ev)
+    finally:
+        dev[0].request("NAN_CANCEL_PUBLISH publish_id=" + publish_id)
+
 def test_nan_usd_publish(dev, apdev):
     """NAN USD Publish"""
     check_nan_usd_capab(dev[0])

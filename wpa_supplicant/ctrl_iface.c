@@ -13064,9 +13064,11 @@ static bool wpas_nan_gtk_cs_supported(const int *cipher_list)
 }
 
 
-static size_t prepare_pairing_setup_info(const char *input, u8 *output)
+static size_t prepare_pairing_setup_info(const char *input, size_t input_len,
+					 u8 *output)
 {
 	const char *ptr = input;
+	const char *end;
 	u8 *out_ptr = output;
 	size_t remaining;
 	const char *pair_start;
@@ -13074,25 +13076,26 @@ static size_t prepare_pairing_setup_info(const char *input, u8 *output)
 
 	if (!input)
 		return 0;
+	end = input + input_len;
 
 	/* format: key1=value1,key2=value2,...,keyn=valuen
 	 * Each pair is encoded as: 1-byte length + pair data.
-	 * Worst case output size is strlen(input) + 1 byte per pair.
+	 * The output is limited to input_len + 1 bytes.
 	 */
-	remaining = os_strlen(input) + 1;
+	remaining = input_len + 1;
 
-	while (*ptr != '\0') {
+	while (ptr < end) {
 		pair_start = ptr;
 		pair_len = 0;
 
-		while (*ptr != '\0' && *ptr != ',') {
+		while (ptr < end && *ptr != ',') {
 			ptr++;
 			pair_len++;
 		}
 
 		/* Skip empty pairs */
 		if (pair_len == 0) {
-			if (*ptr == ',')
+			if (ptr < end)
 				ptr++;
 			continue;
 		}
@@ -13111,7 +13114,7 @@ static size_t prepare_pairing_setup_info(const char *input, u8 *output)
 		out_ptr += pair_len;
 		remaining -= pair_len;
 
-		if (*ptr == ',')
+		if (ptr < end)
 			ptr++;
 	}
 
@@ -13123,6 +13126,7 @@ static u8 * wpas_nan_parse_pairing_setup_info(char *cmd, u16 *out_len)
 {
 	char *psi_pos = os_strstr(cmd, "pairing_setup_info=");
 	char *val;
+	char *end;
 	size_t val_len;
 	u8 *buf;
 
@@ -13130,13 +13134,14 @@ static u8 * wpas_nan_parse_pairing_setup_info(char *cmd, u16 *out_len)
 		return NULL;
 
 	val = psi_pos + 19;
-	val_len = os_strlen(val);
+	end = os_strchr(val, ' ');
+	val_len = end ? (size_t) (end - val) : os_strlen(val);
 
 	buf = os_malloc(val_len + 1);
 	if (!buf)
 		return NULL;
 
-	*out_len = prepare_pairing_setup_info(val, buf);
+	*out_len = prepare_pairing_setup_info(val, val_len, buf);
 
 	/* Blank out the token so str_token() skips it */
 	os_memset(psi_pos, ' ', 19 + val_len);
