@@ -13143,7 +13143,7 @@ static int wpas_ctrl_nan_publish(struct wpa_supplicant *wpa_s, char *cmd,
 	while ((token = str_token(cmd, " ", &context))) {
 		if (os_strncmp(token, "orig_nmi=", 9) == 0) {
 			if (hwaddr_aton(token + 9, params.orig_nmi) < 0)
-				return -1;
+				goto fail;
 			continue;
 		}
 
