@@ -1624,7 +1624,7 @@ static bool sec_prof_stronger(const struct security_profile_entry *a,
 		}
 	}
 
-	if (a_pos > 0 && b_pos > 0 && a_pos < b_pos)
+	if (a_pos >= 0 && b_pos >= 0 && a_pos < b_pos)
 		return true;
 
 	return false;
