@@ -7694,6 +7694,38 @@ enum qca_vendor_attr_roam_candidate_selection_criteria {
  *	For instance, when a station is connected to a 5 GHz AP or AP MLD link,
  *	the firmware triggers the periodic HBR scan with the configured interval
  *	on 6 GHz channels.
+ *
+ * @QCA_ATTR_ROAM_CONTROL_HBR_ENABLE: 8-bit unsigned value. Configures the High
+ *	Band Roaming (HBR) feature in the driver/firmware. When a STA is
+ *	connected to a 2.4 GHz AP, it may stay on 2.4 GHz even when a better
+ *	5 GHz or 6 GHz AP of the same network is nearby, because the 2.4 GHz
+ *	signal is not weak enough to trigger a normal roam. HBR solves this by
+ *	triggering background scans when the current signal is good, to find
+ *	and move to a higher band AP. The same applies when moving from 5 GHz
+ *	to 6 GHz.
+ *
+ *	HBR does not affect the normal roaming behavior (2.4 GHz <-> 5 GHz <->
+ *	6 GHz). Normal roaming, which is driven by low RSSI, BTM/802.11v, and
+ *	neighbor reports, continues to work as usual. HBR only adds an extra
+ *	trigger to move the STA to a higher band when the current connection is
+ *	strong.
+ *
+ *	1 - Enable High Band Roaming feature in the driver/firmware.
+ *	0 - Disable HBR roaming feature in the driver/firmware.
+ *
+ * @QCA_ATTR_ROAM_CONTROL_HBR_FIRST_SCAN_INTERVAL: Unsigned 32-bit value
+ *	in seconds. Configures the delay after initial connection before the
+ *	first HBR roam scan is triggered in firmware, once the HBR RSSI
+ *	threshold is met. This allows a quick scan to find a higher band
+ *	AP/link shortly after connection, before falling back to the periodic
+ *	HBR scan interval configured via
+ *	%QCA_ATTR_ROAM_CONTROL_HBR_PERIODIC_SCAN_INTERVAL_2G or
+ *	%QCA_ATTR_ROAM_CONTROL_HBR_PERIODIC_SCAN_INTERVAL_5G based on the
+ *	connected band.
+ *
+ *	This value must be less than both
+ *	%QCA_ATTR_ROAM_CONTROL_HBR_PERIODIC_SCAN_INTERVAL_2G and
+ *	%QCA_ATTR_ROAM_CONTROL_HBR_PERIODIC_SCAN_INTERVAL_5G.
  */
 enum qca_vendor_attr_roam_control {
 	QCA_ATTR_ROAM_CONTROL_ENABLE = 1,
@@ -7739,6 +7771,8 @@ enum qca_vendor_attr_roam_control {
 	QCA_ATTR_ROAM_CONTROL_SCAN_SCHEME_VALID_UNTIL_DISCONNECTION = 41,
 	QCA_ATTR_ROAM_CONTROL_HBR_PERIODIC_SCAN_INTERVAL_2G = 42,
 	QCA_ATTR_ROAM_CONTROL_HBR_PERIODIC_SCAN_INTERVAL_5G = 43,
+	QCA_ATTR_ROAM_CONTROL_HBR_ENABLE = 44,
+	QCA_ATTR_ROAM_CONTROL_HBR_FIRST_SCAN_INTERVAL = 45,
 
 	/* keep last */
 	QCA_ATTR_ROAM_CONTROL_AFTER_LAST,
