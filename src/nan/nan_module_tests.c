@@ -1521,9 +1521,80 @@ int nan_test_crypto(void)
 }
 
 
+static int nan_test_dcea_build(struct nan_config *cfg, const u8 *expected,
+			       size_t expected_len)
+{
+	struct nan_data nan;
+	struct wpabuf *buf;
+	int ret = -1;
+
+	os_memset(&nan, 0, sizeof(nan));
+	nan.cfg = cfg;
+	buf = wpabuf_alloc(16);
+	if (!buf)
+		return -1;
+	nan_add_dev_capa_ext_attr(&nan, buf);
+	if (wpabuf_len(buf) == expected_len &&
+	    os_memcmp(wpabuf_head(buf), expected, expected_len) == 0)
+		ret = 0;
+	else
+		wpa_hexdump_buf(MSG_ERROR, "NAN: Unexpected DCEA", buf);
+	wpabuf_free(buf);
+	return ret;
+}
+
+
+/* Wi-Fi Aware R5 draft v0.0.16, Table 173 */
+static int nan_test_dcea(void)
+{
+	struct nan_config cfg;
+	static const u8 dcea_max_ssi[] = {
+		NAN_ATTR_DCEA, 5, 0, 0x00, 0x63, 0x40, 0x28, 0x02
+	};
+	static const u8 dcea_capa_max_ssi[] = {
+		NAN_ATTR_DCEA, 5, 0, 0x00, 0x63, 0x48, 0x28, 0x02
+	};
+	static const u8 dcea_capa[] = {
+		NAN_ATTR_DCEA, 5, 0, 0x00, 0x63, 0x08, 0x00, 0x00
+	};
+	static const u8 dcea_invalid_gen[] = {
+		NAN_ATTR_DCEA, 2, 0, 0x00, 0x03
+	};
+
+	os_memset(&cfg, 0, sizeof(cfg));
+	cfg.pairing_cfg.pairing_setup = true;
+	cfg.pairing_cfg.npk_caching = true;
+	cfg.wifi_gen = 6;
+	cfg.max_ssi_len = 2209;
+	if (nan_test_dcea_build(&cfg, dcea_max_ssi,
+				sizeof(dcea_max_ssi)) < 0)
+		return -1;
+
+	cfg.dev_capa_ext_info_2 = NAN_DEV_CAPA_EXT_INFO_2_PIK_SUPPORT;
+	if (nan_test_dcea_build(&cfg, dcea_capa_max_ssi,
+				sizeof(dcea_capa_max_ssi)) < 0)
+		return -1;
+
+	cfg.max_ssi_len = 0;
+	if (nan_test_dcea_build(&cfg, dcea_capa,
+				sizeof(dcea_capa)) < 0)
+		return -1;
+
+	cfg.dev_capa_ext_info_2 = 0;
+	cfg.wifi_gen = 3;
+	if (nan_test_dcea_build(&cfg, dcea_invalid_gen,
+				sizeof(dcea_invalid_gen)) < 0)
+		return -1;
+
+	return 0;
+}
+
+
 int nan_module_tests(void)
 {
 	if (nan_test_crypto())
+		return -1;
+	if (nan_test_dcea())
 		return -1;
 	if (nan_pkbst_tests())
 		return -1;

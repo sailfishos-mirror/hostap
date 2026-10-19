@@ -1493,9 +1493,27 @@ static int wpas_nan_get_peer_inactivity(void *ctx, const u8 *local_ndi,
 }
 
 
+/*
+ * Wi-Fi Generational Info of the Device Capability Extension attribute
+ * (Wi-Fi Aware R5 draft v0.0.16, Table 173, b12-b15) from the NAN PHY
+ * capabilities reported by the driver.
+ */
+static u8 wpas_nan_wifi_gen(struct wpa_supplicant *wpa_s)
+{
+	if (wpa_s->nan_capa.he_valid)
+		return 6;
+	if (wpa_s->nan_capa.vht_valid)
+		return 5;
+	if (wpa_s->nan_capa.ht_capab)
+		return 4;
+	return 0;
+}
+
+
 int wpas_nan_init(struct wpa_supplicant *wpa_s)
 {
 	struct nan_config nan;
+	size_t max_mmpdu_len, followup_overhead;
 
 	if (wpa_s->nan)
 		return 0;
@@ -1647,6 +1665,23 @@ int wpas_nan_init(struct wpa_supplicant *wpa_s)
 
 	nan.nik_lifetime = NAN_NIK_LIFETIME_DEFAULT;
 	nan.max_ndl_idle_period = DEFAULT_NAN_MAX_NDL_IDLE_PERIOD;
+	nan.wifi_gen = wpas_nan_wifi_gen(wpa_s);
+
+	/*
+	 * Default maximum Service Specific Info length for SDEA in a unicast
+	 * follow-up: the largest MMPDU minus the IEEE 802.11 header, the NAN
+	 * SDF header (Category, Action, OUI, OUI Type), and room for other
+	 * attributes. Also add some extra room for unknown extensions and
+	 * potential vendor specific elements, etc.
+	 */
+	followup_overhead = IEEE80211_HDRLEN + 7 + 64 + 100;
+	max_mmpdu_len = wpa_s->drv_max_mmpdu_len_rx;
+	if (max_mmpdu_len <= followup_overhead) {
+		/* Maximum MMPDU length is not known, so use a conservative
+		 * guess on what is likely to go through. */
+		max_mmpdu_len = 1400;
+	}
+	nan.max_ssi_len = max_mmpdu_len - followup_overhead;
 
 	wpa_s->nan = nan_init(&nan);
 	if (!wpa_s->nan) {
