@@ -130,6 +130,10 @@ static void pmksa_cache_reauth(void *eloop_ctx, void *timeout_ctx)
 {
 	struct rsn_pmksa_cache *pmksa = eloop_ctx;
 
+	wpa_printf(MSG_DEBUG,
+		   "RSN: pmksa_cache_reauth() fired, sm=%p cur_pmksa=%p",
+		   pmksa->sm, pmksa->sm ? pmksa->sm->cur_pmksa : NULL);
+
 	if (!pmksa->sm)
 		return;
 
@@ -200,9 +204,12 @@ static void pmksa_cache_set_expiration(struct rsn_pmksa_cache *pmksa)
 	    (!wpa_key_mgmt_sae(entry->akmp) ||
 	     (pmksa->sm->driver_bss_selection &&
 	      !entry->sae_reauth_scheduled))) {
-		sec = pmksa->pmksa->reauth_time - now.sec;
+		sec = entry->reauth_time - now.sec;
 		if (sec < 0)
 			sec = 0;
+		wpa_printf(MSG_DEBUG,
+			   "RSN: scheduling pmksa_cache_reauth() in %d seconds for "
+			   MACSTR, sec, MAC2STR(entry->aa));
 		eloop_register_timeout(sec, 0, pmksa_cache_reauth, pmksa,
 				       NULL);
 	}
@@ -799,6 +806,10 @@ int pmksa_cache_set_current(struct wpa_sm *sm, const u8 *pmkid,
 
 		wpa_hexdump(MSG_DEBUG, "RSN: PMKSA cache entry found - PMKID",
 			    sm->cur_pmksa->pmkid, PMKID_LEN);
+		wpa_printf(MSG_DEBUG,
+			   "RSN: pmksa_cache_set_current() re-arming expiration/reauth timers for "
+			   MACSTR, MAC2STR(sm->cur_pmksa->aa));
+		pmksa_cache_set_expiration(pmksa);
 		return 0;
 	}
 	wpa_printf(MSG_DEBUG, "RSN: No PMKSA cache entry found");
