@@ -1498,6 +1498,12 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, bool first,
 	}
 	hapd->started = 1;
 
+#ifdef CONFIG_IEEE80211BN
+	 /* Reserve AIDs 56 to 63 in UHR for Critical Update */
+	if (hostapd_is_uhr_enabled(hapd))
+		hapd->sta_aid[1] |= 0x7F800000;
+#endif /* CONFIG_IEEE80211BN */
+
 	if (!first) {
 		u8 *addr = hapd->own_addr;
 
