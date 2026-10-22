@@ -288,3 +288,87 @@ int nan_cm_parse_saqa(const u8 *data, size_t len, struct nan_cm_saqa *saqa)
 		   saqa->dialog_token, saqa->ctrl);
 	return 0;
 }
+
+
+static bool nan_cm_rka_nd_tk(u8 ctrl)
+{
+	return (ctrl & NAN_RKA_CTRL_REKEY_TYPE_MASK) ==
+		NAN_RKA_CTRL_REKEY_TYPE_ND_TK;
+}
+
+
+int nan_cm_build_rka(struct wpabuf *buf, u8 ctrl, const u8 *init_ndi,
+		     const u8 *resp_ndi, u8 ndp_id)
+{
+	bool nd_tk = nan_cm_rka_nd_tk(ctrl);
+	size_t len = 1 + (nd_tk ? NAN_ND_TKSA_IDENTITY_LEN + 1 : 0);
+
+	if (wpabuf_tailroom(buf) < NAN_ATTR_HDR_LEN + len) {
+		wpa_printf(MSG_INFO, "NAN CM: No room for RKA");
+		return -1;
+	}
+
+	wpabuf_put_u8(buf, NAN_ATTR_RKA);
+	wpabuf_put_le16(buf, len);
+	wpabuf_put_u8(buf, ctrl);
+
+	/* ND-TK rekey identifies the ND-TKSA and the NDP being rekeyed */
+	if (nd_tk) {
+		wpabuf_put_data(buf, init_ndi, ETH_ALEN);
+		wpabuf_put_data(buf, resp_ndi, ETH_ALEN);
+		wpabuf_put_u8(buf, ndp_id);
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: Built RKA ctrl=0x%02x init_ndi=" MACSTR
+			   " resp_ndi=" MACSTR " ndp_id=%u",
+			   ctrl, MAC2STR(init_ndi), MAC2STR(resp_ndi), ndp_id);
+	} else {
+		wpa_printf(MSG_DEBUG, "NAN CM: Built RKA ctrl=0x%02x", ctrl);
+	}
+
+	return 0;
+}
+
+
+int nan_cm_parse_rka(const u8 *data, size_t len, struct nan_cm_rka *rka)
+{
+	os_memset(rka, 0, sizeof(*rka));
+
+	if (len < 1) {
+		wpa_printf(MSG_DEBUG, "NAN CM: RKA too short");
+		return -1;
+	}
+
+	rka->ctrl = data[0];
+
+	if ((rka->ctrl & NAN_RKA_CTRL_MSG_TYPE_MASK) >
+	    NAN_RKA_CTRL_MSG_TYPE_RESPONSE) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: RKA with unknown Message Type (ctrl=0x%02x)",
+			   rka->ctrl);
+		return -1;
+	}
+
+	if (!nan_cm_rka_nd_tk(rka->ctrl)) {
+		wpa_printf(MSG_DEBUG, "NAN CM: Parsed RKA ctrl=0x%02x",
+			   rka->ctrl);
+		return 0;
+	}
+
+	if (len < 1 + NAN_ND_TKSA_IDENTITY_LEN + 1) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: RKA too short for ND-TK rekey (len=%zu)",
+			   len);
+		return -1;
+	}
+
+	rka->init_ndi = data + 1;
+	rka->resp_ndi = data + 1 + ETH_ALEN;
+	rka->ndp_id = data[1 + NAN_ND_TKSA_IDENTITY_LEN];
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: Parsed RKA ctrl=0x%02x init_ndi=" MACSTR
+		   " resp_ndi=" MACSTR " ndp_id=%u",
+		   rka->ctrl, MAC2STR(rka->init_ndi),
+		   MAC2STR(rka->resp_ndi), rka->ndp_id);
+	return 0;
+}

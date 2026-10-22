@@ -325,6 +325,68 @@ out:
 }
 
 
+static int test_rka(void)
+{
+	u8 data[1 + NAN_ND_TKSA_IDENTITY_LEN + 1];
+	struct nan_cm_rka rka;
+	struct wpabuf *buf;
+	const u8 *pos;
+	int ret = -1;
+
+	wpa_printf(MSG_INFO, "TEST: NAN CM RKA build/parse");
+
+	/* ND-TK rekey carries the ND-TKSA identity and NDP ID */
+	buf = wpabuf_alloc(NAN_ATTR_HDR_LEN + sizeof(data));
+	if (!buf ||
+	    nan_cm_build_rka(buf, NAN_RKA_CTRL_ND_TK_REKEY, test_init_ndi,
+			     test_resp_ndi, 11) < 0)
+		goto out;
+	pos = wpabuf_head_u8(buf);
+	if (wpabuf_len(buf) != NAN_ATTR_HDR_LEN + sizeof(data) ||
+	    pos[0] != NAN_ATTR_RKA ||
+	    WPA_GET_LE16(pos + 1) != sizeof(data) ||
+	    nan_cm_parse_rka(pos + NAN_ATTR_HDR_LEN, sizeof(data),
+			     &rka) < 0 ||
+	    rka.ctrl != NAN_RKA_CTRL_ND_TK_REKEY || rka.ndp_id != 11 ||
+	    !ether_addr_equal(rka.init_ndi, test_init_ndi) ||
+	    !ether_addr_equal(rka.resp_ndi, test_resp_ndi))
+		goto out;
+
+	/* Truncated ND-TK rekey fields */
+	if (nan_cm_parse_rka(pos + NAN_ATTR_HDR_LEN, sizeof(data) - 1,
+			     &rka) == 0)
+		goto out;
+
+	/* No room for the ND-TK rekey fields */
+	wpabuf_free(buf);
+	buf = wpabuf_alloc(NAN_ATTR_HDR_LEN + sizeof(data) - 1);
+	if (!buf ||
+	    nan_cm_build_rka(buf, NAN_RKA_CTRL_ND_TK_IND, test_init_ndi,
+			     test_resp_ndi, 11) == 0)
+		goto out;
+
+	/* NM-TK rekey carries only the Attribute Control field */
+	data[0] = NAN_RKA_CTRL_NM_TK_IND;
+	if (nan_cm_parse_rka(data, 1, &rka) < 0 ||
+	    rka.ctrl != NAN_RKA_CTRL_NM_TK_IND || rka.init_ndi)
+		goto out;
+
+	/* Empty attribute and unknown Message Type */
+	if (nan_cm_parse_rka(data, 0, &rka) == 0)
+		goto out;
+	data[0] = NAN_RKA_CTRL_MSG_TYPE_MASK;
+	if (nan_cm_parse_rka(data, sizeof(data), &rka) == 0)
+		goto out;
+
+	ret = 0;
+out:
+	if (ret)
+		wpa_printf(MSG_ERROR, "FAIL: NAN CM RKA build/parse");
+	wpabuf_free(buf);
+	return ret;
+}
+
+
 /**
  * nan_cm_tests - Run NAN Connection Management unit tests
  * Returns: 0 on success, -1 on failure
@@ -333,7 +395,7 @@ int nan_cm_tests(void)
 {
 	if (test_kaa_no_ndps() || test_kaa_ndp_list() ||
 	    test_kaa_parse_invalid() || test_tna() ||
-	    test_tna_parse_invalid() || test_saqa())
+	    test_tna_parse_invalid() || test_saqa() || test_rka())
 		return -1;
 	return 0;
 }
