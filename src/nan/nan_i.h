@@ -1087,7 +1087,8 @@ int nan_cm_terminate_nd_tksa(struct nan_data *nan, struct nan_peer *peer,
 			     const u8 *init_ndi, const u8 *resp_ndi);
 int nan_cm_terminate_nm_tksa(struct nan_data *nan, struct nan_peer *peer);
 int nan_cm_terminate_npksa(struct nan_data *nan, struct nan_peer *peer);
-int nan_cm_deauth(struct nan_data *nan, struct nan_peer *peer);
+int nan_cm_deauth(struct nan_data *nan, struct nan_peer *peer,
+		  bool keep_nm_tksa);
 void nan_cm_tx_status(struct nan_data *nan, struct nan_peer *peer,
 		      const struct ieee80211_mgmt *mgmt, size_t len,
 		      bool acked);

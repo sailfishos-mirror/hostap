@@ -896,6 +896,7 @@ static int nan_cm_add_pntag_irsa(struct nan_data *nan,
  * nan_cm_deauth - Terminate the NM-TKSA with a Deauth NAF
  * @nan: NAN module context from nan_init()
  * @peer: NAN peer
+ * @keep_nm_tksa: Keep the local NM-TKSA (testing only)
  * Returns: 0 on success, -1 on failure
  *
  * Deletes the NM-TKSA with the peer and notifies the peer with an unprotected
@@ -903,7 +904,8 @@ static int nan_cm_add_pntag_irsa(struct nan_data *nan,
  * IRSA with a PNTag that identifies the local device. The NM-TKSA is deleted
  * once the frame TX status is received.
  */
-int nan_cm_deauth(struct nan_data *nan, struct nan_peer *peer)
+int nan_cm_deauth(struct nan_data *nan, struct nan_peer *peer,
+		  bool keep_nm_tksa)
 {
 	struct wpabuf *buf;
 
@@ -940,7 +942,14 @@ int nan_cm_deauth(struct nan_data *nan, struct nan_peer *peer)
 	 * drop the queued frame, so delete it once the TX status is received.
 	 */
 	if (nan_cm_send_naf(nan, peer, buf) < 0) {
-		nan_cm_delete_nm_tksa(nan, peer, true);
+		if (!keep_nm_tksa)
+			nan_cm_delete_nm_tksa(nan, peer, true);
+		return 0;
+	}
+
+	if (keep_nm_tksa) {
+		wpa_printf(MSG_INFO,
+			   "NAN CM: TESTING - keep NM-TKSA after Deauthentication");
 		return 0;
 	}
 
@@ -1401,6 +1410,28 @@ int nan_cm_terminate(struct nan_data *nan, const u8 *addr,
 	}
 
 	return -1;
+}
+
+
+/**
+ * nan_cm_send_deauth - Deauthenticate a paired peer
+ * @nan: NAN module context from nan_init()
+ * @addr: NMI of the peer
+ * @keep_nm_tksa: Keep the local NM-TKSA (testing only)
+ * Returns: 0 on success, -1 on failure
+ */
+int nan_cm_send_deauth(struct nan_data *nan, const u8 *addr, bool keep_nm_tksa)
+{
+	struct nan_peer *peer;
+
+	peer = nan_get_peer(nan, addr);
+	if (!peer) {
+		wpa_printf(MSG_DEBUG, "NAN CM: Peer " MACSTR " not found",
+			   MAC2STR(addr));
+		return -1;
+	}
+
+	return nan_cm_deauth(nan, peer, keep_nm_tksa);
 }
 
 

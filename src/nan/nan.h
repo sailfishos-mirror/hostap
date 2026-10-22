@@ -983,6 +983,7 @@ void nan_set_supported_bands(struct nan_data *nan, u8 supported_bands);
 int nan_cm_terminate(struct nan_data *nan, const u8 *addr,
 		     enum nan_cm_sa type, const u8 *init_ndi,
 		     const u8 *resp_ndi);
+int nan_cm_send_deauth(struct nan_data *nan, const u8 *addr, bool keep_nm_tksa);
 int nan_cm_peer_info(struct nan_data *nan, const u8 *addr, char *buf,
 		     size_t buflen);
 void nan_set_ndpe_support(struct nan_data *nan, bool enable);

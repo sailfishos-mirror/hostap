@@ -15014,6 +15014,9 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strncmp(buf, "NAN_CM_TERMINATE ", 17) == 0) {
 		if (wpas_nan_cm_terminate(wpa_s, buf + 17) < 0)
 			reply_len = -1;
+	} else if (os_strncmp(buf, "NAN_CM_DEAUTH ", 14) == 0) {
+		if (wpas_nan_cm_deauth(wpa_s, buf + 14) < 0)
+			reply_len = -1;
 #endif /* CONFIG_PASN */
 #endif /* CONFIG_NAN */
 	} else {

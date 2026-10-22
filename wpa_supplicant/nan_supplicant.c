@@ -4627,6 +4627,30 @@ invalid:
 }
 
 
+/* NAN_CM_DEAUTH peer_nmi=<addr> */
+int wpas_nan_cm_deauth(struct wpa_supplicant *wpa_s, const char *cmd)
+{
+	u8 peer_nmi[ETH_ALEN];
+	bool keep_nm_tksa = false;
+
+	if (!wpas_nan_ndp_allowed(wpa_s))
+		return -1;
+
+	if (os_strncmp(cmd, "peer_nmi=", 9) != 0 ||
+	    hwaddr_aton(cmd + 9, peer_nmi) < 0) {
+		wpa_printf(MSG_INFO, "NAN_CM_DEAUTH: Invalid peer_nmi");
+		return -1;
+	}
+
+#ifdef CONFIG_TESTING_OPTIONS
+	/* Send the frame but keep the NM-TKSA to test SA Query */
+	keep_nm_tksa = os_strstr(cmd, " keep_nm_tksa=1") != NULL;
+#endif /* CONFIG_TESTING_OPTIONS */
+
+	return nan_cm_send_deauth(wpa_s->nan, peer_nmi, keep_nm_tksa);
+}
+
+
 #ifdef CONFIG_TESTING_OPTIONS
 
 int wpas_nan_get_sae_pairing_tk(struct wpa_supplicant *wpa_s, const char *cmd,
