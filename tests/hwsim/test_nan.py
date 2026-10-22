@@ -3410,3 +3410,57 @@ def test_nan_cm_deauth_pik(dev, apdev):
         for dev, peer in ((pub, sub), (sub, pub)):
             if nan_cm_info(dev, peer)["npksa"] != "1":
                 raise Exception("NPKSA lost on " + dev.ifname)
+
+def nan_cm_wait_rekeyed(dev, peer, ndp_id, init_ndi):
+    ev = dev.wpas.wait_event(["NAN-CM-ND-TK-REKEYED", "NAN-NDP-DISCONNECTED",
+                              "NAN-NDP-CONNECTED", "NAN-NDP-REQUEST"],
+                             timeout=5)
+    if ev is None or "NAN-CM-ND-TK-REKEYED" not in ev:
+        raise Exception("ND-TK rekey not completed on %s: %s" %
+                        (dev.ifname, ev))
+    data = split_nan_event(ev)
+    if data.get("addr") != peer.wpas.own_addr() or \
+       data.get("ndp_id") != str(ndp_id) or \
+       data.get("init_ndi") != init_ndi:
+        raise Exception("Unexpected rekey event on %s: %s" %
+                        (dev.ifname, ev))
+
+def run_nan_cm_rekey(by_initiator):
+    def test(pub, sub, init_ndi):
+        ndp_id = 1
+        if "FAIL" not in sub.wpas.request(
+                "NAN_CM_REKEY peer_nmi=%s init_ndi=%s ndp_id=%d" %
+                (pub.wpas.own_addr(), init_ndi, ndp_id + 1)):
+            raise Exception("Rekey of an unknown NDP accepted")
+
+        # The subscriber is the NDP initiator and sets up the rekey. When
+        # requested on the publisher, it sends an ND-TK rekey indication.
+        dev, peer = (sub, pub) if by_initiator else (pub, sub)
+        for i in range(2):
+            if "OK" not in dev.wpas.request(
+                    "NAN_CM_REKEY peer_nmi=%s init_ndi=%s ndp_id=%d" %
+                    (peer.wpas.own_addr(), init_ndi, ndp_id)):
+                raise Exception("NAN_CM_REKEY failed")
+            nan_cm_wait_rekeyed(sub, pub, ndp_id, init_ndi)
+            nan_cm_wait_rekeyed(pub, sub, ndp_id, init_ndi)
+            _nan_test_connectivity(pub, sub)
+
+        for dev, peer in ((pub, sub), (sub, pub)):
+            info = nan_cm_info(dev, peer)
+            if info["nm_tksa"] != "1" or info["ka_active"] != "1":
+                raise Exception("Unexpected CM state on %s: %s" %
+                                (dev.ifname, info))
+
+        # The NDP continues over keep alive periods after the rekey
+        if pub.wpas.wait_event(["NAN-NDP-DISCONNECTED"], timeout=11):
+            raise Exception("NDP disconnected after ND-TK rekey")
+        _nan_ndp_terminate(pub, sub, pub.wpas.own_addr(), init_ndi, ndp_id)
+    run_nan_cm_terminate(test, "default_ka", "ndtk_rekey")
+
+def test_nan_cm_rekey_initiator(dev, apdev):
+    """NAN Connection Management ND-TK rekey by the NDP initiator"""
+    run_nan_cm_rekey(True)
+
+def test_nan_cm_rekey_responder(dev, apdev):
+    """NAN Connection Management ND-TK rekey indicated by the NDP responder"""
+    run_nan_cm_rekey(False)
