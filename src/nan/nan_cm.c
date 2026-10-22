@@ -1079,6 +1079,41 @@ int nan_cm_rx(struct nan_data *nan, struct nan_peer *peer,
 
 
 /**
+ * nan_cm_terminate - Terminate a security association with a paired peer
+ * @nan: NAN module context from nan_init()
+ * @addr: NMI of the peer
+ * @type: Security association to terminate
+ * @init_ndi: Initiator NDI of the ND-TKSA; used only with NAN_CM_SA_ND_TKSA
+ * @resp_ndi: Responder NDI of the ND-TKSA; used only with NAN_CM_SA_ND_TKSA
+ * Returns: 0 on success, -1 on failure
+ */
+int nan_cm_terminate(struct nan_data *nan, const u8 *addr,
+		     enum nan_cm_sa type, const u8 *init_ndi,
+		     const u8 *resp_ndi)
+{
+	struct nan_peer *peer;
+
+	peer = nan_get_peer(nan, addr);
+	if (!peer) {
+		wpa_printf(MSG_DEBUG, "NAN CM: Peer " MACSTR " not found",
+			   MAC2STR(addr));
+		return -1;
+	}
+
+	switch (type) {
+	case NAN_CM_SA_NPKSA:
+		return nan_cm_terminate_npksa(nan, peer);
+	case NAN_CM_SA_NM_TKSA:
+		return nan_cm_terminate_nm_tksa(nan, peer);
+	case NAN_CM_SA_ND_TKSA:
+		return nan_cm_terminate_nd_tksa(nan, peer, init_ndi, resp_ndi);
+	}
+
+	return -1;
+}
+
+
+/**
  * nan_cm_peer_info - Write the Connection Management state of a peer
  * @nan: NAN module context from nan_init()
  * @addr: NMI of the peer

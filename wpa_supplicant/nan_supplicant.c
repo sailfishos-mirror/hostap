@@ -4563,6 +4563,70 @@ int wpas_nan_send_nik(struct wpa_supplicant *wpa_s, const char *cmd)
 }
 
 
+/*
+ * NAN_CM_TERMINATE peer_nmi=<addr> sa=<npksa|nm_tksa|nd_tksa>
+ *	[init_ndi=<addr> resp_ndi=<addr>]
+ */
+int wpas_nan_cm_terminate(struct wpa_supplicant *wpa_s, char *cmd)
+{
+	u8 peer_nmi[ETH_ALEN], init_ndi[ETH_ALEN], resp_ndi[ETH_ALEN];
+	bool has_peer = false, has_init = false, has_resp = false;
+	char *token, *context = NULL, *pos;
+	int type = -1;
+
+	if (!wpas_nan_ndp_allowed(wpa_s))
+		return -1;
+
+	while ((token = str_token(cmd, " ", &context))) {
+		pos = os_strchr(token, '=');
+		if (!pos)
+			goto invalid;
+		*pos++ = '\0';
+
+		if (os_strcmp(token, "peer_nmi") == 0) {
+			if (hwaddr_aton(pos, peer_nmi) < 0)
+				goto invalid;
+			has_peer = true;
+		} else if (os_strcmp(token, "init_ndi") == 0) {
+			if (hwaddr_aton(pos, init_ndi) < 0)
+				goto invalid;
+			has_init = true;
+		} else if (os_strcmp(token, "resp_ndi") == 0) {
+			if (hwaddr_aton(pos, resp_ndi) < 0)
+				goto invalid;
+			has_resp = true;
+		} else if (os_strcmp(token, "sa") == 0) {
+			if (os_strcmp(pos, "npksa") == 0)
+				type = NAN_CM_SA_NPKSA;
+			else if (os_strcmp(pos, "nm_tksa") == 0)
+				type = NAN_CM_SA_NM_TKSA;
+			else if (os_strcmp(pos, "nd_tksa") == 0)
+				type = NAN_CM_SA_ND_TKSA;
+			else
+				goto invalid;
+		} else {
+			goto invalid;
+		}
+	}
+
+	if (!has_peer || type < 0 ||
+	    (type == NAN_CM_SA_ND_TKSA && (!has_init || !has_resp))) {
+		wpa_printf(MSG_INFO,
+			   "NAN_CM_TERMINATE: Missing required parameter");
+		return -1;
+	}
+
+	return nan_cm_terminate(wpa_s->nan, peer_nmi, type,
+				has_init ? init_ndi : NULL,
+				has_resp ? resp_ndi : NULL);
+
+invalid:
+	wpa_printf(MSG_INFO, "NAN_CM_TERMINATE: Invalid parameter '%s'",
+		   token);
+	return -1;
+}
+
+
 #ifdef CONFIG_TESTING_OPTIONS
 
 int wpas_nan_get_sae_pairing_tk(struct wpa_supplicant *wpa_s, const char *cmd,
