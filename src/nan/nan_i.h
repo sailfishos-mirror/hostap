@@ -1073,5 +1073,7 @@ static inline void nan_pairing_deinit_peer(struct nan_data *nan_data,
 
 void nan_cm_nm_tksa_established(struct nan_data *nan, struct nan_peer *peer);
 void nan_cm_deinit_peer(struct nan_data *nan, struct nan_peer *peer);
+void nan_peer_terminate_ndp(struct nan_data *nan, struct nan_peer *peer,
+			    struct nan_ndp *ndp);
 
 #endif /* NAN_I_H */

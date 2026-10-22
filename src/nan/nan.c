@@ -1033,43 +1033,49 @@ static void nan_peer_dump(struct nan_data *nan, struct nan_peer *peer)
 }
 
 
+void nan_peer_terminate_ndp(struct nan_data *nan, struct nan_peer *peer,
+			    struct nan_ndp *ndp)
+{
+	const u8 *local_ndi, *peer_ndi;
+	struct nan_ndp_id ndp_id;
+
+	if (ndp->initiator) {
+		local_ndi = ndp->init_ndi;
+		peer_ndi = ndp->resp_ndi;
+	} else {
+		local_ndi = ndp->resp_ndi;
+		peer_ndi = ndp->init_ndi;
+	}
+
+	os_memcpy(&ndp_id.peer_nmi, peer->nmi_addr, ETH_ALEN);
+	os_memcpy(ndp_id.init_ndi, ndp->init_ndi, ETH_ALEN);
+	ndp_id.id = ndp->ndp_id;
+
+	peer->ndp_setup.ndp = ndp;
+	peer->ndp_setup.state = NAN_NDP_STATE_DONE;
+	peer->ndp_setup.status = NAN_NDP_STATUS_REJECTED;
+	peer->ndp_setup.reason = NAN_REASON_UNSPECIFIED_REASON;
+	nan_action_send(nan, peer, NAN_SUBTYPE_DATA_PATH_TERMINATION);
+	peer->ndp_setup.ndp = NULL;
+
+	dl_list_del(&ndp->list);
+	nan_ndp_terminated(nan, peer, &ndp_id, local_ndi, peer_ndi,
+			   NAN_REASON_UNSPECIFIED_REASON, ndp->gtk_id);
+	os_free(ndp);
+}
+
+
 static void nan_peer_disconnect_all_ndps(struct nan_data *nan,
 					 struct nan_peer *peer)
 {
 	struct nan_ndp *ndp, *tmp;
-	u8 *local_ndi = NULL, *peer_ndi = NULL;
-	struct nan_ndp_id ndp_id;
 
 	if (peer->ndp_setup.ndp)
 		nan_ndp_disconnected(nan, peer, NAN_REASON_UNSPECIFIED_REASON,
 				     false);
 
-	dl_list_for_each_safe(ndp, tmp, &peer->ndps, struct nan_ndp, list) {
-		if (ndp->initiator) {
-			local_ndi = ndp->init_ndi;
-			peer_ndi = ndp->resp_ndi;
-		} else {
-			local_ndi = ndp->resp_ndi;
-			peer_ndi = ndp->init_ndi;
-		}
-
-		os_memcpy(&ndp_id.peer_nmi, peer->nmi_addr, ETH_ALEN);
-		os_memcpy(ndp_id.init_ndi, ndp->init_ndi, ETH_ALEN);
-		ndp_id.id = ndp->ndp_id;
-
-		peer->ndp_setup.ndp = ndp;
-		peer->ndp_setup.state = NAN_NDP_STATE_DONE;
-		peer->ndp_setup.status = NAN_NDP_STATUS_REJECTED;
-		peer->ndp_setup.reason = NAN_REASON_UNSPECIFIED_REASON;
-		nan_action_send(nan, peer, NAN_SUBTYPE_DATA_PATH_TERMINATION);
-		peer->ndp_setup.ndp = NULL;
-
-		dl_list_del(&ndp->list);
-		nan_ndp_terminated(nan, peer, &ndp_id, local_ndi, peer_ndi,
-				   NAN_REASON_UNSPECIFIED_REASON,
-				   ndp->gtk_id);
-		os_free(ndp);
-	}
+	dl_list_for_each_safe(ndp, tmp, &peer->ndps, struct nan_ndp, list)
+		nan_peer_terminate_ndp(nan, peer, ndp);
 }
 
 
