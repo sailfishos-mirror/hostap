@@ -270,6 +270,13 @@ extern "C" {
  */
 #define NAN_PAIRING_STATUS "NAN-PAIRING-STATUS "
 
+/* NAN Connection Management security association terminated
+ * addr=<peer NMI> sa=<npksa|nm_tksa|nd_tksa>
+ * [init_ndi=<Initiator NDI> resp_ndi=<Responder NDI>]
+ * locally_generated=<0|1>
+ */
+#define NAN_CM_TERMINATED "NAN-CM-TERMINATED "
+
 /* NAN local schedule channel evacuation.
  * parameters: map_id=<map_id> freq=<freq>
  */

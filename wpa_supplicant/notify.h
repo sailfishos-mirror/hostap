@@ -19,6 +19,7 @@ struct wpa_cred;
 struct rsn_pmksa_cache_entry;
 enum nan_de_reason;
 enum nan_service_protocol_type;
+enum nan_cm_sa;
 struct nan_discovery_result;
 struct pr_device;
 
@@ -268,6 +269,10 @@ void wpas_notify_nan_ndp_disconnected(struct wpa_supplicant *wpa_s,
 				      bool failure);
 void wpas_notify_nan_cluster_join(struct wpa_supplicant *wpa_s,
 				  const u8 *cluster_id, bool new_cluster);
+void wpas_notify_nan_cm_terminated(struct wpa_supplicant *wpa_s,
+				   const u8 *peer_nmi, enum nan_cm_sa type,
+				   const u8 *init_ndi, const u8 *resp_ndi,
+				   bool locally_generated);
 void wpas_notify_nan_schedule_changed(struct wpa_supplicant *wpa_s,
 				      const u8 *peer_nmi);
 void wpas_notify_nan_sched_update_done(struct wpa_supplicant *wpa_s,

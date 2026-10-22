@@ -38,6 +38,13 @@ enum nan_tag_type {
 	NAN_TAG_TYPE_PN,  /* Pairing Nonce Tag     - PIK-based rediscovery */
 };
 
+/* Security associations managed by Connection Management */
+enum nan_cm_sa {
+	NAN_CM_SA_NPKSA,
+	NAN_CM_SA_NM_TKSA,
+	NAN_CM_SA_ND_TKSA,
+};
+
 /*
  * struct nan_device_capabilities - NAN device capabilities
  * @cdw_info: Committed DW information
@@ -822,6 +829,19 @@ struct nan_config {
 	 * that was stored with the NIK of the peer.
 	 */
 	void (*delete_npk)(void *ctx, const u8 *peer_nmi, const u8 *nik);
+
+	/**
+	 * cm_terminated - Notify about a terminated security association
+	 * @ctx: Callback context from cb_ctx
+	 * @peer_nmi: Peer NMI address
+	 * @type: Terminated security association
+	 * @init_ndi: Initiator NDI of the ND-TKSA; NULL for other types
+	 * @resp_ndi: Responder NDI of the ND-TKSA; NULL for other types
+	 * @locally_generated: Whether the termination was initiated locally
+	 */
+	void (*cm_terminated)(void *ctx, const u8 *peer_nmi,
+			      enum nan_cm_sa type, const u8 *init_ndi,
+			      const u8 *resp_ndi, bool locally_generated);
 
 	/**
 	 * pairing_request - Notify about received pairing request

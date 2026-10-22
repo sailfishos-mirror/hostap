@@ -560,6 +560,18 @@ static int nan_cm_send_tna(struct nan_data *nan, struct nan_peer *peer,
 }
 
 
+static void nan_cm_notify_terminated(struct nan_data *nan,
+				     const struct nan_peer *peer,
+				     enum nan_cm_sa type, const u8 *init_ndi,
+				     const u8 *resp_ndi, bool locally_generated)
+{
+	if (nan->cfg->cm_terminated)
+		nan->cfg->cm_terminated(nan->cfg->cb_ctx, peer->nmi_addr, type,
+					init_ndi, resp_ndi,
+					locally_generated);
+}
+
+
 static bool nan_cm_has_nd_tksa(const struct nan_peer *peer,
 			       const u8 *init_ndi, const u8 *resp_ndi)
 {
@@ -572,6 +584,33 @@ static bool nan_cm_has_nd_tksa(const struct nan_peer *peer,
 	}
 
 	return false;
+}
+
+
+static void nan_cm_delete_nd_tksa(struct nan_data *nan, struct nan_peer *peer,
+				  const u8 *init_ndi, const u8 *resp_ndi,
+				  bool locally_generated)
+{
+	u8 ndis[NAN_ND_TKSA_IDENTITY_LEN];
+	struct nan_ndp *ndp, *tmp;
+
+	/* The NDIs may point to an NDP that is freed below */
+	os_memcpy(ndis, init_ndi, ETH_ALEN);
+	os_memcpy(ndis + ETH_ALEN, resp_ndi, ETH_ALEN);
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: Delete ND-TKSA init_ndi=" MACSTR " resp_ndi="
+		   MACSTR " with " MACSTR, MAC2STR(ndis),
+		   MAC2STR(ndis + ETH_ALEN), MAC2STR(peer->nmi_addr));
+
+	dl_list_for_each_safe(ndp, tmp, &peer->ndps, struct nan_ndp, list) {
+		if (ether_addr_equal(ndp->init_ndi, ndis) &&
+		    ether_addr_equal(ndp->resp_ndi, ndis + ETH_ALEN))
+			nan_peer_terminate_ndp(nan, peer, ndp);
+	}
+
+	nan_cm_notify_terminated(nan, peer, NAN_CM_SA_ND_TKSA, ndis,
+				 ndis + ETH_ALEN, locally_generated);
 }
 
 
@@ -590,7 +629,6 @@ int nan_cm_terminate_nd_tksa(struct nan_data *nan, struct nan_peer *peer,
 			     const u8 *init_ndi, const u8 *resp_ndi)
 {
 	u8 id[NAN_ND_TKSA_IDENTITY_LEN];
-	struct nan_ndp *ndp, *tmp;
 
 	if (!nan_cm_has_nd_tksa(peer, init_ndi, resp_ndi)) {
 		wpa_printf(MSG_DEBUG,
@@ -600,11 +638,6 @@ int nan_cm_terminate_nd_tksa(struct nan_data *nan, struct nan_peer *peer,
 		return -1;
 	}
 
-	wpa_printf(MSG_DEBUG,
-		   "NAN CM: Terminate ND-TKSA init_ndi=" MACSTR " resp_ndi="
-		   MACSTR " with " MACSTR, MAC2STR(init_ndi),
-		   MAC2STR(resp_ndi), MAC2STR(peer->nmi_addr));
-
 	/* Notify the peer while the NDPs are still in place */
 	if (peer->cm.nm_tksa &&
 	    nan_cm_capa(nan, peer, NAN_DEV_CAPA_EXT_INFO_2_CM_TERM_NOTIF)) {
@@ -613,19 +646,15 @@ int nan_cm_terminate_nd_tksa(struct nan_data *nan, struct nan_peer *peer,
 		nan_cm_send_tna(nan, peer, NAN_TNA_CTRL_ND_TKSA_TERM, id, 1);
 	}
 
-	dl_list_for_each_safe(ndp, tmp, &peer->ndps, struct nan_ndp, list) {
-		if (ether_addr_equal(ndp->init_ndi, init_ndi) &&
-		    ether_addr_equal(ndp->resp_ndi, resp_ndi))
-			nan_peer_terminate_ndp(nan, peer, ndp);
-	}
-
+	nan_cm_delete_nd_tksa(nan, peer, init_ndi, resp_ndi, true);
 	return 0;
 }
 
 
 static void nan_cm_nm_tksa_term_timeout(void *eloop_ctx, void *timeout_ctx);
 
-static void nan_cm_delete_nm_tksa(struct nan_data *nan, struct nan_peer *peer)
+static void nan_cm_delete_nm_tksa(struct nan_data *nan, struct nan_peer *peer,
+				  bool locally_generated)
 {
 	struct nan_ndp *ndp, *tmp;
 
@@ -655,6 +684,9 @@ static void nan_cm_delete_nm_tksa(struct nan_data *nan, struct nan_peer *peer)
 	/* The NMI station was kept for the NM-TKSA without NDPs */
 	if (dl_list_empty(&peer->ndps) && !peer->ndp_setup.ndp)
 		nan_clear_peer_schedule(nan, peer);
+
+	nan_cm_notify_terminated(nan, peer, NAN_CM_SA_NM_TKSA, NULL, NULL,
+				 locally_generated);
 }
 
 
@@ -666,7 +698,7 @@ static void nan_cm_nm_tksa_term_timeout(void *eloop_ctx, void *timeout_ctx)
 	wpa_printf(MSG_DEBUG,
 		   "NAN CM: No TX status for NM-TKSA Termination Notification to "
 		   MACSTR, MAC2STR(peer->nmi_addr));
-	nan_cm_delete_nm_tksa(nan, peer);
+	nan_cm_delete_nm_tksa(nan, peer, true);
 }
 
 
@@ -707,12 +739,13 @@ int nan_cm_terminate_nm_tksa(struct nan_data *nan, struct nan_peer *peer)
 		return 0;
 	}
 
-	nan_cm_delete_nm_tksa(nan, peer);
+	nan_cm_delete_nm_tksa(nan, peer, true);
 	return 0;
 }
 
 
-static void nan_cm_delete_npksa(struct nan_data *nan, struct nan_peer *peer)
+static void nan_cm_delete_npksa(struct nan_data *nan, struct nan_peer *peer,
+				bool locally_generated)
 {
 	wpa_printf(MSG_DEBUG, "NAN CM: Delete NPKSA with " MACSTR,
 		   MAC2STR(peer->nmi_addr));
@@ -735,6 +768,9 @@ static void nan_cm_delete_npksa(struct nan_data *nan, struct nan_peer *peer)
 	pasn_responder_pmksa_cache_remove(nan->responder_pmksa,
 					  peer->nmi_addr);
 #endif /* CONFIG_PASN */
+
+	nan_cm_notify_terminated(nan, peer, NAN_CM_SA_NPKSA, NULL, NULL,
+				 locally_generated);
 }
 
 
@@ -763,7 +799,7 @@ int nan_cm_terminate_npksa(struct nan_data *nan, struct nan_peer *peer)
 	    nan_cm_capa(nan, peer, NAN_DEV_CAPA_EXT_INFO_2_CM_TERM_NOTIF))
 		nan_cm_send_tna(nan, peer, NAN_TNA_CTRL_NPKSA_TERM, NULL, 0);
 
-	nan_cm_delete_npksa(nan, peer);
+	nan_cm_delete_npksa(nan, peer, true);
 	return 0;
 }
 
@@ -815,7 +851,7 @@ void nan_cm_tx_status(struct nan_data *nan, struct nan_peer *peer,
 	wpa_printf(MSG_DEBUG,
 		   "NAN CM: NM-TKSA Termination Notification to " MACSTR
 		   " acked=%d", MAC2STR(peer->nmi_addr), acked);
-	nan_cm_delete_nm_tksa(nan, peer);
+	nan_cm_delete_nm_tksa(nan, peer, true);
 }
 
 

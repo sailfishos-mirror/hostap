@@ -1527,6 +1527,32 @@ void wpas_notify_nan_cluster_join(struct wpa_supplicant *wpa_s,
 }
 
 
+void wpas_notify_nan_cm_terminated(struct wpa_supplicant *wpa_s,
+				   const u8 *peer_nmi, enum nan_cm_sa type,
+				   const u8 *init_ndi, const u8 *resp_ndi,
+				   bool locally_generated)
+{
+	static const char * const sa_str[] = {
+		[NAN_CM_SA_NPKSA] = "npksa",
+		[NAN_CM_SA_NM_TKSA] = "nm_tksa",
+		[NAN_CM_SA_ND_TKSA] = "nd_tksa",
+	};
+
+	if (type == NAN_CM_SA_ND_TKSA)
+		wpa_msg_global(wpa_s, MSG_INFO, NAN_CM_TERMINATED
+			       "addr=" MACSTR " sa=%s init_ndi=" MACSTR
+			       " resp_ndi=" MACSTR " locally_generated=%d",
+			       MAC2STR(peer_nmi), sa_str[type],
+			       MAC2STR(init_ndi), MAC2STR(resp_ndi),
+			       locally_generated);
+	else
+		wpa_msg_global(wpa_s, MSG_INFO, NAN_CM_TERMINATED
+			       "addr=" MACSTR " sa=%s locally_generated=%d",
+			       MAC2STR(peer_nmi), sa_str[type],
+			       locally_generated);
+}
+
+
 void wpas_notify_nan_schedule_changed(struct wpa_supplicant *wpa_s,
 				      const u8 *peer_nmi)
 {

@@ -1351,6 +1351,18 @@ static void wpas_nan_delete_npk_cb(void *ctx, const u8 *peer_nmi,
 }
 
 
+static void wpas_nan_cm_terminated_cb(void *ctx, const u8 *peer_nmi,
+				      enum nan_cm_sa type,
+				      const u8 *init_ndi, const u8 *resp_ndi,
+				      bool locally_generated)
+{
+	struct wpa_supplicant *wpa_s = ctx;
+
+	wpas_notify_nan_cm_terminated(wpa_s, peer_nmi, type, init_ndi,
+				      resp_ndi, locally_generated);
+}
+
+
 static void wpas_nan_pkr_updated_cb(void *ctx, const u8 *peer_nmi,
 				    const u8 *iik, bool revoked)
 {
@@ -1466,6 +1478,7 @@ int wpas_nan_init(struct wpa_supplicant *wpa_s)
 	nan.update_pairing_credentials = wpas_nan_update_pairing_credentials_cb;
 	nan.get_npk_akmp = wpas_nan_get_npk_akmp_cb;
 	nan.delete_npk = wpas_nan_delete_npk_cb;
+	nan.cm_terminated = wpas_nan_cm_terminated_cb;
 	nan.pkr_updated = wpas_nan_pkr_updated_cb;
 	nan.pairing_request = wpas_nan_pasn_pairing_request_cb;
 	nan.pairing_cfg.pairing_setup = true;
