@@ -1527,6 +1527,8 @@ int nan_module_tests(void)
 		return -1;
 	if (nan_pkbst_tests())
 		return -1;
+	if (nan_cm_tests())
+		return -1;
 
 	return nan_test_run();
 }

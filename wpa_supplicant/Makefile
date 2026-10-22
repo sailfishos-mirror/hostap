@@ -348,6 +348,7 @@ OBJS += ../src/nan/nan_ndl.o
 OBJS += ../src/nan/nan_crypto.o
 OBJS += ../src/nan/nan_sec.o
 OBJS += ../src/nan/nan_bootstrap.o
+OBJS += ../src/nan/nan_cm.o
 ifdef CONFIG_PASN
 OBJS += ../src/nan/nan_pairing.o
 endif
@@ -2015,6 +2016,7 @@ ifdef CONFIG_NAN
 OBJS += ../src/nan/nan_module_tests.o
 OBJS += ../src/nan/nan_module_test_cases.o
 OBJS += ../src/nan/nan_pkbst_tests.o
+OBJS += ../src/nan/nan_cm_tests.o
 endif
 endif
 

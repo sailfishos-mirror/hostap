@@ -31,6 +31,7 @@ enum nan_test_ndp_notify_type {
 #define NAN_MAX_NUM_NDPS       8
 
 int nan_pkbst_tests(void);
+int nan_cm_tests(void);
 
 /**
  * nan_test_dev_conf - NAN test device configuration
