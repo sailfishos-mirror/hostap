@@ -99,4 +99,32 @@ int nan_cm_build_tna(struct wpabuf *buf, u8 ctrl, u8 reason,
  */
 int nan_cm_parse_tna(const u8 *data, size_t len, struct nan_cm_tna *tna);
 
+/**
+ * struct nan_cm_saqa - Parsed SA Query attribute
+ * @dialog_token: Dialog Token
+ * @ctrl: Attribute Control field (NAN_SAQA_CTRL_*)
+ */
+struct nan_cm_saqa {
+	u8 dialog_token;
+	u8 ctrl;
+};
+
+/**
+ * nan_cm_build_saqa - Build an SA Query attribute
+ * @buf: Buffer to which the attribute is appended
+ * @dialog_token: Dialog Token
+ * @ctrl: Attribute Control field (NAN_SAQA_CTRL_*)
+ * Returns: 0 on success, -1 on failure
+ */
+int nan_cm_build_saqa(struct wpabuf *buf, u8 dialog_token, u8 ctrl);
+
+/**
+ * nan_cm_parse_saqa - Parse an SA Query attribute
+ * @data: Attribute body (after the Attribute ID and Length fields)
+ * @len: Length of the attribute body
+ * @saqa: Buffer for returning the parsed attribute
+ * Returns: 0 on success, -1 on failure
+ */
+int nan_cm_parse_saqa(const u8 *data, size_t len, struct nan_cm_saqa *saqa);
+
 #endif /* NAN_CM_H */

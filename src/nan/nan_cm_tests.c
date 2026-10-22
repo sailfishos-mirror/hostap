@@ -274,6 +274,57 @@ fail:
 }
 
 
+static int test_saqa(void)
+{
+	u8 req_ctrl = NAN_SAQA_CTRL_TYPE_REQUEST | NAN_SAQA_CTRL_NM_TKSA_QUERY;
+	u8 data[2];
+	struct nan_cm_saqa saqa;
+	struct wpabuf *buf;
+	const u8 *pos;
+	int ret = -1;
+
+	wpa_printf(MSG_INFO, "TEST: NAN CM SAQA build/parse");
+	buf = wpabuf_alloc(NAN_ATTR_HDR_LEN + 2);
+	if (!buf || nan_cm_build_saqa(buf, 0x42, req_ctrl) < 0)
+		goto out;
+	pos = wpabuf_head_u8(buf);
+	if (wpabuf_len(buf) != NAN_ATTR_HDR_LEN + 2 ||
+	    pos[0] != NAN_ATTR_SAQA || WPA_GET_LE16(pos + 1) != 2 ||
+	    nan_cm_parse_saqa(pos + NAN_ATTR_HDR_LEN, 2, &saqa) < 0 ||
+	    saqa.dialog_token != 0x42 || saqa.ctrl != req_ctrl)
+		goto out;
+
+	/* No room for another attribute */
+	if (nan_cm_build_saqa(buf, 0x42, req_ctrl) == 0)
+		goto out;
+
+	/* Response */
+	data[0] = 0x42;
+	data[1] = NAN_SAQA_CTRL_TYPE_RESPONSE | NAN_SAQA_CTRL_NPKSA_QUERY;
+	if (nan_cm_parse_saqa(data, 2, &saqa) < 0 ||
+	    saqa.ctrl != data[1])
+		goto out;
+
+	/* Truncated, unknown type, zero Dialog Token */
+	if (nan_cm_parse_saqa(data, 1, &saqa) == 0)
+		goto out;
+	data[1] = NAN_SAQA_CTRL_TYPE_MASK;
+	if (nan_cm_parse_saqa(data, 2, &saqa) == 0)
+		goto out;
+	data[0] = 0;
+	data[1] = NAN_SAQA_CTRL_TYPE_REQUEST;
+	if (nan_cm_parse_saqa(data, 2, &saqa) == 0)
+		goto out;
+
+	ret = 0;
+out:
+	if (ret)
+		wpa_printf(MSG_ERROR, "FAIL: NAN CM SAQA build/parse");
+	wpabuf_free(buf);
+	return ret;
+}
+
+
 /**
  * nan_cm_tests - Run NAN Connection Management unit tests
  * Returns: 0 on success, -1 on failure
@@ -281,7 +332,8 @@ fail:
 int nan_cm_tests(void)
 {
 	if (test_kaa_no_ndps() || test_kaa_ndp_list() ||
-	    test_kaa_parse_invalid() || test_tna() || test_tna_parse_invalid())
+	    test_kaa_parse_invalid() || test_tna() ||
+	    test_tna_parse_invalid() || test_saqa())
 		return -1;
 	return 0;
 }

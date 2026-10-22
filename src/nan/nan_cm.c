@@ -239,3 +239,52 @@ int nan_cm_parse_tna(const u8 *data, size_t len, struct nan_cm_tna *tna)
 		   tna->ctrl, tna->reason, tna->n_nd_tksas);
 	return 0;
 }
+
+
+int nan_cm_build_saqa(struct wpabuf *buf, u8 dialog_token, u8 ctrl)
+{
+	if (wpabuf_tailroom(buf) < NAN_ATTR_HDR_LEN + 2) {
+		wpa_printf(MSG_INFO, "NAN CM: No room for SAQA");
+		return -1;
+	}
+
+	wpabuf_put_u8(buf, NAN_ATTR_SAQA);
+	wpabuf_put_le16(buf, 2);
+	wpabuf_put_u8(buf, dialog_token);
+	wpabuf_put_u8(buf, ctrl);
+
+	wpa_printf(MSG_DEBUG, "NAN CM: Built SAQA dialog_token=%u ctrl=0x%02x",
+		   dialog_token, ctrl);
+	return 0;
+}
+
+
+int nan_cm_parse_saqa(const u8 *data, size_t len, struct nan_cm_saqa *saqa)
+{
+	u8 type;
+
+	if (len < 2) {
+		wpa_printf(MSG_DEBUG, "NAN CM: SAQA too short");
+		return -1;
+	}
+
+	saqa->dialog_token = data[0];
+	saqa->ctrl = data[1];
+
+	type = saqa->ctrl & NAN_SAQA_CTRL_TYPE_MASK;
+	if (type != NAN_SAQA_CTRL_TYPE_REQUEST &&
+	    type != NAN_SAQA_CTRL_TYPE_RESPONSE) {
+		wpa_printf(MSG_DEBUG, "NAN CM: SAQA with unknown type %u",
+			   type);
+		return -1;
+	}
+
+	if (!saqa->dialog_token) {
+		wpa_printf(MSG_DEBUG, "NAN CM: SAQA with zero Dialog Token");
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "NAN CM: Parsed SAQA dialog_token=%u ctrl=0x%02x",
+		   saqa->dialog_token, saqa->ctrl);
+	return 0;
+}
