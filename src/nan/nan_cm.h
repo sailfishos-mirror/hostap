@@ -62,4 +62,41 @@ int nan_cm_build_kaa(struct nan_peer *peer, struct wpabuf *buf);
  */
 int nan_cm_parse_kaa(const u8 *data, size_t len, struct nan_cm_kaa *kaa);
 
+/**
+ * struct nan_cm_tna - Parsed Termination Notification attribute
+ * @ctrl: Termination Control field (NAN_TNA_CTRL_*)
+ * @reason: Reason code
+ * @n_nd_tksas: Number of ND-TKSA identities in &nd_tksa_ids
+ * @nd_tksa_ids: ND-TKSA identities (Initiator NDI followed by Responder NDI),
+ *	each NAN_ND_TKSA_IDENTITY_LEN octets. Points to the parsed attribute
+ *	data; NULL if ND-TKSA termination is not indicated.
+ */
+struct nan_cm_tna {
+	u8 ctrl;
+	u8 reason;
+	u8 n_nd_tksas;
+	const u8 *nd_tksa_ids;
+};
+
+/**
+ * nan_cm_build_tna - Build a Termination Notification attribute
+ * @buf: Buffer to which the attribute is appended
+ * @ctrl: Termination Control field (NAN_TNA_CTRL_*)
+ * @reason: Reason code
+ * @nd_tksa_ids: ND-TKSA identities; used only with NAN_TNA_CTRL_ND_TKSA_TERM
+ * @n_nd_tksas: Number of ND-TKSA identities in @nd_tksa_ids
+ * Returns: 0 on success, -1 on failure
+ */
+int nan_cm_build_tna(struct wpabuf *buf, u8 ctrl, u8 reason,
+		     const u8 *nd_tksa_ids, u8 n_nd_tksas);
+
+/**
+ * nan_cm_parse_tna - Parse a Termination Notification attribute
+ * @data: Attribute body (after the Attribute ID and Length fields)
+ * @len: Length of the attribute body
+ * @tna: Buffer for returning the parsed attribute
+ * Returns: 0 on success, -1 on failure
+ */
+int nan_cm_parse_tna(const u8 *data, size_t len, struct nan_cm_tna *tna);
+
 #endif /* NAN_CM_H */

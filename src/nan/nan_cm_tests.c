@@ -174,6 +174,106 @@ fail:
 }
 
 
+static int test_tna(void)
+{
+	u8 ids[2 * NAN_ND_TKSA_IDENTITY_LEN];
+	struct nan_cm_tna tna;
+	struct wpabuf *buf;
+	const u8 *pos;
+	int ret = -1;
+
+	wpa_printf(MSG_INFO, "TEST: NAN CM TNA build/parse");
+	os_memcpy(ids, test_init_ndi, ETH_ALEN);
+	os_memcpy(ids + ETH_ALEN, test_resp_ndi, ETH_ALEN);
+	os_memcpy(ids + NAN_ND_TKSA_IDENTITY_LEN, test_resp_ndi, ETH_ALEN);
+	os_memcpy(ids + NAN_ND_TKSA_IDENTITY_LEN + ETH_ALEN, test_init_ndi,
+		  ETH_ALEN);
+
+	/* NM-TKSA termination carries no ND-TKSA list */
+	buf = wpabuf_alloc(NAN_ATTR_HDR_LEN + 2);
+	if (!buf ||
+	    nan_cm_build_tna(buf, NAN_TNA_CTRL_NM_TKSA_TERM, 7, NULL, 0) < 0)
+		goto out;
+	pos = wpabuf_head_u8(buf);
+	if (wpabuf_len(buf) != NAN_ATTR_HDR_LEN + 2 ||
+	    pos[0] != NAN_ATTR_TNA || WPA_GET_LE16(pos + 1) != 2 ||
+	    nan_cm_parse_tna(pos + NAN_ATTR_HDR_LEN, 2, &tna) < 0 ||
+	    tna.ctrl != NAN_TNA_CTRL_NM_TKSA_TERM || tna.reason != 7 ||
+	    tna.n_nd_tksas || tna.nd_tksa_ids)
+		goto out;
+
+	/* ND-TKSA termination with two identities */
+	wpabuf_free(buf);
+	buf = wpabuf_alloc(NAN_ATTR_HDR_LEN + 3 + sizeof(ids));
+	if (!buf ||
+	    nan_cm_build_tna(buf, NAN_TNA_CTRL_ND_TKSA_TERM, 9, ids, 2) < 0)
+		goto out;
+	pos = wpabuf_head_u8(buf);
+	if (wpabuf_len(buf) != NAN_ATTR_HDR_LEN + 3 + sizeof(ids) ||
+	    WPA_GET_LE16(pos + 1) != 3 + sizeof(ids) ||
+	    nan_cm_parse_tna(pos + NAN_ATTR_HDR_LEN, 3 + sizeof(ids),
+			     &tna) < 0 ||
+	    tna.ctrl != NAN_TNA_CTRL_ND_TKSA_TERM || tna.reason != 9 ||
+	    tna.n_nd_tksas != 2 ||
+	    os_memcmp(tna.nd_tksa_ids, ids, sizeof(ids)) != 0)
+		goto out;
+
+	/* No room for the ND-TKSA list */
+	wpabuf_free(buf);
+	buf = wpabuf_alloc(NAN_ATTR_HDR_LEN + 3 + sizeof(ids) - 1);
+	if (!buf ||
+	    nan_cm_build_tna(buf, NAN_TNA_CTRL_ND_TKSA_TERM, 9, ids, 2) == 0)
+		goto out;
+
+	ret = 0;
+out:
+	if (ret)
+		wpa_printf(MSG_ERROR, "FAIL: NAN CM TNA build/parse");
+	wpabuf_free(buf);
+	return ret;
+}
+
+
+static int test_tna_parse_invalid(void)
+{
+	u8 data[3 + NAN_ND_TKSA_IDENTITY_LEN];
+	struct nan_cm_tna tna;
+
+	wpa_printf(MSG_INFO, "TEST: NAN CM TNA parse invalid");
+	os_memset(data, 0, sizeof(data));
+
+	/* Missing Reason Code */
+	data[0] = NAN_TNA_CTRL_NM_TKSA_TERM;
+	if (nan_cm_parse_tna(data, 1, &tna) == 0)
+		goto fail;
+
+	/* No termination type indicated */
+	data[0] = 0;
+	if (nan_cm_parse_tna(data, 2, &tna) == 0)
+		goto fail;
+
+	/* ND-TKSA termination without the ND-TKSA count */
+	data[0] = NAN_TNA_CTRL_ND_TKSA_TERM;
+	if (nan_cm_parse_tna(data, 2, &tna) == 0)
+		goto fail;
+
+	/* ND-TKSA count exceeding the attribute */
+	data[2] = 2;
+	if (nan_cm_parse_tna(data, sizeof(data), &tna) == 0)
+		goto fail;
+
+	/* An empty ND-TKSA list is valid */
+	data[2] = 0;
+	if (nan_cm_parse_tna(data, 3, &tna) < 0 || tna.n_nd_tksas)
+		goto fail;
+
+	return 0;
+fail:
+	wpa_printf(MSG_ERROR, "FAIL: NAN CM TNA parse invalid");
+	return -1;
+}
+
+
 /**
  * nan_cm_tests - Run NAN Connection Management unit tests
  * Returns: 0 on success, -1 on failure
@@ -181,7 +281,7 @@ fail:
 int nan_cm_tests(void)
 {
 	if (test_kaa_no_ndps() || test_kaa_ndp_list() ||
-	    test_kaa_parse_invalid())
+	    test_kaa_parse_invalid() || test_tna() || test_tna_parse_invalid())
 		return -1;
 	return 0;
 }

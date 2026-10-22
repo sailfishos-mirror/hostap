@@ -163,3 +163,79 @@ int nan_cm_parse_kaa(const u8 *data, size_t len, struct nan_cm_kaa *kaa)
 		   kaa->n_entries);
 	return 0;
 }
+
+
+int nan_cm_build_tna(struct wpabuf *buf, u8 ctrl, u8 reason,
+		     const u8 *nd_tksa_ids, u8 n_nd_tksas)
+{
+	size_t len = 2;
+
+	if (ctrl & NAN_TNA_CTRL_ND_TKSA_TERM)
+		len += 1 + n_nd_tksas * NAN_ND_TKSA_IDENTITY_LEN;
+
+	if (wpabuf_tailroom(buf) < NAN_ATTR_HDR_LEN + len) {
+		wpa_printf(MSG_INFO, "NAN CM: No room for TNA");
+		return -1;
+	}
+
+	wpabuf_put_u8(buf, NAN_ATTR_TNA);
+	wpabuf_put_le16(buf, len);
+	wpabuf_put_u8(buf, ctrl);
+	wpabuf_put_u8(buf, reason);
+
+	if (ctrl & NAN_TNA_CTRL_ND_TKSA_TERM) {
+		wpabuf_put_u8(buf, n_nd_tksas);
+		wpabuf_put_data(buf, nd_tksa_ids,
+				n_nd_tksas * NAN_ND_TKSA_IDENTITY_LEN);
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: Built TNA ctrl=0x%02x reason=%u n_nd_tksas=%u",
+		   ctrl, reason, n_nd_tksas);
+	return 0;
+}
+
+
+int nan_cm_parse_tna(const u8 *data, size_t len, struct nan_cm_tna *tna)
+{
+	os_memset(tna, 0, sizeof(*tna));
+
+	if (len < 2) {
+		wpa_printf(MSG_DEBUG, "NAN CM: TNA too short");
+		return -1;
+	}
+
+	tna->ctrl = data[0];
+	tna->reason = data[1];
+
+	if (!(tna->ctrl & (NAN_TNA_CTRL_NPKSA_TERM |
+			   NAN_TNA_CTRL_NM_TKSA_TERM |
+			   NAN_TNA_CTRL_ND_TKSA_TERM))) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: TNA without termination type (ctrl=0x%02x)",
+			   tna->ctrl);
+		return -1;
+	}
+
+	if (tna->ctrl & NAN_TNA_CTRL_ND_TKSA_TERM) {
+		if (len < 3) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN CM: TNA without ND-TKSA count");
+			return -1;
+		}
+
+		tna->n_nd_tksas = data[2];
+		if (len - 3 < tna->n_nd_tksas * NAN_ND_TKSA_IDENTITY_LEN) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN CM: TNA ND-TKSA list truncated (count=%u)",
+				   tna->n_nd_tksas);
+			return -1;
+		}
+		tna->nd_tksa_ids = data + 3;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: Parsed TNA ctrl=0x%02x reason=%u n_nd_tksas=%u",
+		   tna->ctrl, tna->reason, tna->n_nd_tksas);
+	return 0;
+}
