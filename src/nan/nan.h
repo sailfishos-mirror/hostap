@@ -813,6 +813,17 @@ struct nan_config {
 					      int *akmp);
 
 	/**
+	 * delete_npk - Delete the cached NPK of a peer
+	 * @ctx: Callback context from cb_ctx
+	 * @peer_nmi: Peer NMI address
+	 * @nik: NAN Identity Key of the peer
+	 *
+	 * Called when the NPKSA with the peer is terminated to remove the NPK
+	 * that was stored with the NIK of the peer.
+	 */
+	void (*delete_npk)(void *ctx, const u8 *peer_nmi, const u8 *nik);
+
+	/**
 	 * pairing_request - Notify about received pairing request
 	 * @ctx: Callback context from cb_ctx
 	 * @peer_nmi: Peer NMI address

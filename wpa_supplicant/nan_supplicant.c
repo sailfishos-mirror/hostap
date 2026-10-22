@@ -1329,6 +1329,28 @@ static const struct wpabuf * wpas_nan_get_npk_akmp_cb(void *ctx,
 }
 
 
+static void wpas_nan_delete_npk_cb(void *ctx, const u8 *peer_nmi,
+				   const u8 *nik)
+{
+	struct wpa_supplicant *wpa_s = ctx;
+	struct wpa_dev_ik *ik;
+
+	for (ik = wpa_s->conf->identity; ik; ik = ik->next) {
+		if (ik->dik && wpabuf_len(ik->dik) == NAN_NIK_LEN &&
+		    os_memcmp(wpabuf_head(ik->dik), nik, NAN_NIK_LEN) == 0) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Remove device identity id=%d of peer "
+				   MACSTR, ik->id, MAC2STR(peer_nmi));
+			wpa_config_remove_identity(wpa_s->conf, ik->id);
+			return;
+		}
+	}
+
+	wpa_printf(MSG_DEBUG, "NAN: No device identity for peer " MACSTR,
+		   MAC2STR(peer_nmi));
+}
+
+
 static void wpas_nan_pkr_updated_cb(void *ctx, const u8 *peer_nmi,
 				    const u8 *iik, bool revoked)
 {
@@ -1443,6 +1465,7 @@ int wpas_nan_init(struct wpa_supplicant *wpa_s)
 	nan.install_nm_tk = wpas_nan_install_nm_tk_cb;
 	nan.update_pairing_credentials = wpas_nan_update_pairing_credentials_cb;
 	nan.get_npk_akmp = wpas_nan_get_npk_akmp_cb;
+	nan.delete_npk = wpas_nan_delete_npk_cb;
 	nan.pkr_updated = wpas_nan_pkr_updated_cb;
 	nan.pairing_request = wpas_nan_pasn_pairing_request_cb;
 	nan.pairing_cfg.pairing_setup = true;
