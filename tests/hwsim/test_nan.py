@@ -3036,3 +3036,169 @@ def test_nan_pkbst_record_update_not_paired(dev, apdev):
         if "FAIL" not in pub.wpas.request(
                 "NAN_UPDATE_PKR generate=1 send=1"):
             raise Exception("Update without peer accepted")
+
+def nan_cm_info(dev, peer):
+    res = dev.wpas.request("NAN_PEER_INFO %s cm" % peer.wpas.own_addr())
+    if "FAIL" in res:
+        raise Exception("NAN_PEER_INFO cm failed")
+    return dict(line.split('=', 1) for line in res.splitlines())
+
+def nan_cm_check_capa(pub, sub, *capas):
+    """Skip unless both devices can use the CM capabilities with each other"""
+    for dev, peer in ((pub, sub), (sub, pub)):
+        info = nan_cm_info(dev, peer)
+        for capa in capas:
+            if info.get(capa) != "1":
+                raise HwsimSkip("NAN Connection Management %s not supported" %
+                                capa)
+
+def nan_cm_pair_ndp(pub, sub, *capas):
+    """Pair the devices and set up an NDP
+
+    The test is skipped unless the Connection Management capabilities listed
+    in capas can be used between the paired devices."""
+    for dev in (pub, sub):
+        if "OK" not in dev.schedule_config((2437, "0e000000")):
+            raise Exception("Failed to configure schedule")
+
+    paddr = pub.wpas.own_addr()
+    saddr = sub.wpas.own_addr()
+    pid = pub.publish("test_service", ssi="aabbccdd", unsolicited=0,
+                      pbm=0x1, data_path=True)
+    sid = sub.subscribe("test_service", ssi="ddbbccaa")
+    ev = sub.wpas.wait_event(["NAN-DISCOVERY-RESULT"], timeout=2)
+    if ev is None:
+        raise Exception("NAN-DISCOVERY-RESULT event not seen")
+    ev = pub.wpas.wait_event(["NAN-REPLIED"], timeout=2)
+    if ev is None:
+        raise Exception("NAN-REPLIED event not seen")
+
+    sub.bootstrap(paddr, sid, pid, 0x1)
+    for dev in (sub, pub):
+        ev = dev.wpas.wait_event(["NAN-BOOTSTRAP-SUCCESS"], timeout=2)
+        if ev is None:
+            raise Exception("NAN-BOOTSTRAP-SUCCESS event not seen")
+
+    nd_pmk = run_nan_pairing(sub, pub, pid, sid, "SAE",
+                             password="password123")
+    nan_cm_check_capa(pub, sub, *capas)
+    ndp_id, init_ndi = _nan_ndp_request_and_accept(pub, sub, pid, sid,
+                                                   paddr, saddr,
+                                                   req_ssi="aabbcc",
+                                                   resp_ssi="ddeeff",
+                                                   csid=1, pmk=nd_pmk)
+    return pid, sid, ndp_id, init_ndi
+
+def test_nan_cm_keepalive(dev, apdev):
+    """NAN Connection Management keep alive with a paired peer"""
+    set_country("US")
+    try:
+        with hwsim_nan_radios() as (wpas1, wpas2), \
+             NanDevice(wpas1, "nan0", "ndi0") as pub, \
+             NanDevice(wpas2, "nan1", "ndi1") as sub:
+            nan_cm_pair_ndp(pub, sub, "default_ka")
+
+            for dev, peer in ((pub, sub), (sub, pub)):
+                info = nan_cm_info(dev, peer)
+                if info.get("nm_tksa") != "1" or \
+                   info.get("ka_active") != "1":
+                    raise Exception("Unexpected CM state on %s: %s" %
+                                    (dev.ifname, info))
+
+            # The NDP is reported in the KAAs and must remain established
+            # over several keep alive periods.
+            ev = pub.wpas.wait_event(["NAN-NDP-DISCONNECTED"], timeout=16)
+            if ev is not None:
+                raise Exception("NDP disconnected during keep alive: " + ev)
+            _nan_test_connectivity(pub, sub)
+            for dev, peer in ((pub, sub), (sub, pub)):
+                if nan_cm_info(dev, peer).get("ka_active") != "1":
+                    raise Exception("Keep alive stopped on " + dev.ifname)
+    finally:
+        set_country("00")
+
+def test_nan_cm_keepalive_terminate_during_setup(dev, apdev):
+    """NAN Connection Management keep alive NDP termination during NDP setup"""
+    set_country("US")
+    try:
+        with hwsim_nan_radios() as (wpas1, wpas2), \
+             NanDevice(wpas1, "nan0", "ndi0") as pub, \
+             NanDevice(wpas2, "nan1", "ndi1") as sub:
+            pid, sid, ndp_id, init_ndi = nan_cm_pair_ndp(pub, sub,
+                                                         "default_ka")
+            paddr = pub.wpas.own_addr()
+            saddr = sub.wpas.own_addr()
+            sub.cancel_subscribe(sid)
+            pub.wpas.dump_monitor()
+            sub.wpas.dump_monitor()
+
+            pid2 = pub.publish("test_service2", ssi="aabbccdd", unsolicited=0,
+                               data_path=True)
+            sid2 = sub.subscribe("test_service2", ssi="ddbbccaa")
+            ev = sub.wpas.wait_event(["NAN-DISCOVERY-RESULT"], timeout=2)
+            if ev is None:
+                raise Exception("NAN-DISCOVERY-RESULT event not seen")
+            ndp_id2, init_ndi2 = _nan_ndp_request_and_accept(
+                pub, sub, pid2, sid2, paddr, saddr, req_ssi="112233",
+                resp_ssi="445566", csid=1, password="password123",
+                configure_schedule=False)
+
+            # The subscriber removes the second NDP without the publisher
+            # processing the NDP Termination, so the publisher learns about
+            # it only from the KAAs.
+            pub.wpas.request("SET ext_mgmt_frame_handling 1")
+            sub.ndp_terminate(paddr, init_ndi2, ndp_id2)
+            ev = sub.wpas.wait_event(["NAN-NDP-DISCONNECTED"], timeout=5)
+            if ev is None:
+                raise Exception("NDP not terminated on subscriber")
+            ev = pub.wpas.wait_event(["MGMT-RX"], timeout=5)
+            if ev is None:
+                raise Exception("NDP Termination not seen on publisher")
+            pub.wpas.request("SET ext_mgmt_frame_handling 0")
+            pub.wpas.dump_monitor()
+
+            # Start a new NDP setup and keep it in progress on the publisher
+            # while the KAAs from the subscriber no longer report the second
+            # NDP.
+            if "OK" not in sub.ndp_request(sub.ndi_name, sid2, paddr, pid2,
+                                           "223344", csid=1,
+                                           password="password123"):
+                raise Exception("NDP request failed")
+            ev = pub.wpas.wait_event(["NAN-NDP-REQUEST"], timeout=5)
+            if ev is None:
+                raise Exception("NAN-NDP-REQUEST not seen on publisher")
+            data = split_nan_event(ev)
+            ndp_id3 = data['ndp_id']
+            init_ndi3 = data['init_ndi']
+
+            ev = pub.wpas.wait_event(["NAN-NDP-DISCONNECTED"], timeout=16)
+            if ev is None:
+                raise Exception("NDP missing from KAAs not terminated")
+            data = split_nan_event(ev)
+            if data.get("ndp_id") != str(ndp_id2) or \
+               data.get("peer_ndi") != init_ndi2:
+                raise Exception("Unexpected NDP terminated: " + ev)
+
+            # The NDP setup in progress is not affected
+            if "OK" not in pub.ndp_response("accept", saddr, ndi=pub.ndi_name,
+                                            ndp_id=ndp_id3,
+                                            init_ndi=init_ndi3, handle=pid2,
+                                            ssi="556677", csid=1,
+                                            password="password123"):
+                raise Exception("NDP response (accept) failed")
+            for d in (pub, sub):
+                ev = d.wpas.wait_event(["NAN-NDP-CONNECTED",
+                                        "NAN-NDP-DISCONNECTED"], timeout=5)
+                if ev is None or "NAN-NDP-CONNECTED" not in ev or \
+                   "ndp_id=%s " % ndp_id3 not in ev:
+                    raise Exception("NDP not connected on %s: %s" %
+                                    (d.ifname, ev))
+
+            # The remaining NDPs are reported in the KAAs and stay
+            # established.
+            ev = pub.wpas.wait_event(["NAN-NDP-DISCONNECTED"], timeout=11)
+            if ev is not None:
+                raise Exception("NDP disconnected after the setup: " + ev)
+            _nan_test_connectivity(pub, sub)
+    finally:
+        set_country("00")
