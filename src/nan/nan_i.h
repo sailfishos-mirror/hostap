@@ -663,6 +663,16 @@ struct nan_pairing_peer_data {
 };
 
 /**
+ * struct nan_cm_peer - Connection Management state with a paired peer
+ * @nm_tksa: NM-TKSA is established with the peer
+ * @ka_active: Keep alive is running with the peer
+ */
+struct nan_cm_peer {
+	bool nm_tksa;
+	bool ka_active;
+};
+
+/**
  * struct nan_peer - Represents a known NAN peer
  * @list: List node for linking peers
  * @nmi_addr: NMI of the peer
@@ -677,6 +687,7 @@ struct nan_pairing_peer_data {
  * @pairing: Pairing data associated with this peer
  * @igtk_id: IGTK key ID used with this peer. Zero if IGTK is not used.
  * @bigtk_id: BIGTK key ID used with this peer. Zero if BIGTK is not used.
+ * @cm: Connection Management state with the peer
  */
 struct nan_peer {
 	struct dl_list list;
@@ -705,6 +716,8 @@ struct nan_peer {
 
 	u8 igtk_id;
 	u8 bigtk_id;
+
+	struct nan_cm_peer cm;
 };
 
 /**
@@ -1057,5 +1070,8 @@ static inline void nan_pairing_deinit_peer(struct nan_data *nan_data,
 {
 }
 #endif /* CONFIG_PASN */
+
+void nan_cm_nm_tksa_established(struct nan_data *nan, struct nan_peer *peer);
+void nan_cm_deinit_peer(struct nan_data *nan, struct nan_peer *peer);
 
 #endif /* NAN_I_H */

@@ -1441,6 +1441,10 @@ static void nan_pairing_done(struct nan_data *nan_data, struct nan_peer *peer)
 	peer->pairing.pairing_akmp = pasn_get_akmp(pasn);
 	nan_pairing_cache_pik(nan_data, peer);
 
+	/* The NM-TK is installed only for pairing within the NAN cluster */
+	if (!nan_peer_no_shared_cluster(nan_data, peer->nmi_addr))
+		nan_cm_nm_tksa_established(nan_data, peer);
+
 	if (!nan_data->cfg->pairing_cfg.npk_caching ||
 	    !peer->pairing.pairing_cfg.npk_caching ||
 	    (peer->pairing.flags & NAN_PAIRING_FLAG_NPK_VERIFICATION))
@@ -2940,6 +2944,7 @@ void nan_pairing_unpair_peer(struct nan_data *nan_data, const u8 *peer_addr)
 		   MAC2STR(peer->nmi_addr));
 
 	peer->pairing.flags &= ~NAN_PAIRING_FLAG_PAIRED;
+	nan_cm_deinit_peer(nan_data, peer);
 	nan_pairing_deinit_peer(nan_data, peer, true);
 }
 

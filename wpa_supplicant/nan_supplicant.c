@@ -3802,7 +3802,7 @@ static int wpas_nan_append_ik_info(char *reply, size_t reply_size,
 
 
 /* Format: NAN_PEER_INFO <addr>
- * <schedule|potential|capa|bootstrap|pairing> [map_id] */
+ * <schedule|potential|capa|bootstrap|pairing|cm> [map_id] */
 int wpas_nan_peer_info(struct wpa_supplicant *wpa_s, const char *cmd,
 		       char *reply, size_t reply_size)
 {
@@ -3941,6 +3941,8 @@ int wpas_nan_peer_info(struct wpa_supplicant *wpa_s, const char *cmd,
 				   MAC2STR(addr));
 			return -1;
 		}
+	} else if (os_strcmp(pos + 1, "cm") == 0) {
+		ret = nan_cm_peer_info(wpa_s->nan, addr, reply, reply_size);
 	} else {
 		wpa_printf(MSG_INFO, "NAN: Unknown info type: %s", pos + 1);
 		ret = -1;

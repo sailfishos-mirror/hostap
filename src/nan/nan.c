@@ -258,6 +258,7 @@ static void nan_del_peer(struct nan_data *nan, struct nan_peer *peer)
 	nan_peer_flush_elem_container(&peer->info);
 	nan_remove_group_keys(nan, peer);
 
+	nan_cm_deinit_peer(nan, peer);
 	nan_ndl_reset(nan, peer);
 	nan_peer_flush_sec(&peer->info);
 	eloop_cancel_timeout(nan_peer_state_timeout, nan, peer);

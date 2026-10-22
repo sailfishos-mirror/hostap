@@ -8,8 +8,12 @@
 
 #include "includes.h"
 #include "common.h"
+#include "utils/eloop.h"
 #include "nan_i.h"
 #include "nan_cm.h"
+
+/* Room for the NAF header and the Connection Management attributes */
+#define NAN_CM_NAF_MAX_LEN 512
 
 
 static bool nan_cm_same_ndi_pair(const struct nan_ndp *a,
@@ -371,4 +375,209 @@ int nan_cm_parse_rka(const u8 *data, size_t len, struct nan_cm_rka *rka)
 		   rka->ctrl, MAC2STR(rka->init_ndi),
 		   MAC2STR(rka->resp_ndi), rka->ndp_id);
 	return 0;
+}
+
+
+/*
+ * Whether a Connection Management capability (NAN_DEV_CAPA_EXT_INFO_2_CM_*)
+ * is supported by both the local device and the peer. The capabilities are
+ * indicated in the Capability Info field of the DCEA (Wi-Fi Aware spec R5,
+ * Table 173, b17-b21), which is not yet extended beyond b15, so none of them
+ * can be used for now.
+ */
+static bool nan_cm_capa(const struct nan_data *nan,
+			const struct nan_peer *peer, u8 capa)
+{
+	return false;
+}
+
+
+static struct wpabuf * nan_cm_alloc_naf(u8 subtype)
+{
+	struct wpabuf *buf;
+
+	buf = wpabuf_alloc(NAN_CM_NAF_MAX_LEN);
+	if (!buf)
+		return NULL;
+
+	/* Connection Management NAFs are protected with the NM-TK */
+	wpabuf_put_u8(buf, WLAN_ACTION_PROTECTED_DUAL);
+	wpabuf_put_u8(buf, WLAN_PA_VENDOR_SPECIFIC);
+	wpabuf_put_be24(buf, OUI_WFA);
+	wpabuf_put_u8(buf, NAN_NAF_OUI_TYPE);
+	wpabuf_put_u8(buf, subtype);
+	return buf;
+}
+
+
+static int nan_cm_send_naf(struct nan_data *nan, struct nan_peer *peer,
+			   struct wpabuf *buf)
+{
+	int ret;
+
+	if (!nan->cfg->send_naf)
+		return -1;
+	ret = nan->cfg->send_naf(nan->cfg->cb_ctx, peer->nmi_addr, NULL,
+				 nan->cluster_id, buf);
+	if (ret)
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: Failed to send NAF to " MACSTR " (ret=%d)",
+			   MAC2STR(peer->nmi_addr), ret);
+	wpabuf_free(buf);
+	return ret;
+}
+
+
+static int nan_cm_send_keepalive(struct nan_data *nan, struct nan_peer *peer)
+{
+	struct wpabuf *buf;
+
+	buf = nan_cm_alloc_naf(NAN_SUBTYPE_CONNECTION_MGMT);
+	if (!buf)
+		return -1;
+
+	if (nan_cm_build_kaa(peer, buf) < 0) {
+		wpabuf_free(buf);
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "NAN CM: Send Keep Alive to " MACSTR,
+		   MAC2STR(peer->nmi_addr));
+	return nan_cm_send_naf(nan, peer, buf);
+}
+
+
+static void nan_cm_ka_tx_timeout(void *eloop_ctx, void *timeout_ctx)
+{
+	struct nan_data *nan = eloop_ctx;
+	struct nan_peer *peer = timeout_ctx;
+
+	nan_cm_send_keepalive(nan, peer);
+	eloop_register_timeout(NAN_CM_KA_INTERVAL_DEFAULT, 0,
+			       nan_cm_ka_tx_timeout, nan, peer);
+}
+
+
+static void nan_cm_ka_rx_timeout(void *eloop_ctx, void *timeout_ctx)
+{
+	struct nan_data *nan = eloop_ctx;
+	struct nan_peer *peer = timeout_ctx;
+
+	wpa_printf(MSG_INFO,
+		   "NAN CM: No Keep Alive from " MACSTR " within %d seconds",
+		   MAC2STR(peer->nmi_addr), NAN_CM_KA_RX_TIMEOUT_DEFAULT);
+
+	peer->cm.ka_active = false;
+	eloop_cancel_timeout(nan_cm_ka_tx_timeout, nan, peer);
+}
+
+
+static void nan_cm_keepalive_start(struct nan_data *nan,
+				   struct nan_peer *peer)
+{
+	if (peer->cm.ka_active)
+		return;
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: Start keep alive with " MACSTR
+		   " (TX interval %d s, RX timeout %d s)",
+		   MAC2STR(peer->nmi_addr), NAN_CM_KA_INTERVAL_DEFAULT,
+		   NAN_CM_KA_RX_TIMEOUT_DEFAULT);
+
+	peer->cm.ka_active = true;
+	nan_cm_send_keepalive(nan, peer);
+	eloop_register_timeout(NAN_CM_KA_INTERVAL_DEFAULT, 0,
+			       nan_cm_ka_tx_timeout, nan, peer);
+	eloop_register_timeout(NAN_CM_KA_RX_TIMEOUT_DEFAULT, 0,
+			       nan_cm_ka_rx_timeout, nan, peer);
+}
+
+
+static void nan_cm_keepalive_stop(struct nan_data *nan, struct nan_peer *peer)
+{
+	if (!peer->cm.ka_active)
+		return;
+
+	wpa_printf(MSG_DEBUG, "NAN CM: Stop keep alive with " MACSTR,
+		   MAC2STR(peer->nmi_addr));
+
+	peer->cm.ka_active = false;
+	eloop_cancel_timeout(nan_cm_ka_tx_timeout, nan, peer);
+	eloop_cancel_timeout(nan_cm_ka_rx_timeout, nan, peer);
+}
+
+
+/**
+ * nan_cm_nm_tksa_established - Handle NM-TKSA establishment with a peer
+ * @nan: NAN module context from nan_init()
+ * @peer: Paired peer
+ *
+ * Starts keep alive with the peer when both devices support the default keep
+ * alive capability.
+ */
+void nan_cm_nm_tksa_established(struct nan_data *nan, struct nan_peer *peer)
+{
+	peer->cm.nm_tksa = true;
+
+	wpa_printf(MSG_DEBUG, "NAN CM: NM-TKSA established with " MACSTR,
+		   MAC2STR(peer->nmi_addr));
+
+	if (!nan_cm_capa(nan, peer, NAN_DEV_CAPA_EXT_INFO_2_CM_DEFAULT_KA) ||
+	    !nan->cfg->send_naf) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: Keep alive not supported with " MACSTR,
+			   MAC2STR(peer->nmi_addr));
+		return;
+	}
+
+	nan_cm_keepalive_start(nan, peer);
+}
+
+
+/**
+ * nan_cm_peer_info - Write the Connection Management state of a peer
+ * @nan: NAN module context from nan_init()
+ * @addr: NMI of the peer
+ * @buf: Buffer for the text output
+ * @buflen: Length of @buf
+ * Returns: Number of characters written or -1 on failure
+ */
+int nan_cm_peer_info(struct nan_data *nan, const u8 *addr, char *buf,
+		     size_t buflen)
+{
+	struct nan_peer *peer;
+	bool ka, deauth, rekey, term;
+	int ret;
+
+	peer = nan_get_peer(nan, addr);
+	if (!peer)
+		return -1;
+
+	/* Capabilities that can be used with the peer */
+	ka = nan_cm_capa(nan, peer, NAN_DEV_CAPA_EXT_INFO_2_CM_DEFAULT_KA);
+	deauth = nan_cm_capa(nan, peer,
+			     NAN_DEV_CAPA_EXT_INFO_2_CM_DEAUTH_SA_QUERY);
+	rekey = nan_cm_capa(nan, peer, NAN_DEV_CAPA_EXT_INFO_2_CM_NDTK_REKEY);
+	term = nan_cm_capa(nan, peer, NAN_DEV_CAPA_EXT_INFO_2_CM_TERM_NOTIF);
+
+	ret = os_snprintf(buf, buflen,
+			  "default_ka=%d\ndeauth_sa_query=%d\nndtk_rekey=%d\n"
+			  "termination_notif=%d\nnm_tksa=%d\nka_active=%d\n",
+			  ka, deauth, rekey, term, peer->cm.nm_tksa,
+			  peer->cm.ka_active);
+	if (os_snprintf_error(buflen, ret))
+		return -1;
+	return ret;
+}
+
+
+/**
+ * nan_cm_deinit_peer - Release the Connection Management state of a peer
+ * @nan: NAN module context from nan_init()
+ * @peer: NAN peer
+ */
+void nan_cm_deinit_peer(struct nan_data *nan, struct nan_peer *peer)
+{
+	nan_cm_keepalive_stop(nan, peer);
+	os_memset(&peer->cm, 0, sizeof(peer->cm));
 }
