@@ -1033,9 +1033,21 @@ static void nan_peer_dump(struct nan_data *nan, struct nan_peer *peer)
 }
 
 
+/**
+ * nan_peer_terminate_ndp - Terminate an established NDP with a peer
+ * @nan: NAN module context from nan_init()
+ * @peer: NAN peer
+ * @ndp: NDP from &peer->ndps
+ *
+ * Sends an NDP Termination NAF for @ndp and removes it locally without waiting
+ * for the peer. @ndp is freed. This can be called while another NDP setup with
+ * the peer is in progress, e.g., when the peer no longer reports @ndp in its
+ * KAA, and the ongoing setup is not affected.
+ */
 void nan_peer_terminate_ndp(struct nan_data *nan, struct nan_peer *peer,
 			    struct nan_ndp *ndp)
 {
+	struct nan_ndp_setup ndp_setup;
 	const u8 *local_ndi, *peer_ndi;
 	struct nan_ndp_id ndp_id;
 
@@ -1047,16 +1059,32 @@ void nan_peer_terminate_ndp(struct nan_data *nan, struct nan_peer *peer,
 		peer_ndi = ndp->init_ndi;
 	}
 
-	os_memcpy(&ndp_id.peer_nmi, peer->nmi_addr, ETH_ALEN);
+	os_memcpy(ndp_id.peer_nmi, peer->nmi_addr, ETH_ALEN);
 	os_memcpy(ndp_id.init_ndi, ndp->init_ndi, ETH_ALEN);
 	ndp_id.id = ndp->ndp_id;
 
+	/*
+	 * The termination frame is built from &peer->ndp_setup, which may hold
+	 * another NDP setup in progress with the peer. Save the context and
+	 * build the frame from a cleared context with only the fields needed
+	 * for the termination of @ndp. As the security context is cleared, no
+	 * security attributes are added. Restore the saved context once the
+	 * frame is sent, so that a setup in progress is not affected. Do this
+	 * before nan_ndp_terminated() so that the NDL is not reset while a
+	 * setup is in progress.
+	 *
+	 * The TX status of the termination frame is processed with the restored
+	 * context: it does not advance the state of a setup in progress and is
+	 * ignored when no setup is in progress.
+	 */
+	os_memcpy(&ndp_setup, &peer->ndp_setup, sizeof(ndp_setup));
+	os_memset(&peer->ndp_setup, 0, sizeof(peer->ndp_setup));
 	peer->ndp_setup.ndp = ndp;
 	peer->ndp_setup.state = NAN_NDP_STATE_DONE;
 	peer->ndp_setup.status = NAN_NDP_STATUS_REJECTED;
 	peer->ndp_setup.reason = NAN_REASON_UNSPECIFIED_REASON;
 	nan_action_send(nan, peer, NAN_SUBTYPE_DATA_PATH_TERMINATION);
-	peer->ndp_setup.ndp = NULL;
+	os_memcpy(&peer->ndp_setup, &ndp_setup, sizeof(ndp_setup));
 
 	dl_list_del(&ndp->list);
 	nan_ndp_terminated(nan, peer, &ndp_id, local_ndi, peer_ndi,
