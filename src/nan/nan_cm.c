@@ -462,6 +462,9 @@ static void nan_cm_ka_tx_timeout(void *eloop_ctx, void *timeout_ctx)
 }
 
 
+static void nan_cm_delete_nm_tksa(struct nan_data *nan, struct nan_peer *peer,
+				  bool locally_generated);
+
 static void nan_cm_ka_rx_timeout(void *eloop_ctx, void *timeout_ctx)
 {
 	struct nan_data *nan = eloop_ctx;
@@ -471,8 +474,11 @@ static void nan_cm_ka_rx_timeout(void *eloop_ctx, void *timeout_ctx)
 		   "NAN CM: No Keep Alive from " MACSTR " within %d seconds",
 		   MAC2STR(peer->nmi_addr), NAN_CM_KA_RX_TIMEOUT_DEFAULT);
 
-	peer->cm.ka_active = false;
-	eloop_cancel_timeout(nan_cm_ka_tx_timeout, nan, peer);
+	/*
+	 * The security associations with the peer are considered lost. The
+	 * peer is not responding, so delete them without notifying it.
+	 */
+	nan_cm_delete_nm_tksa(nan, peer, true);
 }
 
 
