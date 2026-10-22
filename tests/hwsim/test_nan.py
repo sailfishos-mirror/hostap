@@ -3340,3 +3340,73 @@ def test_nan_cm_keepalive_timeout(dev, apdev):
             raise Exception("Keep alive not stopped")
         sub.wpas.request("NAN_START")
     run_nan_cm_terminate(test, "default_ka")
+
+def test_nan_cm_deauth(dev, apdev):
+    """NAN Connection Management Deauthentication and SA Query timeout"""
+    def test(pub, sub, init_ndi):
+        if "FAIL" not in pub.wpas.request("NAN_CM_DEAUTH peer_nmi=" +
+                                          pub.wpas.own_addr()):
+            raise Exception("Deauthentication of an unknown peer accepted")
+        if "OK" not in pub.wpas.request("NAN_CM_DEAUTH peer_nmi=" +
+                                        sub.wpas.own_addr()):
+            raise Exception("NAN_CM_DEAUTH failed")
+        nan_cm_wait_terminated(pub, sub, "nm_tksa", True, ndp=True)
+
+        # The subscriber gets no response to its protected SA Query
+        # Request, so it accepts the Deauthentication.
+        nan_cm_wait_terminated(sub, pub, "nm_tksa", False, ndp=True)
+        if nan_cm_info(sub, pub)["nm_tksa"] != "0":
+            raise Exception("NM-TKSA not deleted on the subscriber")
+        if "FAIL" not in pub.wpas.request("NAN_CM_DEAUTH peer_nmi=" +
+                                          sub.wpas.own_addr()):
+            raise Exception("Deauthentication without NM-TKSA accepted")
+    run_nan_cm_terminate(test, "deauth_sa_query")
+
+def test_nan_cm_deauth_sa_query(dev, apdev):
+    """NAN Connection Management Deauthentication rejected by SA Query"""
+    def test(pub, sub, init_ndi):
+        # Send the Deauthentication NAF, but keep the NM-TKSA so that the
+        # SA Query Request from the subscriber gets a response.
+        if "OK" not in pub.wpas.request(
+                "NAN_CM_DEAUTH peer_nmi=%s keep_nm_tksa=1" %
+                sub.wpas.own_addr()):
+            raise Exception("NAN_CM_DEAUTH failed")
+        ev = sub.wpas.wait_event(["NAN-CM-TERMINATED",
+                                  "NAN-NDP-DISCONNECTED"], timeout=4)
+        if ev is not None:
+            raise Exception("Spurious Deauthentication accepted: " + ev)
+        for dev, peer in ((pub, sub), (sub, pub)):
+            info = nan_cm_info(dev, peer)
+            if info["nm_tksa"] != "1" or info["ka_active"] != "1":
+                raise Exception("Unexpected CM state on %s: %s" %
+                                (dev.ifname, info))
+        _nan_test_connectivity(pub, sub)
+    run_nan_cm_terminate(test, "default_ka", "deauth_sa_query")
+
+def test_nan_cm_deauth_pik(dev, apdev):
+    """NAN Connection Management Deauthentication with PNTag"""
+    with hwsim_nan_radios(count=2) as [wpas1, wpas2], \
+         NanDevice(wpas1, "nan0") as pub, \
+         NanDevice(wpas2, "nan1") as sub:
+        pkbst_config(pub, 2, self_pkr=PKR_B, self_isk=ISK_B, peer_pkr=PKR_A)
+        pkbst_config(sub, 2, self_pkr=PKR_A, self_isk=ISK_A, peer_pkr=PKR_B)
+        for dev in (pub, sub):
+            dev.set("npk_caching", "1")
+            dev.set("pik_caching", "1")
+        pid, sid = pkbst_discover_bootstrap(pub, sub, 2)
+        run_nan_pairing(sub, pub, pid, sid, "SAE", password="unused")
+        nan_cm_check_capa(pub, sub, "deauth_sa_query")
+        pub.wpas.dump_monitor()
+        sub.wpas.dump_monitor()
+
+        # The Deauthentication NAF carries a PNTag derived from the PIK
+        if "OK" not in pub.wpas.request("NAN_CM_DEAUTH peer_nmi=" +
+                                        sub.wpas.own_addr()):
+            raise Exception("NAN_CM_DEAUTH failed")
+        nan_cm_wait_terminated(pub, sub, "nm_tksa", True)
+        nan_cm_wait_terminated(sub, pub, "nm_tksa", False)
+
+        # The NPKSA and the PIK remain for pairing verification
+        for dev, peer in ((pub, sub), (sub, pub)):
+            if nan_cm_info(dev, peer)["npksa"] != "1":
+                raise Exception("NPKSA lost on " + dev.ifname)
