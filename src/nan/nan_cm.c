@@ -19,6 +19,9 @@
 /* Time to wait for the TX status of a Termination Notification (seconds) */
 #define NAN_CM_TX_STATUS_TIMEOUT 1
 
+/* Time to wait for an SA Query Response (seconds) */
+#define NAN_CM_SA_QUERY_TIMEOUT 2
+
 
 static bool nan_cm_same_ndi_pair(const struct nan_ndp *a,
 				 const struct nan_ndp *b)
@@ -404,8 +407,13 @@ static struct wpabuf * nan_cm_alloc_naf(u8 subtype)
 	if (!buf)
 		return NULL;
 
-	/* Connection Management NAFs are protected with the NM-TK */
-	wpabuf_put_u8(buf, WLAN_ACTION_PROTECTED_DUAL);
+	/*
+	 * Connection Management NAFs are protected with the NM-TK. The
+	 * Deauth NAF is sent without protection as the peer might no longer
+	 * have the NM-TK.
+	 */
+	wpabuf_put_u8(buf, subtype == NAN_SUBTYPE_DEAUTH ?
+		      WLAN_ACTION_PUBLIC : WLAN_ACTION_PROTECTED_DUAL);
 	wpabuf_put_u8(buf, WLAN_PA_VENDOR_SPECIFIC);
 	wpabuf_put_be24(buf, OUI_WFA);
 	wpabuf_put_u8(buf, NAN_NAF_OUI_TYPE);
@@ -479,6 +487,19 @@ static void nan_cm_ka_rx_timeout(void *eloop_ctx, void *timeout_ctx)
 	 * peer is not responding, so delete them without notifying it.
 	 */
 	nan_cm_delete_nm_tksa(nan, peer, true);
+}
+
+
+static void nan_cm_sa_query_timeout(void *eloop_ctx, void *timeout_ctx)
+{
+	struct nan_data *nan = eloop_ctx;
+	struct nan_peer *peer = timeout_ctx;
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: No SA Query Response from " MACSTR
+		   " - NM-TKSA lost", MAC2STR(peer->nmi_addr));
+	peer->cm.sa_query_token = 0;
+	nan_cm_delete_nm_tksa(nan, peer, false);
 }
 
 
@@ -562,6 +583,29 @@ static int nan_cm_send_tna(struct nan_data *nan, struct nan_peer *peer,
 	wpa_printf(MSG_DEBUG,
 		   "NAN CM: Send Termination Notification to " MACSTR
 		   " ctrl=0x%02x", MAC2STR(peer->nmi_addr), ctrl);
+	return nan_cm_send_naf(nan, peer, buf);
+}
+
+
+static int nan_cm_send_saqa(struct nan_data *nan, struct nan_peer *peer,
+			    u8 dialog_token, u8 ctrl)
+{
+	struct wpabuf *buf;
+
+	buf = nan_cm_alloc_naf(NAN_SUBTYPE_CONNECTION_MGMT);
+	if (!buf)
+		return -1;
+
+	if (nan_cm_build_saqa(buf, dialog_token, ctrl) < 0) {
+		wpabuf_free(buf);
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: Send SA Query %s to " MACSTR " dialog_token=%u",
+		   (ctrl & NAN_SAQA_CTRL_TYPE_MASK) ==
+		   NAN_SAQA_CTRL_TYPE_REQUEST ? "Request" : "Response",
+		   MAC2STR(peer->nmi_addr), dialog_token);
 	return nan_cm_send_naf(nan, peer, buf);
 }
 
@@ -668,7 +712,9 @@ static void nan_cm_delete_nm_tksa(struct nan_data *nan, struct nan_peer *peer,
 		   MAC2STR(peer->nmi_addr));
 
 	eloop_cancel_timeout(nan_cm_nm_tksa_term_timeout, nan, peer);
+	eloop_cancel_timeout(nan_cm_sa_query_timeout, nan, peer);
 	peer->cm.nm_tksa_term_pending = false;
+	peer->cm.sa_query_token = 0;
 	peer->cm.nm_tksa = false;
 	nan_cm_keepalive_stop(nan, peer);
 
@@ -702,7 +748,7 @@ static void nan_cm_nm_tksa_term_timeout(void *eloop_ctx, void *timeout_ctx)
 	struct nan_peer *peer = timeout_ctx;
 
 	wpa_printf(MSG_DEBUG,
-		   "NAN CM: No TX status for NM-TKSA Termination Notification to "
+		   "NAN CM: No TX status for NM-TKSA termination frame to "
 		   MACSTR, MAC2STR(peer->nmi_addr));
 	nan_cm_delete_nm_tksa(nan, peer, true);
 }
@@ -810,6 +856,102 @@ int nan_cm_terminate_npksa(struct nan_data *nan, struct nan_peer *peer)
 }
 
 
+static int nan_cm_add_pntag_irsa(struct nan_data *nan,
+				 const struct nan_peer *peer,
+				 struct wpabuf *buf)
+{
+	const struct nan_pik_cache_entry *pik;
+	u8 nonce[NAN_NIRA_NONCE_LEN];
+	struct wpabuf *tag;
+	size_t attr_len = 1 + NAN_NIRA_NONCE_LEN + 2 + NAN_NIRA_TAG_LEN;
+
+	pik = nan->pik_cache ? nan_pik_cache_get(nan->pik_cache,
+						 peer->nmi_addr) : NULL;
+	if (!pik)
+		return 0;
+
+	if (wpabuf_tailroom(buf) < NAN_ATTR_HDR_LEN + attr_len ||
+	    os_get_random(nonce, sizeof(nonce)) < 0)
+		return -1;
+
+	/* The PNTag identifies the local device to the paired peer */
+	tag = nan_crypto_derive_irsa_tag(pik->pik, NAN_PIK_LEN,
+					 nan->cfg->nmi_addr, nonce);
+	if (!tag)
+		return -1;
+
+	wpabuf_put_u8(buf, NAN_ATTR_IRSA);
+	wpabuf_put_le16(buf, attr_len);
+	wpabuf_put_u8(buf, NAN_IRSA_CIPHER_VER_SIPHASH_2_4);
+	wpabuf_put_data(buf, nonce, NAN_NIRA_NONCE_LEN);
+	wpabuf_put_u8(buf, NAN_TAG_TYPE_PN);
+	wpabuf_put_u8(buf, 1);
+	wpabuf_put_buf(buf, tag);
+	wpabuf_free(tag);
+	return 0;
+}
+
+
+/**
+ * nan_cm_deauth - Terminate the NM-TKSA with a Deauth NAF
+ * @nan: NAN module context from nan_init()
+ * @peer: NAN peer
+ * Returns: 0 on success, -1 on failure
+ *
+ * Deletes the NM-TKSA with the peer and notifies the peer with an unprotected
+ * Deauth NAF carrying a TNA and, when a PIK is established with the peer, an
+ * IRSA with a PNTag that identifies the local device. The NM-TKSA is deleted
+ * once the frame TX status is received.
+ */
+int nan_cm_deauth(struct nan_data *nan, struct nan_peer *peer)
+{
+	struct wpabuf *buf;
+
+	if (!peer->cm.nm_tksa) {
+		wpa_printf(MSG_DEBUG, "NAN CM: No NM-TKSA with " MACSTR,
+			   MAC2STR(peer->nmi_addr));
+		return -1;
+	}
+
+	if (!nan_cm_capa(nan, peer,
+			 NAN_DEV_CAPA_EXT_INFO_2_CM_DEAUTH_SA_QUERY)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: Deauthentication not supported with "
+			   MACSTR, MAC2STR(peer->nmi_addr));
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "NAN CM: Send Deauthentication to " MACSTR,
+		   MAC2STR(peer->nmi_addr));
+
+	buf = nan_cm_alloc_naf(NAN_SUBTYPE_DEAUTH);
+	if (!buf)
+		return -1;
+
+	if (nan_cm_build_tna(buf, NAN_TNA_CTRL_NM_TKSA_TERM,
+			     NAN_REASON_UNSPECIFIED_REASON, NULL, 0) < 0 ||
+	    nan_cm_add_pntag_irsa(nan, peer, buf) < 0) {
+		wpabuf_free(buf);
+		return -1;
+	}
+
+	/*
+	 * Deleting the NM-TKSA removes the NMI station of the peer, which would
+	 * drop the queued frame, so delete it once the TX status is received.
+	 */
+	if (nan_cm_send_naf(nan, peer, buf) < 0) {
+		nan_cm_delete_nm_tksa(nan, peer, true);
+		return 0;
+	}
+
+	nan_cm_keepalive_stop(nan, peer);
+	peer->cm.nm_tksa_term_pending = true;
+	eloop_register_timeout(NAN_CM_TX_STATUS_TIMEOUT, 0,
+			       nan_cm_nm_tksa_term_timeout, nan, peer);
+	return 0;
+}
+
+
 /* Whether a frame carries a TNA that indicates NM-TKSA termination */
 static bool nan_cm_nm_tksa_term_frame(const struct ieee80211_mgmt *mgmt,
 				      size_t len)
@@ -855,7 +997,7 @@ void nan_cm_tx_status(struct nan_data *nan, struct nan_peer *peer,
 		return;
 
 	wpa_printf(MSG_DEBUG,
-		   "NAN CM: NM-TKSA Termination Notification to " MACSTR
+		   "NAN CM: NM-TKSA termination frame to " MACSTR
 		   " acked=%d", MAC2STR(peer->nmi_addr), acked);
 	nan_cm_delete_nm_tksa(nan, peer, true);
 }
@@ -1078,6 +1220,112 @@ int nan_cm_rx(struct nan_data *nan, struct nan_peer *peer,
 }
 
 
+static bool nan_cm_deauth_pntag_valid(struct nan_data *nan,
+				      const struct nan_peer *peer,
+				      const struct nan_attrs *attrs)
+{
+	const struct nan_pik_cache_entry *pik;
+	const u8 *pos, *end, *nonce;
+	struct wpabuf *tag;
+	bool valid = false;
+
+	pik = nan->pik_cache ? nan_pik_cache_get(nan->pik_cache,
+						 peer->nmi_addr) : NULL;
+	if (!pik)
+		return true;
+
+	if (!attrs->irsa) {
+		wpa_printf(MSG_DEBUG, "NAN CM: Deauthentication from " MACSTR
+			   " without IRSA", MAC2STR(peer->nmi_addr));
+		return false;
+	}
+
+	/* The IRSA was validated to hold the cipher version and a nonce */
+	nonce = attrs->irsa + 1;
+	pos = nonce + NAN_NIRA_NONCE_LEN;
+	end = attrs->irsa + attrs->irsa_len;
+
+	tag = nan_crypto_derive_irsa_tag(pik->pik, NAN_PIK_LEN,
+					 peer->nmi_addr, nonce);
+	if (!tag)
+		return false;
+
+	while (end - pos >= 2 && !valid) {
+		u8 type = pos[0], count = pos[1], i;
+		size_t tags_len = count * NAN_NIRA_TAG_LEN;
+
+		pos += 2;
+		if (tags_len > (size_t) (end - pos))
+			break;
+
+		for (i = 0; type == NAN_TAG_TYPE_PN && i < count && !valid; i++)
+			valid = os_memcmp_const(pos + i * NAN_NIRA_TAG_LEN,
+						wpabuf_head(tag),
+						NAN_NIRA_TAG_LEN) == 0;
+		pos += tags_len;
+	}
+
+	wpabuf_free(tag);
+	if (!valid)
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: No valid PNTag in Deauthentication from "
+			   MACSTR, MAC2STR(peer->nmi_addr));
+	return valid;
+}
+
+
+/**
+ * nan_cm_rx_deauth - Process a received Deauth NAF
+ * @nan: NAN module context from nan_init()
+ * @peer: Peer that sent the frame
+ * @msg: Parsed frame
+ * Returns: 0 on success, -1 on failure
+ *
+ * The frame is not protected, so the peer is first verified to have lost the
+ * NM-TKSA with a protected SA Query before the NM-TKSA is deleted.
+ */
+int nan_cm_rx_deauth(struct nan_data *nan, struct nan_peer *peer,
+		     const struct nan_msg *msg)
+{
+	u8 token;
+
+	if (!peer->cm.nm_tksa || peer->cm.nm_tksa_term_pending ||
+	    !nan_cm_capa(nan, peer,
+			 NAN_DEV_CAPA_EXT_INFO_2_CM_DEAUTH_SA_QUERY)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: Ignore Deauthentication from " MACSTR
+			   " (nm_tksa=%d)", MAC2STR(peer->nmi_addr),
+			   peer->cm.nm_tksa);
+		return -1;
+	}
+
+	if (peer->cm.sa_query_token) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: SA Query already in progress with " MACSTR,
+			   MAC2STR(peer->nmi_addr));
+		return 0;
+	}
+
+	if (!nan_cm_deauth_pntag_valid(nan, peer, &msg->attrs))
+		return -1;
+
+	token = nan_get_next_dialog_token(nan);
+	if (nan_cm_send_saqa(nan, peer, token,
+			     NAN_SAQA_CTRL_TYPE_REQUEST |
+			     NAN_SAQA_CTRL_NM_TKSA_QUERY) < 0)
+		return -1;
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: Deauthentication from " MACSTR
+		   " - wait %d s for SA Query Response",
+		   MAC2STR(peer->nmi_addr), NAN_CM_SA_QUERY_TIMEOUT);
+	peer->cm.sa_query_token = token;
+	eloop_register_timeout(NAN_CM_SA_QUERY_TIMEOUT, 0,
+			       nan_cm_sa_query_timeout, nan, peer);
+	return 0;
+}
+
+
 /**
  * nan_cm_terminate - Terminate a security association with a paired peer
  * @nan: NAN module context from nan_init()
@@ -1163,8 +1411,10 @@ void nan_cm_unpair_peer(struct nan_data *nan, struct nan_peer *peer)
 {
 	nan_cm_keepalive_stop(nan, peer);
 	eloop_cancel_timeout(nan_cm_nm_tksa_term_timeout, nan, peer);
+	eloop_cancel_timeout(nan_cm_sa_query_timeout, nan, peer);
 	peer->cm.nm_tksa = false;
 	peer->cm.nm_tksa_term_pending = false;
+	peer->cm.sa_query_token = 0;
 }
 
 

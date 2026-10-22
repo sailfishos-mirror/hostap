@@ -2631,6 +2631,9 @@ int nan_action_rx(struct nan_data *nan, const struct ieee80211_mgmt *mgmt,
 	case NAN_SUBTYPE_CONNECTION_MGMT:
 		ret = nan_cm_rx(nan, peer, mgmt, len);
 		goto done;
+	case NAN_SUBTYPE_DEAUTH:
+		ret = nan_cm_rx_deauth(nan, peer, &msg);
+		goto done;
 	default:
 		ret = -1;
 		goto done;
@@ -2769,7 +2772,8 @@ int nan_tx_status(struct nan_data *nan, const u8 *dst, const u8 *data,
 
 	subtype = mgmt->u.action.u.naf.subtype;
 
-	if (subtype == NAN_SUBTYPE_CONNECTION_MGMT) {
+	if (subtype == NAN_SUBTYPE_CONNECTION_MGMT ||
+	    subtype == NAN_SUBTYPE_DEAUTH) {
 		nan_cm_tx_status(nan, peer, mgmt, data_len, acked);
 		return 0;
 	}

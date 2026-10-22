@@ -670,14 +670,17 @@ struct nan_pairing_peer_data {
  * @npksa: NPKSA is established with the peer
  * @nm_tksa: NM-TKSA is established with the peer
  * @ka_active: Keep alive is running with the peer
- * @nm_tksa_term_pending: A Termination Notification for the NM-TKSA was sent
- *	and the NM-TKSA keys are deleted once its TX status is received
+ * @nm_tksa_term_pending: A frame terminating the NM-TKSA was sent and the
+ *	NM-TKSA keys are deleted once its TX status is received
+ * @sa_query_token: Dialog Token of the pending SA Query Request; zero when no
+ *	SA Query is in progress
  */
 struct nan_cm_peer {
 	bool npksa;
 	bool nm_tksa;
 	bool ka_active;
 	bool nm_tksa_term_pending;
+	u8 sa_query_token;
 };
 
 /**
@@ -1084,11 +1087,14 @@ int nan_cm_terminate_nd_tksa(struct nan_data *nan, struct nan_peer *peer,
 			     const u8 *init_ndi, const u8 *resp_ndi);
 int nan_cm_terminate_nm_tksa(struct nan_data *nan, struct nan_peer *peer);
 int nan_cm_terminate_npksa(struct nan_data *nan, struct nan_peer *peer);
+int nan_cm_deauth(struct nan_data *nan, struct nan_peer *peer);
 void nan_cm_tx_status(struct nan_data *nan, struct nan_peer *peer,
 		      const struct ieee80211_mgmt *mgmt, size_t len,
 		      bool acked);
 int nan_cm_rx(struct nan_data *nan, struct nan_peer *peer,
 	      const struct ieee80211_mgmt *mgmt, size_t len);
+int nan_cm_rx_deauth(struct nan_data *nan, struct nan_peer *peer,
+		     const struct nan_msg *msg);
 void nan_cm_unpair_peer(struct nan_data *nan, struct nan_peer *peer);
 void nan_cm_deinit_peer(struct nan_data *nan, struct nan_peer *peer);
 void nan_peer_terminate_ndp(struct nan_data *nan, struct nan_peer *peer,
