@@ -1201,6 +1201,76 @@ static void nan_cm_handle_saqa(struct nan_data *nan, struct nan_peer *peer,
 }
 
 
+static struct nan_ndp * nan_cm_find_ndp(struct nan_peer *peer,
+					const u8 *init_ndi, const u8 *resp_ndi,
+					u8 ndp_id)
+{
+	struct nan_ndp *ndp;
+
+	dl_list_for_each(ndp, &peer->ndps, struct nan_ndp, list) {
+		if (ndp->ndp_id == ndp_id &&
+		    ether_addr_equal(ndp->init_ndi, init_ndi) &&
+		    ether_addr_equal(ndp->resp_ndi, resp_ndi))
+			return ndp;
+	}
+
+	return NULL;
+}
+
+
+static void nan_cm_handle_rka(struct nan_data *nan, struct nan_peer *peer,
+			      const struct nan_cm_rka *rka)
+{
+	struct nan_ndp *ndp;
+
+	/* Only ND-TK rekey is supported */
+	if ((rka->ctrl & NAN_RKA_CTRL_REKEY_TYPE_MASK) !=
+	    NAN_RKA_CTRL_REKEY_TYPE_ND_TK) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: Ignore unsupported rekey type in RKA ctrl=0x%02x from "
+			   MACSTR, rka->ctrl, MAC2STR(peer->nmi_addr));
+		return;
+	}
+
+	/*
+	 * ND-TK rekey is requested in a Connection Management NAF only with an
+	 * indication; the request and response are carried in the NDP setup.
+	 */
+	if ((rka->ctrl & NAN_RKA_CTRL_MSG_TYPE_MASK) !=
+	    NAN_RKA_CTRL_MSG_TYPE_INDICATION) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: Ignore RKA ctrl=0x%02x from " MACSTR
+			   " - not an indication", rka->ctrl,
+			   MAC2STR(peer->nmi_addr));
+		return;
+	}
+
+	if (!nan_cm_capa(nan, peer, NAN_DEV_CAPA_EXT_INFO_2_CM_NDTK_REKEY)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: ND-TK rekey not supported with " MACSTR,
+			   MAC2STR(peer->nmi_addr));
+		return;
+	}
+
+	ndp = nan_cm_find_ndp(peer, rka->init_ndi, rka->resp_ndi,
+			      rka->ndp_id);
+	if (!ndp) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: ND-TK rekey indication from " MACSTR
+			   " for unknown NDP %u (init_ndi=" MACSTR ")",
+			   MAC2STR(peer->nmi_addr), rka->ndp_id,
+			   MAC2STR(rka->init_ndi));
+		return;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: ND-TK rekey indication from " MACSTR
+		   " for NDP %u (init_ndi=" MACSTR " resp_ndi=" MACSTR ")",
+		   MAC2STR(peer->nmi_addr), ndp->ndp_id,
+		   MAC2STR(ndp->init_ndi), MAC2STR(ndp->resp_ndi));
+}
+
+
 /**
  * nan_cm_rx - Process a received Connection Management NAF
  * @nan: NAN module context from nan_init()
@@ -1217,6 +1287,7 @@ int nan_cm_rx(struct nan_data *nan, struct nan_peer *peer,
 	struct nan_cm_kaa kaa;
 	struct nan_cm_tna tna;
 	struct nan_cm_saqa saqa;
+	struct nan_cm_rka rka;
 
 	if (mgmt->u.action.category != WLAN_ACTION_PROTECTED_DUAL ||
 	    !peer->cm.nm_tksa) {
@@ -1257,6 +1328,11 @@ int nan_cm_rx(struct nan_data *nan, struct nan_peer *peer,
 			if (nan_cm_parse_saqa(pos, attr_len, &saqa) < 0)
 				return -1;
 			nan_cm_handle_saqa(nan, peer, &saqa);
+			break;
+		case NAN_ATTR_RKA:
+			if (nan_cm_parse_rka(pos, attr_len, &rka) < 0)
+				return -1;
+			nan_cm_handle_rka(nan, peer, &rka);
 			break;
 		default:
 			wpa_printf(MSG_DEBUG,
