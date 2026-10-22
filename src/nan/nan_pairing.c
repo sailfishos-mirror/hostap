@@ -1441,6 +1441,9 @@ static void nan_pairing_done(struct nan_data *nan_data, struct nan_peer *peer)
 	peer->pairing.pairing_akmp = pasn_get_akmp(pasn);
 	nan_pairing_cache_pik(nan_data, peer);
 
+	/* Both pairing setup and verification leave an NPKSA in place */
+	peer->cm.npksa = true;
+
 	/* The NM-TK is installed only for pairing within the NAN cluster */
 	if (!nan_peer_no_shared_cluster(nan_data, peer->nmi_addr))
 		nan_cm_nm_tksa_established(nan_data, peer);
@@ -2473,6 +2476,8 @@ bool nan_pairing_followup_rx(struct nan_data *nan_data, const u8 *peer_addr,
 		nik_kde->cipher_ver, be_to_host32(lifetime_kde->lifetime_sec),
 		pasn_get_akmp(pasn),
 		pasn_get_pmk(pasn), pasn_get_pmk_len(pasn));
+	os_memcpy(peer->pairing.peer_nik, nik_kde->nik, NAN_NIK_LEN);
+	peer->pairing.peer_nik_valid = true;
 
 	if (peer->pairing.self_pairing_role == NAN_PAIRING_ROLE_RESPONDER)
 		nan_send_nik(nan_data, peer);
@@ -2944,7 +2949,7 @@ void nan_pairing_unpair_peer(struct nan_data *nan_data, const u8 *peer_addr)
 		   MAC2STR(peer->nmi_addr));
 
 	peer->pairing.flags &= ~NAN_PAIRING_FLAG_PAIRED;
-	nan_cm_deinit_peer(nan_data, peer);
+	nan_cm_unpair_peer(nan_data, peer);
 	nan_pairing_deinit_peer(nan_data, peer, true);
 }
 

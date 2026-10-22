@@ -9,6 +9,7 @@
 #include "includes.h"
 #include "common.h"
 #include "utils/eloop.h"
+#include "pasn/pasn_common.h"
 #include "nan_i.h"
 #include "nan_cm.h"
 
@@ -711,6 +712,62 @@ int nan_cm_terminate_nm_tksa(struct nan_data *nan, struct nan_peer *peer)
 }
 
 
+static void nan_cm_delete_npksa(struct nan_data *nan, struct nan_peer *peer)
+{
+	wpa_printf(MSG_DEBUG, "NAN CM: Delete NPKSA with " MACSTR,
+		   MAC2STR(peer->nmi_addr));
+
+	peer->cm.npksa = false;
+
+	/* Delete the NPK and the PIK; the NM-TKSA and ND-TKSAs continue */
+	if (peer->pairing.peer_nik_valid && nan->cfg->delete_npk)
+		nan->cfg->delete_npk(nan->cfg->cb_ctx, peer->nmi_addr,
+				     peer->pairing.peer_nik);
+	forced_memzero(peer->pairing.peer_nik, sizeof(peer->pairing.peer_nik));
+	peer->pairing.peer_nik_valid = false;
+
+	if (nan->pik_cache)
+		nan_pik_cache_remove(nan->pik_cache, peer->nmi_addr);
+
+#ifdef CONFIG_PASN
+	pasn_initiator_pmksa_cache_remove(nan->initiator_pmksa,
+					  peer->nmi_addr);
+	pasn_responder_pmksa_cache_remove(nan->responder_pmksa,
+					  peer->nmi_addr);
+#endif /* CONFIG_PASN */
+}
+
+
+/**
+ * nan_cm_terminate_npksa - Terminate the NPKSA with a peer
+ * @nan: NAN module context from nan_init()
+ * @peer: NAN peer
+ * Returns: 0 on success, -1 if no NPKSA is established with the peer
+ *
+ * Deletes the NPK and the PIK of the peer. The NM-TKSA and the ND-TKSAs with
+ * the peer are not affected. When both devices support termination
+ * notification, the peer is notified with a Termination Notification.
+ */
+int nan_cm_terminate_npksa(struct nan_data *nan, struct nan_peer *peer)
+{
+	if (!peer->cm.npksa) {
+		wpa_printf(MSG_DEBUG, "NAN CM: No NPKSA with " MACSTR,
+			   MAC2STR(peer->nmi_addr));
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "NAN CM: Terminate NPKSA with " MACSTR,
+		   MAC2STR(peer->nmi_addr));
+
+	if (peer->cm.nm_tksa &&
+	    nan_cm_capa(nan, peer, NAN_DEV_CAPA_EXT_INFO_2_CM_TERM_NOTIF))
+		nan_cm_send_tna(nan, peer, NAN_TNA_CTRL_NPKSA_TERM, NULL, 0);
+
+	nan_cm_delete_npksa(nan, peer);
+	return 0;
+}
+
+
 /* Whether a frame carries a TNA that indicates NM-TKSA termination */
 static bool nan_cm_nm_tksa_term_frame(const struct ieee80211_mgmt *mgmt,
 				      size_t len)
@@ -965,12 +1022,30 @@ int nan_cm_peer_info(struct nan_data *nan, const u8 *addr, char *buf,
 
 	ret = os_snprintf(buf, buflen,
 			  "default_ka=%d\ndeauth_sa_query=%d\nndtk_rekey=%d\n"
-			  "termination_notif=%d\nnm_tksa=%d\nka_active=%d\n",
-			  ka, deauth, rekey, term, peer->cm.nm_tksa,
-			  peer->cm.ka_active);
+			  "termination_notif=%d\nnpksa=%d\nnm_tksa=%d\n"
+			  "ka_active=%d\n",
+			  ka, deauth, rekey, term, peer->cm.npksa,
+			  peer->cm.nm_tksa, peer->cm.ka_active);
 	if (os_snprintf_error(buflen, ret))
 		return -1;
 	return ret;
+}
+
+
+/**
+ * nan_cm_unpair_peer - Clear the NM-TKSA state when a peer is unpaired
+ * @nan: NAN module context from nan_init()
+ * @peer: NAN peer
+ *
+ * The NM-TK is removed with the NMI station of the peer. The NPKSA is not
+ * affected.
+ */
+void nan_cm_unpair_peer(struct nan_data *nan, struct nan_peer *peer)
+{
+	nan_cm_keepalive_stop(nan, peer);
+	eloop_cancel_timeout(nan_cm_nm_tksa_term_timeout, nan, peer);
+	peer->cm.nm_tksa = false;
+	peer->cm.nm_tksa_term_pending = false;
 }
 
 
@@ -981,7 +1056,6 @@ int nan_cm_peer_info(struct nan_data *nan, const u8 *addr, char *buf,
  */
 void nan_cm_deinit_peer(struct nan_data *nan, struct nan_peer *peer)
 {
-	nan_cm_keepalive_stop(nan, peer);
-	eloop_cancel_timeout(nan_cm_nm_tksa_term_timeout, nan, peer);
+	nan_cm_unpair_peer(nan, peer);
 	os_memset(&peer->cm, 0, sizeof(peer->cm));
 }
