@@ -192,6 +192,8 @@ enum nan_ndp_state {
  *     state of NDP establishment and the status).
  * @qos: QoS requirements for this NDP
  * @gtk_id: GTK key ID used for this NDP; 0 if GTK is not used
+ * @kaa_missing: The NDP was not reported in the last Keep Alive attribute
+ *     received from the peer
  */
 struct nan_ndp {
 	/* for nan_peer ndps list */
@@ -204,6 +206,7 @@ struct nan_ndp {
 
 	struct nan_qos qos;
 	u8 gtk_id;
+	bool kaa_missing;
 };
 
 /*
@@ -1072,6 +1075,8 @@ static inline void nan_pairing_deinit_peer(struct nan_data *nan_data,
 #endif /* CONFIG_PASN */
 
 void nan_cm_nm_tksa_established(struct nan_data *nan, struct nan_peer *peer);
+int nan_cm_rx(struct nan_data *nan, struct nan_peer *peer,
+	      const struct ieee80211_mgmt *mgmt, size_t len);
 void nan_cm_deinit_peer(struct nan_data *nan, struct nan_peer *peer);
 void nan_peer_terminate_ndp(struct nan_data *nan, struct nan_peer *peer,
 			    struct nan_ndp *ndp);

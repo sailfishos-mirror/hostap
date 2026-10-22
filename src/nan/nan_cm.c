@@ -534,6 +534,181 @@ void nan_cm_nm_tksa_established(struct nan_data *nan, struct nan_peer *peer)
 }
 
 
+static bool nan_cm_kaa_has_ndp(const struct nan_cm_kaa *kaa,
+			       const u8 *init_ndi, const u8 *resp_ndi,
+			       u8 ndp_id)
+{
+	const struct nan_cm_kaa_entry *entry;
+	unsigned int i, j;
+
+	for (i = 0; i < kaa->n_entries; i++) {
+		entry = &kaa->entries[i];
+		if (!ether_addr_equal(entry->init_ndi, init_ndi) ||
+		    !ether_addr_equal(entry->resp_ndi, resp_ndi))
+			continue;
+		for (j = 0; j < entry->n_ndp_ids; j++) {
+			if (entry->ndp_ids[j] == ndp_id)
+				return true;
+		}
+	}
+
+	return false;
+}
+
+
+static bool nan_cm_local_has_ndp(const struct nan_peer *peer,
+				 const u8 *init_ndi, const u8 *resp_ndi,
+				 u8 ndp_id)
+{
+	struct nan_ndp *ndp;
+
+	dl_list_for_each(ndp, &peer->ndps, struct nan_ndp, list) {
+		if (ndp->ndp_id == ndp_id &&
+		    ether_addr_equal(ndp->init_ndi, init_ndi) &&
+		    ether_addr_equal(ndp->resp_ndi, resp_ndi))
+			return true;
+	}
+
+	/* An NDP that is still being set up is not reported in the KAA */
+	return peer->ndp_setup.ndp && peer->ndp_setup.ndp->ndp_id == ndp_id &&
+		ether_addr_equal(peer->ndp_setup.ndp->init_ndi, init_ndi);
+}
+
+
+static void nan_cm_handle_kaa(struct nan_data *nan, struct nan_peer *peer,
+			      const struct nan_cm_kaa *kaa)
+{
+	const struct nan_cm_kaa_entry *entry;
+	struct nan_ndp *ndp, *tmp;
+	unsigned int i, j;
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: Keep Alive from " MACSTR " with %u NDI pairs",
+		   MAC2STR(peer->nmi_addr), kaa->n_entries);
+
+	if (!peer->cm.ka_active) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: Keep alive not active with " MACSTR
+			   " - ignore KAA", MAC2STR(peer->nmi_addr));
+		return;
+	}
+
+	eloop_cancel_timeout(nan_cm_ka_rx_timeout, nan, peer);
+	eloop_register_timeout(NAN_CM_KA_RX_TIMEOUT_DEFAULT, 0,
+			       nan_cm_ka_rx_timeout, nan, peer);
+
+	/*
+	 * Terminate local NDPs that the peer no longer reports. A KAA built by
+	 * the peer before an NDP setup completed does not report the new NDP,
+	 * so terminate an NDP only when it is missing from two consecutive
+	 * KAAs.
+	 */
+	dl_list_for_each_safe(ndp, tmp, &peer->ndps, struct nan_ndp, list) {
+		if (nan_cm_kaa_has_ndp(kaa, ndp->init_ndi, ndp->resp_ndi,
+				       ndp->ndp_id)) {
+			ndp->kaa_missing = false;
+			continue;
+		}
+
+		if (!ndp->kaa_missing) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN CM: NDP %u (init_ndi=" MACSTR
+				   ") not in KAA from " MACSTR,
+				   ndp->ndp_id, MAC2STR(ndp->init_ndi),
+				   MAC2STR(peer->nmi_addr));
+			ndp->kaa_missing = true;
+			continue;
+		}
+
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: NDP %u (init_ndi=" MACSTR
+			   ") not in two KAAs from " MACSTR " - terminate",
+			   ndp->ndp_id, MAC2STR(ndp->init_ndi),
+			   MAC2STR(peer->nmi_addr));
+		nan_peer_terminate_ndp(nan, peer, ndp);
+	}
+
+	/*
+	 * NDPs reported by the peer but unknown locally are not terminated
+	 * here as there is no local NDP state to build the termination from.
+	 * The peer removes them on receiving the local KAA.
+	 */
+	for (i = 0; i < kaa->n_entries; i++) {
+		entry = &kaa->entries[i];
+		for (j = 0; j < entry->n_ndp_ids; j++) {
+			if (nan_cm_local_has_ndp(peer, entry->init_ndi,
+						 entry->resp_ndi,
+						 entry->ndp_ids[j]))
+				continue;
+			wpa_printf(MSG_DEBUG,
+				   "NAN CM: KAA from " MACSTR
+				   " reports unknown NDP %u (init_ndi=" MACSTR
+				   ")", MAC2STR(peer->nmi_addr),
+				   entry->ndp_ids[j],
+				   MAC2STR(entry->init_ndi));
+		}
+	}
+}
+
+
+/**
+ * nan_cm_rx - Process a received Connection Management NAF
+ * @nan: NAN module context from nan_init()
+ * @peer: Peer that sent the frame
+ * @mgmt: Received frame
+ * @len: Length of @mgmt
+ * Returns: 0 on success, -1 on failure
+ */
+int nan_cm_rx(struct nan_data *nan, struct nan_peer *peer,
+	      const struct ieee80211_mgmt *mgmt, size_t len)
+{
+	const u8 *pos = mgmt->u.action.u.naf.variable;
+	const u8 *end = (const u8 *) mgmt + len;
+	struct nan_cm_kaa kaa;
+
+	if (mgmt->u.action.category != WLAN_ACTION_PROTECTED_DUAL ||
+	    !peer->cm.nm_tksa) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: Drop Connection Management NAF from "
+			   MACSTR " (protected=%d nm_tksa=%d)",
+			   MAC2STR(peer->nmi_addr),
+			   mgmt->u.action.category ==
+			   WLAN_ACTION_PROTECTED_DUAL, peer->cm.nm_tksa);
+		return -1;
+	}
+
+	while (end - pos >= NAN_ATTR_HDR_LEN) {
+		u8 id = pos[0];
+		u16 attr_len = WPA_GET_LE16(pos + 1);
+
+		pos += NAN_ATTR_HDR_LEN;
+		if (attr_len > end - pos) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN CM: Truncated attribute %u from "
+				   MACSTR, id, MAC2STR(peer->nmi_addr));
+			return -1;
+		}
+
+		switch (id) {
+		case NAN_ATTR_KAA:
+			if (nan_cm_parse_kaa(pos, attr_len, &kaa) < 0)
+				return -1;
+			nan_cm_handle_kaa(nan, peer, &kaa);
+			break;
+		default:
+			wpa_printf(MSG_DEBUG,
+				   "NAN CM: Ignore attribute %u from " MACSTR,
+				   id, MAC2STR(peer->nmi_addr));
+			break;
+		}
+
+		pos += attr_len;
+	}
+
+	return 0;
+}
+
+
 /**
  * nan_cm_peer_info - Write the Connection Management state of a peer
  * @nan: NAN module context from nan_init()

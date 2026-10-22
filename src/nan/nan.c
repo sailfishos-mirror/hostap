@@ -2617,6 +2617,9 @@ int nan_action_rx(struct nan_data *nan, const struct ieee80211_mgmt *mgmt,
 	case NAN_SUBTYPE_PROTECTED_TRANSPORT:
 		ret = nan_pairing_rx_pt(nan, peer, mgmt, len);
 		goto done;
+	case NAN_SUBTYPE_CONNECTION_MGMT:
+		ret = nan_cm_rx(nan, peer, mgmt, len);
+		goto done;
 	default:
 		ret = -1;
 		goto done;
