@@ -79,6 +79,10 @@ enum nan_attr_id {
 	NAN_ATTR_PROXY_META = 0x33,
 	NAN_ATTR_PKRA = 0x34, /* Public Key Record attribute */
 	NAN_ATTR_PTA = 0x35, /* Protected Transport attribute */
+	NAN_ATTR_KAA = 0x36, /* Keep Alive attribute */
+	NAN_ATTR_TNA = 0x37, /* Termination Notification attribute */
+	NAN_ATTR_SAQA = 0x38, /* SA Query attribute */
+	NAN_ATTR_RKA = 0x39, /* Rekey attribute */
 	NAN_ATTR_NIKA = 0x3A, /* NAN Identity Key attribute */
 	NAN_ATTR_VENDOR_SPECIFIC = 0xDD,
 };
@@ -743,5 +747,55 @@ struct nan_assoc_nik_entry {
 #define NAN_PTA_STATUS_SHIFT		4
 #define NAN_PTA_STATUS_ACCEPTED		0
 #define NAN_PTA_STATUS_REJECTED		1
+
+/* Wi-Fi Aware spec R5, 7.6.10.1 (Keep alive)
+ * Connection Management keep alive timing (seconds) */
+#define NAN_CM_KA_INTERVAL_DEFAULT	5
+#define NAN_CM_KA_RX_TIMEOUT_DEFAULT	15
+
+/* Wi-Fi Aware spec R5, Table 186 (KAA format)
+ * Keep Alive attribute Control field */
+#define NAN_KAA_CTRL_NDPS_PRESENT	BIT(0)
+
+/* Wi-Fi Aware spec R5, Table 188 (TNA format)
+ * Termination Notification attribute Control field */
+#define NAN_TNA_CTRL_NPKSA_TERM		BIT(0)
+#define NAN_TNA_CTRL_NM_TKSA_TERM	BIT(1)
+#define NAN_TNA_CTRL_ND_TKSA_TERM	BIT(2)
+
+/* Wi-Fi Aware spec R5, Table 189 (SAQA format)
+ * SA Query attribute Control field */
+#define NAN_SAQA_CTRL_TYPE_MASK		(BIT(0) | BIT(1))
+#define NAN_SAQA_CTRL_TYPE_REQUEST	0
+#define NAN_SAQA_CTRL_TYPE_RESPONSE	1
+#define NAN_SAQA_CTRL_NM_TKSA_QUERY	BIT(2)
+#define NAN_SAQA_CTRL_NPKSA_QUERY	BIT(3)
+
+/* Wi-Fi Aware spec R5, Table 190 (RKA format)
+ * Rekey attribute Control field */
+#define NAN_RKA_CTRL_MSG_TYPE_MASK		0x03
+#define NAN_RKA_CTRL_MSG_TYPE_INDICATION	0x00
+#define NAN_RKA_CTRL_MSG_TYPE_REQUEST		0x01
+#define NAN_RKA_CTRL_MSG_TYPE_RESPONSE		0x02
+#define NAN_RKA_CTRL_REKEY_TYPE_MASK		0x0c
+#define NAN_RKA_CTRL_REKEY_TYPE_ND_TK		0x00
+#define NAN_RKA_CTRL_REKEY_TYPE_NM_TK		0x04
+#define NAN_RKA_CTRL_REKEY_TYPE_NPK_PIK	0x08
+
+#define NAN_RKA_CTRL_ND_TK_IND \
+	(NAN_RKA_CTRL_MSG_TYPE_INDICATION | NAN_RKA_CTRL_REKEY_TYPE_ND_TK)
+#define NAN_RKA_CTRL_NM_TK_IND \
+	(NAN_RKA_CTRL_MSG_TYPE_INDICATION | NAN_RKA_CTRL_REKEY_TYPE_NM_TK)
+#define NAN_RKA_CTRL_ND_TK_REKEY \
+	(NAN_RKA_CTRL_MSG_TYPE_REQUEST | NAN_RKA_CTRL_REKEY_TYPE_ND_TK)
+#define NAN_RKA_CTRL_ND_TK_REKEY_RESP \
+	(NAN_RKA_CTRL_MSG_TYPE_RESPONSE | NAN_RKA_CTRL_REKEY_TYPE_ND_TK)
+#define NAN_RKA_CTRL_NM_TK_REKEY \
+	(NAN_RKA_CTRL_MSG_TYPE_REQUEST | NAN_RKA_CTRL_REKEY_TYPE_NM_TK)
+#define NAN_RKA_CTRL_NM_TK_REKEY_RESP \
+	(NAN_RKA_CTRL_MSG_TYPE_RESPONSE | NAN_RKA_CTRL_REKEY_TYPE_NM_TK)
+
+/* ND-TKSA identity: Initiator NDI followed by Responder NDI */
+#define NAN_ND_TKSA_IDENTITY_LEN	(2 * ETH_ALEN)
 
 #endif /* NAN_DEFS_H */
