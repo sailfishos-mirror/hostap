@@ -15,6 +15,9 @@
 /* Room for the NAF header and the Connection Management attributes */
 #define NAN_CM_NAF_MAX_LEN 512
 
+/* Time to wait for the TX status of a Termination Notification (seconds) */
+#define NAN_CM_TX_STATUS_TIMEOUT 1
+
 
 static bool nan_cm_same_ndi_pair(const struct nan_ndp *a,
 				 const struct nan_ndp *b)
@@ -619,6 +622,146 @@ int nan_cm_terminate_nd_tksa(struct nan_data *nan, struct nan_peer *peer,
 }
 
 
+static void nan_cm_nm_tksa_term_timeout(void *eloop_ctx, void *timeout_ctx);
+
+static void nan_cm_delete_nm_tksa(struct nan_data *nan, struct nan_peer *peer)
+{
+	struct nan_ndp *ndp, *tmp;
+
+	wpa_printf(MSG_DEBUG, "NAN CM: Delete NM-TKSA with " MACSTR,
+		   MAC2STR(peer->nmi_addr));
+
+	eloop_cancel_timeout(nan_cm_nm_tksa_term_timeout, nan, peer);
+	peer->cm.nm_tksa_term_pending = false;
+	peer->cm.nm_tksa = false;
+	nan_cm_keepalive_stop(nan, peer);
+
+	/* Terminating the NM-TKSA terminates all ND-TKSAs with the peer */
+	dl_list_for_each_safe(ndp, tmp, &peer->ndps, struct nan_ndp, list)
+		nan_peer_terminate_ndp(nan, peer, ndp);
+
+	nan_remove_group_keys(nan, peer);
+
+	/* Delete the NM-TK and the PTKSA derived keys */
+	if (peer->pairing.nm_tk_installed && nan->cfg->install_nm_tk)
+		nan->cfg->install_nm_tk(nan->cfg->cb_ctx, peer->nmi_addr, 0,
+					NULL, 0);
+	peer->pairing.nm_tk_installed = false;
+	forced_memzero(peer->pairing.tk, sizeof(peer->pairing.tk));
+	peer->pairing.tk_len = 0;
+	peer->pairing.flags &= ~NAN_PAIRING_FLAG_PAIRED;
+
+	/* The NMI station was kept for the NM-TKSA without NDPs */
+	if (dl_list_empty(&peer->ndps) && !peer->ndp_setup.ndp)
+		nan_clear_peer_schedule(nan, peer);
+}
+
+
+static void nan_cm_nm_tksa_term_timeout(void *eloop_ctx, void *timeout_ctx)
+{
+	struct nan_data *nan = eloop_ctx;
+	struct nan_peer *peer = timeout_ctx;
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: No TX status for NM-TKSA Termination Notification to "
+		   MACSTR, MAC2STR(peer->nmi_addr));
+	nan_cm_delete_nm_tksa(nan, peer);
+}
+
+
+/**
+ * nan_cm_terminate_nm_tksa - Terminate the NM-TKSA with a peer
+ * @nan: NAN module context from nan_init()
+ * @peer: NAN peer
+ * Returns: 0 on success, -1 if no NM-TKSA is established with the peer
+ *
+ * Terminates all ND-TKSAs with the peer and deletes the NM-TKSA keys. When
+ * both devices support termination notification, the peer is notified with a
+ * Termination Notification that is protected with the NM-TK, so the keys are
+ * deleted only once the frame TX status is received.
+ */
+int nan_cm_terminate_nm_tksa(struct nan_data *nan, struct nan_peer *peer)
+{
+	if (!peer->cm.nm_tksa) {
+		wpa_printf(MSG_DEBUG, "NAN CM: No NM-TKSA with " MACSTR,
+			   MAC2STR(peer->nmi_addr));
+		return -1;
+	}
+
+	if (peer->cm.nm_tksa_term_pending)
+		return 0;
+
+	wpa_printf(MSG_DEBUG, "NAN CM: Terminate NM-TKSA with " MACSTR,
+		   MAC2STR(peer->nmi_addr));
+
+	/* No further Keep Alive messages once the NM-TKSA is terminated */
+	nan_cm_keepalive_stop(nan, peer);
+
+	if (nan_cm_capa(nan, peer, NAN_DEV_CAPA_EXT_INFO_2_CM_TERM_NOTIF) &&
+	    nan_cm_send_tna(nan, peer, NAN_TNA_CTRL_NM_TKSA_TERM, NULL, 0) ==
+	    0) {
+		peer->cm.nm_tksa_term_pending = true;
+		eloop_register_timeout(NAN_CM_TX_STATUS_TIMEOUT, 0,
+				       nan_cm_nm_tksa_term_timeout, nan, peer);
+		return 0;
+	}
+
+	nan_cm_delete_nm_tksa(nan, peer);
+	return 0;
+}
+
+
+/* Whether a frame carries a TNA that indicates NM-TKSA termination */
+static bool nan_cm_nm_tksa_term_frame(const struct ieee80211_mgmt *mgmt,
+				      size_t len)
+{
+	const u8 *pos = mgmt->u.action.u.naf.variable;
+	const u8 *end = (const u8 *) mgmt + len;
+
+	while (end - pos >= NAN_ATTR_HDR_LEN) {
+		u8 id = pos[0];
+		u16 attr_len = WPA_GET_LE16(pos + 1);
+
+		pos += NAN_ATTR_HDR_LEN;
+		if (attr_len > end - pos)
+			break;
+		if (id == NAN_ATTR_TNA && attr_len >= 1 &&
+		    (pos[0] & NAN_TNA_CTRL_NM_TKSA_TERM))
+			return true;
+		pos += attr_len;
+	}
+
+	return false;
+}
+
+
+/**
+ * nan_cm_tx_status - Process TX status of a Connection Management NAF
+ * @nan: NAN module context from nan_init()
+ * @peer: Destination peer
+ * @mgmt: Transmitted frame
+ * @len: Length of @mgmt
+ * @acked: Whether the frame was acknowledged
+ *
+ * The keys of an NM-TKSA that is being terminated are deleted once the TX
+ * status of the frame that terminates it is received. The TX status of other
+ * frames, e.g., a Keep Alive message sent before the termination, is ignored.
+ */
+void nan_cm_tx_status(struct nan_data *nan, struct nan_peer *peer,
+		      const struct ieee80211_mgmt *mgmt, size_t len,
+		      bool acked)
+{
+	if (!peer->cm.nm_tksa_term_pending ||
+	    !nan_cm_nm_tksa_term_frame(mgmt, len))
+		return;
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: NM-TKSA Termination Notification to " MACSTR
+		   " acked=%d", MAC2STR(peer->nmi_addr), acked);
+	nan_cm_delete_nm_tksa(nan, peer);
+}
+
+
 static bool nan_cm_kaa_has_ndp(const struct nan_cm_kaa *kaa,
 			       const u8 *init_ndi, const u8 *resp_ndi,
 			       u8 ndp_id)
@@ -839,5 +982,6 @@ int nan_cm_peer_info(struct nan_data *nan, const u8 *addr, char *buf,
 void nan_cm_deinit_peer(struct nan_data *nan, struct nan_peer *peer)
 {
 	nan_cm_keepalive_stop(nan, peer);
+	eloop_cancel_timeout(nan_cm_nm_tksa_term_timeout, nan, peer);
 	os_memset(&peer->cm, 0, sizeof(peer->cm));
 }

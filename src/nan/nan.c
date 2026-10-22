@@ -193,7 +193,7 @@ static void nan_peer_del_sec_entry(struct nan_peer_info *info,
 }
 
 
-static void nan_remove_group_keys(struct nan_data *nan, struct nan_peer *peer)
+void nan_remove_group_keys(struct nan_data *nan, struct nan_peer *peer)
 {
 	if (peer->igtk_id) {
 		if (nan->cfg->set_group_key(nan->cfg->cb_ctx, WPA_ALG_NONE,
@@ -2768,6 +2768,11 @@ int nan_tx_status(struct nan_data *nan, const u8 *dst, const u8 *data,
 	}
 
 	subtype = mgmt->u.action.u.naf.subtype;
+
+	if (subtype == NAN_SUBTYPE_CONNECTION_MGMT) {
+		nan_cm_tx_status(nan, peer, mgmt, data_len, acked);
+		return 0;
+	}
 
 	ret = nan_ndp_naf_sent(nan, peer, subtype);
 	ret |= nan_ndl_naf_sent(nan, peer, subtype);

@@ -669,10 +669,13 @@ struct nan_pairing_peer_data {
  * struct nan_cm_peer - Connection Management state with a paired peer
  * @nm_tksa: NM-TKSA is established with the peer
  * @ka_active: Keep alive is running with the peer
+ * @nm_tksa_term_pending: A Termination Notification for the NM-TKSA was sent
+ *	and the NM-TKSA keys are deleted once its TX status is received
  */
 struct nan_cm_peer {
 	bool nm_tksa;
 	bool ka_active;
+	bool nm_tksa_term_pending;
 };
 
 /**
@@ -1077,10 +1080,15 @@ static inline void nan_pairing_deinit_peer(struct nan_data *nan_data,
 void nan_cm_nm_tksa_established(struct nan_data *nan, struct nan_peer *peer);
 int nan_cm_terminate_nd_tksa(struct nan_data *nan, struct nan_peer *peer,
 			     const u8 *init_ndi, const u8 *resp_ndi);
+int nan_cm_terminate_nm_tksa(struct nan_data *nan, struct nan_peer *peer);
+void nan_cm_tx_status(struct nan_data *nan, struct nan_peer *peer,
+		      const struct ieee80211_mgmt *mgmt, size_t len,
+		      bool acked);
 int nan_cm_rx(struct nan_data *nan, struct nan_peer *peer,
 	      const struct ieee80211_mgmt *mgmt, size_t len);
 void nan_cm_deinit_peer(struct nan_data *nan, struct nan_peer *peer);
 void nan_peer_terminate_ndp(struct nan_data *nan, struct nan_peer *peer,
 			    struct nan_ndp *ndp);
+void nan_remove_group_keys(struct nan_data *nan, struct nan_peer *peer);
 
 #endif /* NAN_I_H */
