@@ -751,11 +751,44 @@ static void wpas_nan_remove_ndi_sta(struct wpa_supplicant *wpa_s,
 }
 
 
+static int wpas_nan_ndp_rekey_keys(struct wpa_supplicant *wpa_s,
+				   struct nan_ndp_connection_params *params)
+{
+	struct wpa_supplicant *ndi_wpa_s;
+	enum nan_cipher_suite_id csid;
+	u8 tk[WPA_TK_MAX_LEN];
+	size_t tk_len;
+	int ret;
+
+	ndi_wpa_s = wpas_nan_get_ndi_iface(wpa_s, params->local_ndi);
+	if (!ndi_wpa_s || !params->install_keys ||
+	    nan_peer_get_tk(wpa_s->nan, params->ndp_id.peer_nmi,
+			    params->peer_ndi, params->local_ndi, tk, &tk_len,
+			    &csid)) {
+		wpa_printf(MSG_INFO, "NAN: No new ND-TK for NDI station "
+			   MACSTR, MAC2STR(params->peer_ndi));
+		return -1;
+	}
+
+	/* The NDI station and the NDP continue; replace the pairwise key */
+	ret = wpas_nan_set_ndi_keys(ndi_wpa_s, params->peer_ndi, csid, tk,
+				    tk_len);
+	forced_memzero(tk, tk_len);
+	if (ret)
+		wpa_printf(MSG_INFO, "NAN: Failed to install new ND-TK for "
+			   MACSTR, MAC2STR(params->peer_ndi));
+	return ret;
+}
+
+
 static int wpas_nan_ndp_connected_cb(void *ctx,
 				     struct nan_ndp_connection_params *params)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 	int ret;
+
+	if (params->nd_tk_rekey)
+		return wpas_nan_ndp_rekey_keys(wpa_s, params);
 
 	ret = wpas_nan_add_ndi_sta(wpa_s, params);
 	if (ret) {
@@ -1363,6 +1396,25 @@ static void wpas_nan_cm_terminated_cb(void *ctx, const u8 *peer_nmi,
 }
 
 
+static int wpas_nan_set_ndp_schedule(struct wpa_supplicant *wpa_s,
+				     struct nan_ndp_params *ndp);
+
+static int wpas_nan_get_ndp_schedule_cb(void *ctx,
+					struct nan_ndp_params *params)
+{
+	return wpas_nan_set_ndp_schedule(ctx, params);
+}
+
+
+static void wpas_nan_cm_nd_tk_rekeyed_cb(void *ctx, const u8 *peer_nmi,
+					 u8 ndp_id, const u8 *init_ndi,
+					 const u8 *resp_ndi)
+{
+	wpas_notify_nan_cm_nd_tk_rekeyed(ctx, peer_nmi, ndp_id, init_ndi,
+					 resp_ndi);
+}
+
+
 static void wpas_nan_pkr_updated_cb(void *ctx, const u8 *peer_nmi,
 				    const u8 *iik, bool revoked)
 {
@@ -1479,6 +1531,8 @@ int wpas_nan_init(struct wpa_supplicant *wpa_s)
 	nan.get_npk_akmp = wpas_nan_get_npk_akmp_cb;
 	nan.delete_npk = wpas_nan_delete_npk_cb;
 	nan.cm_terminated = wpas_nan_cm_terminated_cb;
+	nan.get_ndp_schedule = wpas_nan_get_ndp_schedule_cb;
+	nan.cm_nd_tk_rekeyed = wpas_nan_cm_nd_tk_rekeyed_cb;
 	nan.pkr_updated = wpas_nan_pkr_updated_cb;
 	nan.pairing_request = wpas_nan_pasn_pairing_request_cb;
 	nan.pairing_cfg.pairing_setup = true;

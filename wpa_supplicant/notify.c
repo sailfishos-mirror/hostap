@@ -1553,6 +1553,17 @@ void wpas_notify_nan_cm_terminated(struct wpa_supplicant *wpa_s,
 }
 
 
+void wpas_notify_nan_cm_nd_tk_rekeyed(struct wpa_supplicant *wpa_s,
+				      const u8 *peer_nmi, u8 ndp_id,
+				      const u8 *init_ndi, const u8 *resp_ndi)
+{
+	wpa_msg_global(wpa_s, MSG_INFO, NAN_CM_ND_TK_REKEYED
+		       "addr=" MACSTR " ndp_id=%u init_ndi=" MACSTR
+		       " resp_ndi=" MACSTR, MAC2STR(peer_nmi), ndp_id,
+		       MAC2STR(init_ndi), MAC2STR(resp_ndi));
+}
+
+
 void wpas_notify_nan_schedule_changed(struct wpa_supplicant *wpa_s,
 				      const u8 *peer_nmi)
 {

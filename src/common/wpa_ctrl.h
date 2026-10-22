@@ -277,6 +277,12 @@ extern "C" {
  */
 #define NAN_CM_TERMINATED "NAN-CM-TERMINATED "
 
+/* NAN Connection Management ND-TK of an NDP rekeyed
+ * addr=<peer NMI> ndp_id=<NDP ID> init_ndi=<Initiator NDI>
+ * resp_ndi=<Responder NDI>
+ */
+#define NAN_CM_ND_TK_REKEYED "NAN-CM-ND-TK-REKEYED "
+
 /* NAN local schedule channel evacuation.
  * parameters: map_id=<map_id> freq=<freq>
  */

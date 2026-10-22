@@ -264,6 +264,8 @@ struct nan_ndp_sec_params {
  * @interface_id: The interface identifier to be used for the NDP. The interface
  *    identifier is used to derive the IPv6 link-local address as specified in
  *    Wi-Fi Aware specification v4.0, Table 90 (IPv6 Link Local TLV format).
+ * @nd_tk_rekey: With NAN_NDP_ACTION_REQ, rekey the ND-TK of the established NDP
+ *    identified by @ndp_id instead of setting up a new NDP
  */
 struct nan_ndp_params {
 	enum nan_ndp_action type;
@@ -295,6 +297,7 @@ struct nan_ndp_params {
 	bool sched_valid;
 	struct nan_schedule sched;
 	const u8 *interface_id;
+	bool nd_tk_rekey;
 };
 
 /**
@@ -337,6 +340,8 @@ struct nan_channels {
  * @peer_gtk: Pointer to peer GTK info. NULL if peer GTK is
  *	not to be installed
  * @peer_gtk_rsc: Pointer to the peer GTK receive sequence counter
+ * @nd_tk_rekey: The ND-TK of the established NDP was rekeyed; only the new
+ *	keys are to be installed for the NDP
  */
 struct nan_ndp_connection_params {
 	struct nan_ndp_id ndp_id;
@@ -352,6 +357,7 @@ struct nan_ndp_connection_params {
 	const struct nan_gtk *local_gtk;
 	const struct nan_gtk *peer_gtk;
 	const u8 *peer_gtk_rsc;
+	bool nd_tk_rekey;
 };
 
 /**
@@ -842,6 +848,29 @@ struct nan_config {
 	void (*cm_terminated)(void *ctx, const u8 *peer_nmi,
 			      enum nan_cm_sa type, const u8 *init_ndi,
 			      const u8 *resp_ndi, bool locally_generated);
+
+	/**
+	 * get_ndp_schedule - Get the local schedule for an NDP setup
+	 * @ctx: Callback context from cb_ctx
+	 * @params: NDP parameters; the schedule fields are filled in. The
+	 *	caller frees @params->sched.elems.
+	 * Returns: 0 on success, -1 on failure
+	 *
+	 * Used for the NDP setup of an ND-TK rekey that is not requested by
+	 * the upper layer.
+	 */
+	int (*get_ndp_schedule)(void *ctx, struct nan_ndp_params *params);
+
+	/**
+	 * cm_nd_tk_rekeyed - Notify about a completed ND-TK rekey
+	 * @ctx: Callback context from cb_ctx
+	 * @peer_nmi: Peer NMI address
+	 * @ndp_id: NDP ID
+	 * @init_ndi: Initiator NDI of the ND-TKSA
+	 * @resp_ndi: Responder NDI of the ND-TKSA
+	 */
+	void (*cm_nd_tk_rekeyed)(void *ctx, const u8 *peer_nmi, u8 ndp_id,
+				 const u8 *init_ndi, const u8 *resp_ndi);
 
 	/**
 	 * pairing_request - Notify about received pairing request

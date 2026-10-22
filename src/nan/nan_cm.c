@@ -1218,6 +1218,82 @@ static struct nan_ndp * nan_cm_find_ndp(struct nan_peer *peer,
 }
 
 
+static const struct nan_peer_sec_info_entry *
+nan_cm_ndp_sec(const struct nan_peer *peer, const struct nan_ndp *ndp)
+{
+	const u8 *local_ndi = ndp->initiator ? ndp->init_ndi : ndp->resp_ndi;
+	const u8 *peer_ndi = ndp->initiator ? ndp->resp_ndi : ndp->init_ndi;
+	struct nan_peer_sec_info_entry *sec;
+
+	dl_list_for_each(sec, &peer->info.sec, struct nan_peer_sec_info_entry,
+			 list) {
+		if (ether_addr_equal(sec->local_ndi, local_ndi) &&
+		    ether_addr_equal(sec->peer_ndi, peer_ndi))
+			return sec;
+	}
+
+	return NULL;
+}
+
+
+/*
+ * Wi-Fi Aware spec R5, 7.6.10.4 (Rekey), Table 46: the NDP Initiator renews the
+ * ND-TK with an NDP setup for an existing NDP that uses it, with an RKA in the
+ * Data Path Request and Response. The PMK and cipher suite of the established
+ * ND-TKSA are used.
+ */
+static int nan_cm_start_nd_tk_rekey(struct nan_data *nan,
+				    struct nan_peer *peer,
+				    struct nan_ndp *ndp)
+{
+	const struct nan_peer_sec_info_entry *sec;
+	struct nan_ndp_params params;
+	int ret;
+
+	sec = nan_cm_ndp_sec(peer, ndp);
+	if (!sec) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: NDP %u with " MACSTR " is not secured",
+			   ndp->ndp_id, MAC2STR(peer->nmi_addr));
+		return -1;
+	}
+
+	if (!nan->cfg->get_ndp_schedule) {
+		wpa_printf(MSG_DEBUG, "NAN CM: No NDP schedule available");
+		return -1;
+	}
+
+	os_memset(&params, 0, sizeof(params));
+	params.type = NAN_NDP_ACTION_REQ;
+	params.nd_tk_rekey = true;
+	os_memcpy(params.ndp_id.peer_nmi, peer->nmi_addr, ETH_ALEN);
+	os_memcpy(params.ndp_id.init_ndi, ndp->init_ndi, ETH_ALEN);
+	params.ndp_id.id = ndp->ndp_id;
+	params.qos = ndp->qos;
+	params.sec.csid = sec->csid;
+	os_memcpy(params.sec.pmk, sec->pmk, PMK_LEN);
+	params.u.req.publish_inst_id = ndp->publish_inst_id;
+	os_memcpy(params.u.req.service_id, ndp->service_id,
+		  NAN_SERVICE_ID_LEN);
+
+	if (nan->cfg->get_ndp_schedule(nan->cfg->cb_ctx, &params) < 0) {
+		wpa_printf(MSG_DEBUG, "NAN CM: Failed to get NDP schedule");
+		ret = -1;
+		goto out;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: Start ND-TK rekey of NDP %u with " MACSTR
+		   " (csid=%u)", ndp->ndp_id, MAC2STR(peer->nmi_addr),
+		   sec->csid);
+	ret = nan_handle_ndp_setup(nan, &params);
+out:
+	wpabuf_free(params.sched.elems);
+	forced_memzero(params.sec.pmk, PMK_LEN);
+	return ret;
+}
+
+
 static void nan_cm_handle_rka(struct nan_data *nan, struct nan_peer *peer,
 			      const struct nan_cm_rka *rka)
 {
@@ -1268,6 +1344,126 @@ static void nan_cm_handle_rka(struct nan_data *nan, struct nan_peer *peer,
 		   " for NDP %u (init_ndi=" MACSTR " resp_ndi=" MACSTR ")",
 		   MAC2STR(peer->nmi_addr), ndp->ndp_id,
 		   MAC2STR(ndp->init_ndi), MAC2STR(ndp->resp_ndi));
+
+	/* The NDP initiator sets up the rekey; the responder waits for it */
+	if (ndp->initiator)
+		nan_cm_start_nd_tk_rekey(nan, peer, ndp);
+}
+
+
+/**
+ * nan_cm_ndp_rekey_req - Check an NDP Request for an established NDP
+ * @nan: NAN module context from nan_init()
+ * @peer: Peer that sent the request
+ * @ndp_id: NDP ID from the NDP attribute
+ * @init_ndi: Initiator NDI from the NDP attribute
+ * @rka: RKA body from the frame or %NULL if not present
+ * @rka_len: Length of @rka
+ * Returns: The established NDP if the request rekeys its ND-TK, %NULL if not
+ */
+struct nan_ndp * nan_cm_ndp_rekey_req(struct nan_data *nan,
+				      struct nan_peer *peer, u8 ndp_id,
+				      const u8 *init_ndi, const u8 *rka,
+				      u16 rka_len)
+{
+	struct nan_cm_rka attr;
+	struct nan_ndp *ndp;
+
+	if (!rka || nan_cm_parse_rka(rka, rka_len, &attr) < 0 ||
+	    attr.ctrl != NAN_RKA_CTRL_ND_TK_REKEY) {
+		wpa_printf(MSG_DEBUG, "NAN CM: No ND-TK rekey request RKA");
+		return NULL;
+	}
+
+	if (!peer->cm.nm_tksa ||
+	    !nan_cm_capa(nan, peer, NAN_DEV_CAPA_EXT_INFO_2_CM_NDTK_REKEY)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: ND-TK rekey not supported with " MACSTR,
+			   MAC2STR(peer->nmi_addr));
+		return NULL;
+	}
+
+	ndp = nan_cm_find_ndp(peer, attr.init_ndi, attr.resp_ndi,
+			      attr.ndp_id);
+	if (!ndp || ndp->ndp_id != ndp_id ||
+	    !ether_addr_equal(ndp->init_ndi, init_ndi) || ndp->initiator ||
+	    !nan_cm_ndp_sec(peer, ndp)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: RKA does not match a secured NDP %u from "
+			   MACSTR, ndp_id, MAC2STR(peer->nmi_addr));
+		return NULL;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: ND-TK rekey request from " MACSTR " for NDP %u",
+		   MAC2STR(peer->nmi_addr), ndp_id);
+	return ndp;
+}
+
+
+/**
+ * nan_cm_nd_tk_rekey_resp - Accept an ND-TK rekey NDP Request
+ * @nan: NAN module context from nan_init()
+ * @peer: Peer that sent the request
+ *
+ * The rekey uses the PMK, cipher suite and schedule of the established NDP, so
+ * the request is accepted without involving the upper layer.
+ */
+void nan_cm_nd_tk_rekey_resp(struct nan_data *nan, struct nan_peer *peer)
+{
+	struct nan_ndp *ndp = peer->ndp_setup.ndp;
+	const struct nan_peer_sec_info_entry *sec;
+	struct nan_ndp_params params;
+
+	os_memset(&params, 0, sizeof(params));
+	params.type = NAN_NDP_ACTION_RESP;
+	os_memcpy(params.ndp_id.peer_nmi, peer->nmi_addr, ETH_ALEN);
+	os_memcpy(params.ndp_id.init_ndi, ndp->init_ndi, ETH_ALEN);
+	params.ndp_id.id = ndp->ndp_id;
+	params.qos = ndp->qos;
+	params.u.resp.status = NAN_NDP_STATUS_REJECTED;
+	params.u.resp.reason_code = NAN_REASON_UNSPECIFIED_REASON;
+
+	sec = nan_cm_ndp_sec(peer, ndp);
+	if (sec && nan->cfg->get_ndp_schedule &&
+	    nan->cfg->get_ndp_schedule(nan->cfg->cb_ctx, &params) == 0) {
+		params.sec.csid = sec->csid;
+		os_memcpy(params.sec.pmk, sec->pmk, PMK_LEN);
+		os_memcpy(params.u.resp.resp_ndi, ndp->resp_ndi, ETH_ALEN);
+		params.u.resp.status = NAN_NDP_STATUS_ACCEPTED;
+		params.u.resp.reason_code = 0;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: %s ND-TK rekey of NDP %u from " MACSTR,
+		   params.u.resp.status == NAN_NDP_STATUS_ACCEPTED ?
+		   "Accept" : "Reject", ndp->ndp_id, MAC2STR(peer->nmi_addr));
+	nan_handle_ndp_setup(nan, &params);
+	wpabuf_free(params.sched.elems);
+	forced_memzero(params.sec.pmk, PMK_LEN);
+}
+
+
+/**
+ * nan_cm_nd_tk_rekeyed - Complete the ND-TK rekey of an NDP
+ * @nan: NAN module context from nan_init()
+ * @peer: NAN peer
+ * @rekey: NDP of the completed rekey setup
+ *
+ * The new ND-TK was stored for the NDI pair and installed. The established NDP
+ * continues and the rekey setup object is discarded.
+ */
+void nan_cm_nd_tk_rekeyed(struct nan_data *nan, struct nan_peer *peer,
+			  const struct nan_ndp *rekey)
+{
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: ND-TK of NDP %u with " MACSTR " rekeyed",
+		   rekey->ndp_id, MAC2STR(peer->nmi_addr));
+
+	if (nan->cfg->cm_nd_tk_rekeyed)
+		nan->cfg->cm_nd_tk_rekeyed(nan->cfg->cb_ctx, peer->nmi_addr,
+					   rekey->ndp_id, rekey->init_ndi,
+					   rekey->resp_ndi);
 }
 
 

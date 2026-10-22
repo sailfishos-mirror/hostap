@@ -2292,6 +2292,7 @@ static int nan_ndp_connected(struct nan_data *nan, struct nan_peer *peer)
 						     params.peer_ndi,
 						     params.local_ndi);
 	params.first_ndp = dl_list_empty(&peer->ndps);
+	params.nd_tk_rekey = peer->ndp_setup.ndp->nd_tk_rekey;
 
 	if (peer->ndp_setup.sec.local_gtk.csid != NAN_CS_NONE)
 		params.local_gtk = &peer->ndp_setup.sec.local_gtk;
@@ -2315,6 +2316,13 @@ static int nan_ndp_connected(struct nan_data *nan, struct nan_peer *peer)
 
 			return ret;
 		}
+	}
+
+	if (params.nd_tk_rekey) {
+		/* The established NDP continues with the new ND-TK */
+		nan_cm_nd_tk_rekeyed(nan, peer, peer->ndp_setup.ndp);
+		nan_ndp_setup_stop(nan, peer);
+		return 0;
 	}
 
 	/* Move the NDP to the list of tracked NDPs */
@@ -2341,6 +2349,18 @@ static void nan_ndp_disconnected(struct nan_data *nan, struct nan_peer *peer,
 	wpa_printf(MSG_DEBUG,
 		   "NAN: NDP disconnected notification peer=" MACSTR,
 		   MAC2STR(peer->nmi_addr));
+
+	/*
+	 * A failed ND-TK rekey leaves the established NDP and its keys in
+	 * place; only the rekey setup is discarded.
+	 */
+	if (peer->ndp_setup.ndp->nd_tk_rekey) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: ND-TK rekey of NDP %u failed (reason=%u)",
+			   peer->ndp_setup.ndp->ndp_id, reason);
+		nan_ndp_setup_stop(nan, peer);
+		return;
+	}
 
 	os_memcpy(ndp_id.peer_nmi, peer->nmi_addr, ETH_ALEN);
 	os_memcpy(ndp_id.init_ndi, peer->ndp_setup.ndp->init_ndi, ETH_ALEN);
@@ -2422,6 +2442,9 @@ static int nan_action_rx_ndp(struct nan_data *nan, struct nan_peer *peer,
 			if (peer->ndl->send_naf_on_error)
 				nan_action_send(nan, peer, resp_oui);
 			nan_ndp_setup_stop(nan, peer);
+		} else if (peer->ndp_setup.ndp->nd_tk_rekey) {
+			/* ND-TK rekey is accepted without the upper layer */
+			nan_cm_nd_tk_rekey_resp(nan, peer);
 		} else {
 			nan_ndp_action_notif(nan, peer);
 		}
@@ -2844,7 +2867,9 @@ int nan_handle_ndp_setup(struct nan_data *nan, struct nan_ndp_params *params)
 
 	switch (params->type) {
 	case NAN_NDP_ACTION_REQ:
-		params->ndp_id.id = nan_get_next_ndp_id(nan);
+		/* ND-TK rekey keeps the NDP ID of the established NDP */
+		if (!params->nd_tk_rekey)
+			params->ndp_id.id = nan_get_next_ndp_id(nan);
 		ret = nan_ndp_setup_req(nan, peer, params);
 		if (ret)
 			return ret;

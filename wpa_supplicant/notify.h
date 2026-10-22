@@ -273,6 +273,9 @@ void wpas_notify_nan_cm_terminated(struct wpa_supplicant *wpa_s,
 				   const u8 *peer_nmi, enum nan_cm_sa type,
 				   const u8 *init_ndi, const u8 *resp_ndi,
 				   bool locally_generated);
+void wpas_notify_nan_cm_nd_tk_rekeyed(struct wpa_supplicant *wpa_s,
+				      const u8 *peer_nmi, u8 ndp_id,
+				      const u8 *init_ndi, const u8 *resp_ndi);
 void wpas_notify_nan_schedule_changed(struct wpa_supplicant *wpa_s,
 				      const u8 *peer_nmi);
 void wpas_notify_nan_sched_update_done(struct wpa_supplicant *wpa_s,

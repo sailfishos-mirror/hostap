@@ -9,6 +9,11 @@
 #include "includes.h"
 #include "common.h"
 #include "nan_i.h"
+#include "nan_cm.h"
+
+
+static struct nan_ndp * nan_ndp_find_ndp(struct nan_peer *peer,
+					 u8 ndp_id, const u8 *init_ndi);
 
 
 static const char * nan_ndp_state_str(enum nan_ndp_state state)
@@ -117,6 +122,29 @@ int nan_ndp_setup_req(struct nan_data *nan, struct nan_peer *peer,
 		wpa_printf(MSG_DEBUG, "NAN: NDP: Failed allocation");
 		return -1;
 	}
+
+	/* The ND-TK rekey setup reuses the identity of the established NDP */
+	if (params->nd_tk_rekey) {
+		struct nan_ndp *ndp;
+
+		ndp = nan_ndp_find_ndp(peer, params->ndp_id.id,
+				       params->ndp_id.init_ndi);
+		if (!ndp || !ndp->initiator) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: NDP: No established NDP %u to rekey",
+				   params->ndp_id.id);
+			os_free(peer->ndp_setup.ndp);
+			peer->ndp_setup.ndp = NULL;
+			return -1;
+		}
+		os_memcpy(peer->ndp_setup.ndp->resp_ndi, ndp->resp_ndi,
+			  ETH_ALEN);
+		peer->ndp_setup.ndp->nd_tk_rekey = true;
+	}
+
+	peer->ndp_setup.ndp->publish_inst_id = params->u.req.publish_inst_id;
+	os_memcpy(peer->ndp_setup.ndp->service_id, params->u.req.service_id,
+		  NAN_SERVICE_ID_LEN);
 
 	peer->ndp_setup.dialog_token = nan_get_next_dialog_token(nan);
 	peer->ndp_setup.publish_inst_id = params->u.req.publish_inst_id;
@@ -342,16 +370,35 @@ static int nan_ndp_attr_handle_tlvs(struct nan_data *nan,
 
 static int nan_ndp_attr_handle_req(struct nan_data *nan, struct nan_peer *peer,
 				   struct ieee80211_ndp *ndp_attr, u16 ndp_len,
-				   u8 status, bool ndpe)
+				   u8 status, bool ndpe,
+				   const struct nan_attrs *attrs)
 {
 	struct nan_ndp_setup *ndp_setup = &peer->ndp_setup;
 	u16 exp_len = sizeof(struct ieee80211_ndp);
+	struct nan_ndp *rekeyed = NULL;
 	u8 publish_inst_id;
 
 	if (ndp_setup->ndp) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: NDP: req: While already WIP with peer");
 		return -1;
+	}
+
+	/*
+	 * A request for an established NDP is accepted only as an ND-TK rekey
+	 * that identifies the same NDP in the RKA.
+	 */
+	if (nan_ndp_find_ndp(peer, ndp_attr->ndp_id,
+			     ndp_attr->initiator_ndi)) {
+		rekeyed = nan_cm_ndp_rekey_req(nan, peer, ndp_attr->ndp_id,
+					       ndp_attr->initiator_ndi,
+					       attrs->rka, attrs->rka_len);
+		if (!rekeyed) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: NDP: req: NDP %u already established",
+				   ndp_attr->ndp_id);
+			return -1;
+		}
 	}
 
 	if (!(ndp_attr->ndp_ctrl & NAN_NDP_CTRL_PUBLISH_ID_PRESENT)) {
@@ -385,6 +432,15 @@ static int nan_ndp_attr_handle_req(struct nan_data *nan, struct nan_peer *peer,
 				       NAN_QOS_MAX_LATENCY_NO_PREF);
 	if (!ndp_setup->ndp)
 		return -1;
+
+	if (rekeyed) {
+		os_memcpy(ndp_setup->ndp->resp_ndi, rekeyed->resp_ndi,
+			  ETH_ALEN);
+		ndp_setup->ndp->nd_tk_rekey = true;
+	}
+	ndp_setup->ndp->publish_inst_id = publish_inst_id;
+	os_memcpy(ndp_setup->ndp->service_id, ndp_setup->service_id,
+		  NAN_SERVICE_ID_LEN);
 
 	nan_sec_reset(nan, &peer->ndp_setup.sec);
 	nan_ndp_set_state(nan, ndp_setup, NAN_NDP_STATE_REQ_RECV);
@@ -844,7 +900,7 @@ int nan_ndp_handle_ndp_attr(struct nan_data *nan, struct nan_peer *peer,
 	case NAN_NDP_TYPE_REQUEST:
 		ret = nan_ndp_attr_handle_req(nan, peer, ndp_attr,
 					      ndp_attr_len, status,
-					      ndpe_supported);
+					      ndpe_supported, &msg->attrs);
 		break;
 	case NAN_NDP_TYPE_RESPONSE:
 		ret = nan_ndp_attr_handle_res(nan, peer, ndp_attr,
@@ -1001,6 +1057,16 @@ int nan_ndp_add_ndp_attr(struct nan_data *nan, struct nan_peer *peer,
 	}
 
 	WPA_PUT_LE16(len_ptr, (u8 *) wpabuf_put(buf, 0) - len_ptr - 2);
+
+	/* The NDP Request and Response of an ND-TK rekey carry an RKA */
+	if (ndp_setup->ndp->nd_tk_rekey &&
+	    (type == NAN_NDP_TYPE_REQUEST || type == NAN_NDP_TYPE_RESPONSE))
+		return nan_cm_build_rka(buf, type == NAN_NDP_TYPE_REQUEST ?
+					NAN_RKA_CTRL_ND_TK_REKEY :
+					NAN_RKA_CTRL_ND_TK_REKEY_RESP,
+					ndp_setup->ndp->init_ndi,
+					ndp_setup->ndp->resp_ndi,
+					ndp_setup->ndp->ndp_id);
 	return 0;
 }
 

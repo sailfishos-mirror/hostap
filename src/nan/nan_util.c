@@ -309,6 +309,10 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 			attrs->rsia = pos;
 			attrs->rsia_len = attr_len;
 			break;
+		case NAN_ATTR_RKA:
+			attrs->rka = pos;
+			attrs->rka_len = attr_len;
+			break;
 		case NAN_ATTR_CONN_CAPA:
 			if (attr_len < 2)
 				break;

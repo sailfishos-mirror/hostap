@@ -194,6 +194,10 @@ enum nan_ndp_state {
  * @gtk_id: GTK key ID used for this NDP; 0 if GTK is not used
  * @kaa_missing: The NDP was not reported in the last Keep Alive attribute
  *     received from the peer
+ * @publish_inst_id: Publish instance ID of the service of the NDP
+ * @service_id: Service ID of the service of the NDP
+ * @nd_tk_rekey: The NDP setup rekeys the ND-TK of the established NDP with the
+ *     same NDP ID. The object is discarded once the setup completes.
  */
 struct nan_ndp {
 	/* for nan_peer ndps list */
@@ -207,6 +211,9 @@ struct nan_ndp {
 	struct nan_qos qos;
 	u8 gtk_id;
 	bool kaa_missing;
+	u8 publish_inst_id;
+	u8 service_id[NAN_SERVICE_ID_LEN];
+	bool nd_tk_rekey;
 };
 
 /*
@@ -827,6 +834,7 @@ struct nan_attrs {
 	const u8 *nira;
 	const u8 *irsa;
 	const u8 *rsia;
+	const u8 *rka;
 	const u8 *ndpe;
 
 	u16 ndp_len;
@@ -841,6 +849,7 @@ struct nan_attrs {
 	u16 nira_len;
 	u16 irsa_len;
 	u16 rsia_len;
+	u16 rka_len;
 	u16 ndpe_len;
 	u16 conn_capa;
 	bool conn_capa_valid;
@@ -1089,6 +1098,13 @@ int nan_cm_terminate_nm_tksa(struct nan_data *nan, struct nan_peer *peer);
 int nan_cm_terminate_npksa(struct nan_data *nan, struct nan_peer *peer);
 int nan_cm_deauth(struct nan_data *nan, struct nan_peer *peer,
 		  bool keep_nm_tksa);
+struct nan_ndp * nan_cm_ndp_rekey_req(struct nan_data *nan,
+				      struct nan_peer *peer, u8 ndp_id,
+				      const u8 *init_ndi, const u8 *rka,
+				      u16 rka_len);
+void nan_cm_nd_tk_rekey_resp(struct nan_data *nan, struct nan_peer *peer);
+void nan_cm_nd_tk_rekeyed(struct nan_data *nan, struct nan_peer *peer,
+			  const struct nan_ndp *rekey);
 void nan_cm_tx_status(struct nan_data *nan, struct nan_peer *peer,
 		      const struct ieee80211_mgmt *mgmt, size_t len,
 		      bool acked);
