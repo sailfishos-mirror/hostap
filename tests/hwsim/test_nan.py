@@ -3202,3 +3202,141 @@ def test_nan_cm_keepalive_terminate_during_setup(dev, apdev):
             _nan_test_connectivity(pub, sub)
     finally:
         set_country("00")
+
+def nan_cm_wait_info(dev, peer, field, value, timeout):
+    for i in range(timeout * 10):
+        if nan_cm_info(dev, peer).get(field) == value:
+            return
+        time.sleep(0.1)
+    raise Exception("%s did not reach %s=%s: %s" %
+                    (dev.ifname, field, value, nan_cm_info(dev, peer)))
+
+def nan_cm_wait_terminated(dev, peer, sa, local, extra=None, ndp=False):
+    """Wait for NAN-CM-TERMINATED and, with ndp=True, NAN-NDP-DISCONNECTED"""
+    data = None
+    for i in range(2 if ndp else 1):
+        ev = dev.wpas.wait_event(["NAN-CM-TERMINATED",
+                                  "NAN-NDP-DISCONNECTED"], timeout=5)
+        if ev is None:
+            raise Exception("Termination events not seen on " + dev.ifname)
+        if "NAN-NDP-DISCONNECTED" in ev:
+            if not ndp:
+                raise Exception("Unexpected NDP disconnection on " +
+                                dev.ifname)
+            ndp = False
+            continue
+        data = split_nan_event(ev)
+    if ndp or data is None:
+        raise Exception("Termination events not seen on " + dev.ifname)
+    if data.get("addr") != peer.wpas.own_addr() or data.get("sa") != sa or \
+       data.get("locally_generated") != ("1" if local else "0"):
+        raise Exception("Unexpected NAN-CM-TERMINATED on %s: %s" %
+                        (dev.ifname, data))
+    for key, val in (extra or {}).items():
+        if data.get(key) != val:
+            raise Exception("Unexpected NAN-CM-TERMINATED on %s: %s" %
+                            (dev.ifname, data))
+    return data
+
+def run_nan_cm_terminate(test, *capas):
+    set_country("US")
+    try:
+        with hwsim_nan_radios() as (wpas1, wpas2), \
+             NanDevice(wpas1, "nan0", "ndi0") as pub, \
+             NanDevice(wpas2, "nan1", "ndi1") as sub:
+            pid, sid, ndp_id, init_ndi = nan_cm_pair_ndp(pub, sub, *capas)
+            pub.wpas.dump_monitor()
+            sub.wpas.dump_monitor()
+            test(pub, sub, init_ndi)
+    finally:
+        set_country("00")
+
+def test_nan_cm_terminate_nd_tksa(dev, apdev):
+    """NAN Connection Management ND-TKSA termination"""
+    def test(pub, sub, init_ndi):
+        resp_ndi = pub.dev.get_iface_addr(pub.ndi_name)
+        ndis = {"init_ndi": init_ndi, "resp_ndi": resp_ndi}
+
+        if "FAIL" not in sub.wpas.request(
+                "NAN_CM_TERMINATE peer_nmi=%s sa=nd_tksa" %
+                pub.wpas.own_addr()):
+            raise Exception("ND-TKSA termination without NDIs accepted")
+        if "FAIL" not in sub.wpas.request(
+                "NAN_CM_TERMINATE peer_nmi=%s sa=nd_tksa init_ndi=%s resp_ndi=%s"
+                % (pub.wpas.own_addr(), resp_ndi, init_ndi)):
+            raise Exception("Termination of an unknown ND-TKSA accepted")
+
+        if "OK" not in sub.wpas.request(
+                "NAN_CM_TERMINATE peer_nmi=%s sa=nd_tksa init_ndi=%s resp_ndi=%s"
+                % (pub.wpas.own_addr(), init_ndi, resp_ndi)):
+            raise Exception("NAN_CM_TERMINATE failed")
+        nan_cm_wait_terminated(sub, pub, "nd_tksa", True, ndis, ndp=True)
+        nan_cm_wait_terminated(pub, sub, "nd_tksa", False, ndis, ndp=True)
+
+        # The NM-TKSA and keep alive continue without NDPs
+        for dev, peer in ((pub, sub), (sub, pub)):
+            info = nan_cm_info(dev, peer)
+            if info["nm_tksa"] != "1" or info["ka_active"] != "1" or \
+               info["npksa"] != "1":
+                raise Exception("Unexpected CM state on %s: %s" %
+                                (dev.ifname, info))
+        if pub.wpas.wait_event(["NAN-CM-TERMINATED"], timeout=11):
+            raise Exception("Unexpected termination after ND-TKSA")
+    run_nan_cm_terminate(test, "default_ka", "termination_notif")
+
+def test_nan_cm_terminate_nm_tksa(dev, apdev):
+    """NAN Connection Management NM-TKSA termination"""
+    def test(pub, sub, init_ndi):
+        if "OK" not in pub.wpas.request(
+                "NAN_CM_TERMINATE peer_nmi=%s sa=nm_tksa" %
+                sub.wpas.own_addr()):
+            raise Exception("NAN_CM_TERMINATE failed")
+        nan_cm_wait_terminated(pub, sub, "nm_tksa", True, ndp=True)
+        nan_cm_wait_terminated(sub, pub, "nm_tksa", False, ndp=True)
+
+        for dev, peer in ((pub, sub), (sub, pub)):
+            info = nan_cm_info(dev, peer)
+            if info["nm_tksa"] != "0" or info["ka_active"] != "0" or \
+               info["npksa"] != "1":
+                raise Exception("Unexpected CM state on %s: %s" %
+                                (dev.ifname, info))
+
+        if "FAIL" not in pub.wpas.request(
+                "NAN_CM_TERMINATE peer_nmi=%s sa=nm_tksa" %
+                sub.wpas.own_addr()):
+            raise Exception("Second NM-TKSA termination accepted")
+    run_nan_cm_terminate(test, "termination_notif")
+
+def test_nan_cm_terminate_npksa(dev, apdev):
+    """NAN Connection Management NPKSA termination"""
+    def test(pub, sub, init_ndi):
+        if "OK" not in sub.wpas.request(
+                "NAN_CM_TERMINATE peer_nmi=%s sa=npksa" %
+                pub.wpas.own_addr()):
+            raise Exception("NAN_CM_TERMINATE failed")
+        nan_cm_wait_terminated(sub, pub, "npksa", True)
+        nan_cm_wait_terminated(pub, sub, "npksa", False)
+
+        # The NM-TKSA and the NDP continue
+        for dev, peer in ((pub, sub), (sub, pub)):
+            info = nan_cm_info(dev, peer)
+            if info["npksa"] != "0" or info["nm_tksa"] != "1" or \
+               info["ka_active"] != "1":
+                raise Exception("Unexpected CM state on %s: %s" %
+                                (dev.ifname, info))
+        if pub.wpas.wait_event(["NAN-NDP-DISCONNECTED"], timeout=1):
+            raise Exception("NDP disconnected on NPKSA termination")
+        _nan_test_connectivity(pub, sub)
+    run_nan_cm_terminate(test, "default_ka", "termination_notif")
+
+def test_nan_cm_keepalive_timeout(dev, apdev):
+    """NAN Connection Management keep alive timeout"""
+    def test(pub, sub, init_ndi):
+        # Stop NAN on the subscriber without notifying the publisher
+        sub.wpas.request("NAN_STOP")
+        nan_cm_wait_info(pub, sub, "nm_tksa", "0", 20)
+        nan_cm_wait_terminated(pub, sub, "nm_tksa", True, ndp=True)
+        if nan_cm_info(pub, sub)["ka_active"] != "0":
+            raise Exception("Keep alive not stopped")
+        sub.wpas.request("NAN_START")
+    run_nan_cm_terminate(test, "default_ka")
