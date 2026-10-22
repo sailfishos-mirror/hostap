@@ -1708,6 +1708,67 @@ int nan_cm_send_deauth(struct nan_data *nan, const u8 *addr, bool keep_nm_tksa)
 
 
 /**
+ * nan_cm_rekey - Rekey the ND-TK of an NDP with a paired peer
+ * @nan: NAN module context from nan_init()
+ * @addr: NMI of the peer
+ * @init_ndi: Initiator NDI of the NDP
+ * @ndp_id: NDP ID
+ * Returns: 0 on success, -1 on failure
+ *
+ * The NDP initiator rekeys the ND-TK with a new NDP setup. The NDP responder
+ * indicates the need for the rekey to the initiator with an RKA.
+ */
+int nan_cm_rekey(struct nan_data *nan, const u8 *addr, const u8 *init_ndi,
+		 u8 ndp_id)
+{
+	struct nan_peer *peer;
+	struct nan_ndp *ndp, *cur;
+	struct wpabuf *buf;
+
+	peer = nan_get_peer(nan, addr);
+	if (!peer || !peer->cm.nm_tksa ||
+	    !nan_cm_capa(nan, peer, NAN_DEV_CAPA_EXT_INFO_2_CM_NDTK_REKEY)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: ND-TK rekey not possible with " MACSTR,
+			   MAC2STR(addr));
+		return -1;
+	}
+
+	ndp = NULL;
+	dl_list_for_each(cur, &peer->ndps, struct nan_ndp, list) {
+		if (cur->ndp_id == ndp_id &&
+		    ether_addr_equal(cur->init_ndi, init_ndi)) {
+			ndp = cur;
+			break;
+		}
+	}
+	if (!ndp) {
+		wpa_printf(MSG_DEBUG, "NAN CM: No NDP %u with " MACSTR,
+			   ndp_id, MAC2STR(addr));
+		return -1;
+	}
+
+	if (ndp->initiator)
+		return nan_cm_start_nd_tk_rekey(nan, peer, ndp);
+
+	buf = nan_cm_alloc_naf(NAN_SUBTYPE_CONNECTION_MGMT);
+	if (!buf)
+		return -1;
+
+	if (nan_cm_build_rka(buf, NAN_RKA_CTRL_ND_TK_IND, ndp->init_ndi,
+			     ndp->resp_ndi, ndp->ndp_id) < 0) {
+		wpabuf_free(buf);
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: Send ND-TK rekey indication for NDP %u to " MACSTR,
+		   ndp->ndp_id, MAC2STR(addr));
+	return nan_cm_send_naf(nan, peer, buf);
+}
+
+
+/**
  * nan_cm_peer_info - Write the Connection Management state of a peer
  * @nan: NAN module context from nan_init()
  * @addr: NMI of the peer

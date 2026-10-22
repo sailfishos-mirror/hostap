@@ -4705,6 +4705,54 @@ int wpas_nan_cm_deauth(struct wpa_supplicant *wpa_s, const char *cmd)
 }
 
 
+/* NAN_CM_REKEY peer_nmi=<addr> init_ndi=<addr> ndp_id=<id> */
+int wpas_nan_cm_rekey(struct wpa_supplicant *wpa_s, char *cmd)
+{
+	u8 peer_nmi[ETH_ALEN], init_ndi[ETH_ALEN];
+	bool has_peer = false, has_init = false;
+	char *token, *context = NULL, *pos;
+	int ndp_id = 0;
+
+	if (!wpas_nan_ndp_allowed(wpa_s))
+		return -1;
+
+	while ((token = str_token(cmd, " ", &context))) {
+		pos = os_strchr(token, '=');
+		if (!pos)
+			goto invalid;
+		*pos++ = '\0';
+
+		if (os_strcmp(token, "peer_nmi") == 0) {
+			if (hwaddr_aton(pos, peer_nmi) < 0)
+				goto invalid;
+			has_peer = true;
+		} else if (os_strcmp(token, "init_ndi") == 0) {
+			if (hwaddr_aton(pos, init_ndi) < 0)
+				goto invalid;
+			has_init = true;
+		} else if (os_strcmp(token, "ndp_id") == 0) {
+			ndp_id = atoi(pos);
+			if (ndp_id < 1 || ndp_id > 255)
+				goto invalid;
+		} else {
+			goto invalid;
+		}
+	}
+
+	if (!has_peer || !has_init || !ndp_id) {
+		wpa_printf(MSG_INFO,
+			   "NAN_CM_REKEY: Missing required parameter");
+		return -1;
+	}
+
+	return nan_cm_rekey(wpa_s->nan, peer_nmi, init_ndi, ndp_id);
+
+invalid:
+	wpa_printf(MSG_INFO, "NAN_CM_REKEY: Invalid parameter '%s'", token);
+	return -1;
+}
+
+
 #ifdef CONFIG_TESTING_OPTIONS
 
 int wpas_nan_get_sae_pairing_tk(struct wpa_supplicant *wpa_s, const char *cmd,

@@ -55,6 +55,7 @@ int wpas_nan_pairing_abort(struct wpa_supplicant *wpa_s, const char *cmd);
 int wpas_nan_send_nik(struct wpa_supplicant *wpa_s, const char *cmd);
 int wpas_nan_cm_terminate(struct wpa_supplicant *wpa_s, char *cmd);
 int wpas_nan_cm_deauth(struct wpa_supplicant *wpa_s, const char *cmd);
+int wpas_nan_cm_rekey(struct wpa_supplicant *wpa_s, char *cmd);
 int wpas_nan_get_sae_pairing_tk(struct wpa_supplicant *wpa_s, const char *cmd,
 				char *buf, size_t buflen);
 int wpas_nan_get_sae_pairing_pmkid(struct wpa_supplicant *wpa_s,
