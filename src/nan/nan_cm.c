@@ -978,6 +978,41 @@ static void nan_cm_handle_kaa(struct nan_data *nan, struct nan_peer *peer,
 }
 
 
+static void nan_cm_handle_tna(struct nan_data *nan, struct nan_peer *peer,
+			      const struct nan_cm_tna *tna)
+{
+	const u8 *id;
+	unsigned int i;
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: Termination Notification from " MACSTR
+		   " ctrl=0x%02x reason=%u", MAC2STR(peer->nmi_addr),
+		   tna->ctrl, tna->reason);
+
+	if (tna->ctrl & NAN_TNA_CTRL_ND_TKSA_TERM) {
+		for (i = 0; i < tna->n_nd_tksas; i++) {
+			id = tna->nd_tksa_ids + i * NAN_ND_TKSA_IDENTITY_LEN;
+			if (nan_cm_has_nd_tksa(peer, id, id + ETH_ALEN))
+				nan_cm_delete_nd_tksa(nan, peer, id,
+						      id + ETH_ALEN, false);
+			else
+				wpa_printf(MSG_DEBUG,
+					   "NAN CM: Unknown ND-TKSA init_ndi="
+					   MACSTR " resp_ndi=" MACSTR,
+					   MAC2STR(id),
+					   MAC2STR(id + ETH_ALEN));
+		}
+	}
+
+	if ((tna->ctrl & NAN_TNA_CTRL_NPKSA_TERM) && peer->cm.npksa)
+		nan_cm_delete_npksa(nan, peer, false);
+
+	/* NM-TKSA termination also terminates all ND-TKSAs */
+	if (tna->ctrl & NAN_TNA_CTRL_NM_TKSA_TERM)
+		nan_cm_delete_nm_tksa(nan, peer, false);
+}
+
+
 /**
  * nan_cm_rx - Process a received Connection Management NAF
  * @nan: NAN module context from nan_init()
@@ -992,6 +1027,7 @@ int nan_cm_rx(struct nan_data *nan, struct nan_peer *peer,
 	const u8 *pos = mgmt->u.action.u.naf.variable;
 	const u8 *end = (const u8 *) mgmt + len;
 	struct nan_cm_kaa kaa;
+	struct nan_cm_tna tna;
 
 	if (mgmt->u.action.category != WLAN_ACTION_PROTECTED_DUAL ||
 	    !peer->cm.nm_tksa) {
@@ -1004,7 +1040,8 @@ int nan_cm_rx(struct nan_data *nan, struct nan_peer *peer,
 		return -1;
 	}
 
-	while (end - pos >= NAN_ATTR_HDR_LEN) {
+	/* Stop processing once the NM-TKSA is terminated by the frame */
+	while (end - pos >= NAN_ATTR_HDR_LEN && peer->cm.nm_tksa) {
 		u8 id = pos[0];
 		u16 attr_len = WPA_GET_LE16(pos + 1);
 
@@ -1021,6 +1058,11 @@ int nan_cm_rx(struct nan_data *nan, struct nan_peer *peer,
 			if (nan_cm_parse_kaa(pos, attr_len, &kaa) < 0)
 				return -1;
 			nan_cm_handle_kaa(nan, peer, &kaa);
+			break;
+		case NAN_ATTR_TNA:
+			if (nan_cm_parse_tna(pos, attr_len, &tna) < 0)
+				return -1;
+			nan_cm_handle_tna(nan, peer, &tna);
 			break;
 		default:
 			wpa_printf(MSG_DEBUG,
