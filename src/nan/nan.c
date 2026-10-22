@@ -1943,6 +1943,17 @@ int nan_clear_peer_schedule(struct nan_data *nan, struct nan_peer *peer)
 	if (!peer->configured)
 		return 0;
 
+	/*
+	 * Removing the peer schedule removes the NMI station with the NM-TK.
+	 * Keep it while keep alive is active with the peer, as the NM-TKSA is
+	 * then maintained without NDPs (Wi-Fi Aware spec R5, 7.6.10.1).
+	 */
+	if (peer->cm.ka_active) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Keep alive active - keep peer schedule");
+		return 0;
+	}
+
 	ret = nan->cfg->set_peer_schedule(nan->cfg->cb_ctx, peer->nmi_addr,
 					  false, 0, peer->info.seq_id, 0, NULL,
 					  NULL);

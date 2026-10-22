@@ -534,6 +534,91 @@ void nan_cm_nm_tksa_established(struct nan_data *nan, struct nan_peer *peer)
 }
 
 
+static int nan_cm_send_tna(struct nan_data *nan, struct nan_peer *peer,
+			   u8 ctrl, const u8 *nd_tksa_ids, u8 n_nd_tksas)
+{
+	struct wpabuf *buf;
+
+	buf = nan_cm_alloc_naf(NAN_SUBTYPE_CONNECTION_MGMT);
+	if (!buf)
+		return -1;
+
+	if (nan_cm_build_tna(buf, ctrl, NAN_REASON_UNSPECIFIED_REASON,
+			     nd_tksa_ids, n_nd_tksas) < 0) {
+		wpabuf_free(buf);
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: Send Termination Notification to " MACSTR
+		   " ctrl=0x%02x", MAC2STR(peer->nmi_addr), ctrl);
+	return nan_cm_send_naf(nan, peer, buf);
+}
+
+
+static bool nan_cm_has_nd_tksa(const struct nan_peer *peer,
+			       const u8 *init_ndi, const u8 *resp_ndi)
+{
+	struct nan_ndp *ndp;
+
+	dl_list_for_each(ndp, &peer->ndps, struct nan_ndp, list) {
+		if (ether_addr_equal(ndp->init_ndi, init_ndi) &&
+		    ether_addr_equal(ndp->resp_ndi, resp_ndi))
+			return true;
+	}
+
+	return false;
+}
+
+
+/**
+ * nan_cm_terminate_nd_tksa - Terminate an ND-TKSA with a peer
+ * @nan: NAN module context from nan_init()
+ * @peer: NAN peer
+ * @init_ndi: Initiator NDI of the ND-TKSA
+ * @resp_ndi: Responder NDI of the ND-TKSA
+ * Returns: 0 on success, -1 if no NDP uses the ND-TKSA
+ *
+ * Terminates all NDPs established over the NDI pair. The peer is notified
+ * with a Termination Notification when both devices support it.
+ */
+int nan_cm_terminate_nd_tksa(struct nan_data *nan, struct nan_peer *peer,
+			     const u8 *init_ndi, const u8 *resp_ndi)
+{
+	u8 id[NAN_ND_TKSA_IDENTITY_LEN];
+	struct nan_ndp *ndp, *tmp;
+
+	if (!nan_cm_has_nd_tksa(peer, init_ndi, resp_ndi)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: No ND-TKSA init_ndi=" MACSTR " resp_ndi="
+			   MACSTR " with " MACSTR, MAC2STR(init_ndi),
+			   MAC2STR(resp_ndi), MAC2STR(peer->nmi_addr));
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: Terminate ND-TKSA init_ndi=" MACSTR " resp_ndi="
+		   MACSTR " with " MACSTR, MAC2STR(init_ndi),
+		   MAC2STR(resp_ndi), MAC2STR(peer->nmi_addr));
+
+	/* Notify the peer while the NDPs are still in place */
+	if (peer->cm.nm_tksa &&
+	    nan_cm_capa(nan, peer, NAN_DEV_CAPA_EXT_INFO_2_CM_TERM_NOTIF)) {
+		os_memcpy(id, init_ndi, ETH_ALEN);
+		os_memcpy(id + ETH_ALEN, resp_ndi, ETH_ALEN);
+		nan_cm_send_tna(nan, peer, NAN_TNA_CTRL_ND_TKSA_TERM, id, 1);
+	}
+
+	dl_list_for_each_safe(ndp, tmp, &peer->ndps, struct nan_ndp, list) {
+		if (ether_addr_equal(ndp->init_ndi, init_ndi) &&
+		    ether_addr_equal(ndp->resp_ndi, resp_ndi))
+			nan_peer_terminate_ndp(nan, peer, ndp);
+	}
+
+	return 0;
+}
+
+
 static bool nan_cm_kaa_has_ndp(const struct nan_cm_kaa *kaa,
 			       const u8 *init_ndi, const u8 *resp_ndi,
 			       u8 ndp_id)

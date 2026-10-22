@@ -1075,6 +1075,8 @@ static inline void nan_pairing_deinit_peer(struct nan_data *nan_data,
 #endif /* CONFIG_PASN */
 
 void nan_cm_nm_tksa_established(struct nan_data *nan, struct nan_peer *peer);
+int nan_cm_terminate_nd_tksa(struct nan_data *nan, struct nan_peer *peer,
+			     const u8 *init_ndi, const u8 *resp_ndi);
 int nan_cm_rx(struct nan_data *nan, struct nan_peer *peer,
 	      const struct ieee80211_mgmt *mgmt, size_t len);
 void nan_cm_deinit_peer(struct nan_data *nan, struct nan_peer *peer);
