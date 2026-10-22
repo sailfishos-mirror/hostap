@@ -1155,6 +1155,43 @@ static void nan_cm_handle_tna(struct nan_data *nan, struct nan_peer *peer,
 }
 
 
+static void nan_cm_handle_saqa(struct nan_data *nan, struct nan_peer *peer,
+			       const struct nan_cm_saqa *saqa)
+{
+	u8 ctrl;
+
+	if ((saqa->ctrl & NAN_SAQA_CTRL_TYPE_MASK) ==
+	    NAN_SAQA_CTRL_TYPE_REQUEST) {
+		/*
+		 * The request was received protected with the NM-TK, so the
+		 * NM-TKSA is in place. Report the NPKSA only if it is.
+		 */
+		ctrl = NAN_SAQA_CTRL_TYPE_RESPONSE |
+			(saqa->ctrl & NAN_SAQA_CTRL_NM_TKSA_QUERY);
+		if ((saqa->ctrl & NAN_SAQA_CTRL_NPKSA_QUERY) && peer->cm.npksa)
+			ctrl |= NAN_SAQA_CTRL_NPKSA_QUERY;
+		nan_cm_send_saqa(nan, peer, saqa->dialog_token, ctrl);
+		return;
+	}
+
+	if (!peer->cm.sa_query_token ||
+	    saqa->dialog_token != peer->cm.sa_query_token) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN CM: Unexpected SA Query Response from " MACSTR
+			   " dialog_token=%u", MAC2STR(peer->nmi_addr),
+			   saqa->dialog_token);
+		return;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN CM: SA Query Response from " MACSTR
+		   " - NM-TKSA is valid, ignore Deauthentication",
+		   MAC2STR(peer->nmi_addr));
+	peer->cm.sa_query_token = 0;
+	eloop_cancel_timeout(nan_cm_sa_query_timeout, nan, peer);
+}
+
+
 /**
  * nan_cm_rx - Process a received Connection Management NAF
  * @nan: NAN module context from nan_init()
@@ -1170,6 +1207,7 @@ int nan_cm_rx(struct nan_data *nan, struct nan_peer *peer,
 	const u8 *end = (const u8 *) mgmt + len;
 	struct nan_cm_kaa kaa;
 	struct nan_cm_tna tna;
+	struct nan_cm_saqa saqa;
 
 	if (mgmt->u.action.category != WLAN_ACTION_PROTECTED_DUAL ||
 	    !peer->cm.nm_tksa) {
@@ -1205,6 +1243,11 @@ int nan_cm_rx(struct nan_data *nan, struct nan_peer *peer,
 			if (nan_cm_parse_tna(pos, attr_len, &tna) < 0)
 				return -1;
 			nan_cm_handle_tna(nan, peer, &tna);
+			break;
+		case NAN_ATTR_SAQA:
+			if (nan_cm_parse_saqa(pos, attr_len, &saqa) < 0)
+				return -1;
+			nan_cm_handle_saqa(nan, peer, &saqa);
 			break;
 		default:
 			wpa_printf(MSG_DEBUG,
