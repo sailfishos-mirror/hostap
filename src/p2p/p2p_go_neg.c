@@ -725,12 +725,12 @@ void p2p_check_pref_chan(struct p2p_data *p2p, int go,
 	int res;
 
 	/*
-	 * Use the preferred channel list from the driver only if there is no
-	 * forced_freq, e.g., P2P_CONNECT freq=..., and no preferred operating
-	 * channel hardcoded in the configuration file.
+	 * Use the preferred channel list from the driver if there is no
+	 * preferred operating channel hardcoded in the configuration file.
+	 * A forced frequency still needs the PCL for the negotiated P2P role.
 	 */
 	if (!p2p->cfg->get_pref_freq_list || p2p->cfg->num_pref_chan ||
-	    (dev->flags & P2P_DEV_FORCE_FREQ) || p2p->cfg->cfg_op_channel)
+	    p2p->cfg->cfg_op_channel)
 		return;
 
 	/* Obtain our preferred frequency list from driver based on P2P role. */
@@ -740,7 +740,9 @@ void p2p_check_pref_chan(struct p2p_data *p2p, int go,
 					 p2p->pref_freq_list))
 		return;
 	p2p->num_pref_freq = size;
-	if (!size)
+
+	/* Keep the prepared channel list and operating channel when forced. */
+	if (!size || (dev->flags & P2P_DEV_FORCE_FREQ))
 		return;
 	/* Filter out frequencies that are not acceptable for P2P use */
 	is_6ghz_capab = is_p2p_6ghz_capable(p2p) &&
