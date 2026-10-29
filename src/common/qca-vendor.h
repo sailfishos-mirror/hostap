@@ -16706,6 +16706,26 @@ enum qca_wlan_vendor_attr_roam_stats_info {
 	 * which the reassociation occurred during the roam.
 	 */
 	QCA_WLAN_VENDOR_ATTR_ROAM_STATS_ROAMED_BSSID = 47,
+	/* 64-bit unsigned value in milliseconds to indicate the timestamp
+	 * from system boot at which the roam attempt completed in the
+	 * driver/firmware, regardless of whether the attempt succeeded or
+	 * failed.
+	 */
+	QCA_WLAN_VENDOR_ATTR_ROAM_STATS_ROAM_RESULT_TIMESTAMP = 48,
+	/* 8-bit signed RSSI value (in dBm).
+	 * For non-MLO scenarios, this represents the last known RSSI of the
+	 * previously associated BSS before roaming.
+	 * For MLO scenarios, this represents the RSSI of the link BSS on
+	 * which the roaming decision was triggered.
+	 */
+	QCA_WLAN_VENDOR_ATTR_ROAM_STATS_PREVIOUS_ASSOCIATED_BSS_RSSI = 49,
+	/* u8 attribute.
+	 * 1 - The roam scan and/or candidate selection for this roam attempt
+	 *     was assisted by Neighbor Report information received from the
+	 *     currently associated AP.
+	 * 0 - Neighbor Report information was not used for this roam attempt.
+	 */
+	QCA_WLAN_VENDOR_ATTR_ROAM_STATS_NEIGHBOR_REPORT_ASSISTED = 50,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_ROAM_STATS_AFTER_LAST,
