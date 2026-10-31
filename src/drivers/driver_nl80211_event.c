@@ -2874,6 +2874,21 @@ static void nl80211_radar_event(struct i802_bss *bss, struct nlattr **tb)
 	if (hit)
 		return;
 
+	/* NOP_FINISHED and PRE_CAC_EXPIRED change the DFS state of a channel
+	 * of the wiphy and come without an interface. A BSS that is not
+	 * beaconing, e.g., while it restarts and runs ACS, has no frequency to
+	 * match, but its interface still keeps the state of that channel.
+	 * Losing the event leaves the channel available there after the
+	 * kernel expired its CAC, so a later start on it skips CAC and the
+	 * kernel refuses the channel. The handlers ignore a frequency outside
+	 * the interface's own range. */
+	if (event_type == NL80211_RADAR_NOP_FINISHED ||
+	    event_type == NL80211_RADAR_PRE_CAC_EXPIRED) {
+		data.dfs_event.link_id = NL80211_DRV_LINK_ID_NA;
+		nl80211_process_radar_event(drv->first_bss, &data, event_type);
+		return;
+	}
+
 	wpa_printf(MSG_DEBUG, "nl80211: DFS event on unknown freq on %s",
 		   bss->ifname);
 }
