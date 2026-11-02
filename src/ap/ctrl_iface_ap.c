@@ -810,6 +810,99 @@ int hostapd_ctrl_iface_poll_sta(struct hostapd_data *hapd,
 }
 
 
+static u8 hostapd_ap_maxnss(struct hostapd_data *hapd)
+{
+	struct hostapd_hw_modes *mode = hapd->iface->current_mode;
+	struct hostapd_config *conf = hapd->iface->conf;
+	u8 rx_nss, max_nss = 1, nss;
+	u8 mcs_count;
+	u16 mcs_map;
+	u8 mcs;
+	const u8 *mcs_set;
+	const u16 *he_mcs_set;
+	int i, j;
+
+	if (!mode)
+		return max_nss;
+
+	if (hostapd_is_ht_enabled(hapd)) {
+		mcs_set = mode->mcs_set;
+		rx_nss = (!!mcs_set[0]) + (!!mcs_set[1]) +
+			(!!mcs_set[2]) + (!!mcs_set[3]);
+		if (rx_nss > max_nss)
+			max_nss = rx_nss;
+	}
+
+	if (hostapd_is_vht_enabled(hapd)) {
+		mcs_map = (u16) (mode->vht_mcs_set[4] |
+				 (mode->vht_mcs_set[5] << 8));
+		for (i = 7; i >= 0; i--) {
+			mcs = (mcs_map >> (2 * i)) & 0x03;
+			if (mcs != 0x03) {
+				rx_nss = i + 1;
+				if (rx_nss > max_nss)
+					max_nss = rx_nss;
+				break;
+			}
+		}
+	}
+
+	if (hostapd_is_he_enabled(hapd)) {
+		switch (conf->he_oper_chwidth) {
+		case CONF_OPER_CHWIDTH_80P80MHZ:
+			mcs_count = 3;
+			break;
+		case CONF_OPER_CHWIDTH_160MHZ:
+			mcs_count = 2;
+			break;
+		default:
+			mcs_count = 1;
+			break;
+		}
+
+		he_mcs_set =
+			(const u16 *) mode->he_capab[IEEE80211_MODE_AP].mcs;
+		for (i = 0; i < mcs_count; i++) {
+			mcs_map = WPA_GET_LE16((const u8 *) &he_mcs_set[i * 2]);
+			for (j = 7; j >= 0; j--) {
+				mcs = (mcs_map >> (2 * j)) & 0x03;
+				if (mcs != 0x03) {
+					rx_nss = j + 1;
+					if (rx_nss > max_nss)
+						max_nss = rx_nss;
+					break;
+				}
+			}
+		}
+	}
+
+	if (hostapd_is_eht_enabled(hapd)) {
+		mcs_count = 1;
+		switch (conf->eht_oper_chwidth) {
+		case CONF_OPER_CHWIDTH_320MHZ:
+			mcs_count++;
+			/* fallthrough */
+		case CONF_OPER_CHWIDTH_80P80MHZ:
+		case CONF_OPER_CHWIDTH_160MHZ:
+			mcs_count++;
+			break;
+		default:
+			break;
+		}
+
+		mcs_set = mode->eht_capab[IEEE80211_MODE_AP].mcs;
+		for (i = 0; i < mcs_count * EHT_PHYCAP_MCS_NSS_LEN_20MHZ_PLUS;
+		     i++) {
+			nss = mcs_set[i] & 0x0F;
+			if (nss > max_nss)
+				max_nss = nss;
+		}
+	}
+
+	return max_nss;
+}
+
+
 int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 			      size_t buflen)
 {
@@ -1082,6 +1175,12 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 			return len;
 		len += ret;
 	}
+
+	ret = os_snprintf(buf + len, buflen - len, "max_nss=%u\n",
+			  hostapd_ap_maxnss(hapd));
+	if (os_snprintf_error(buflen - len, ret))
+		return len;
+	len += ret;
 
 	for (j = 0; mode && j < mode->num_channels; j++) {
 		if (mode->channels[j].freq == iface->freq) {
