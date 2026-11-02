@@ -147,7 +147,7 @@ int crypto_cipher_encrypt(struct crypto_cipher *ctx, const u8 *plain,
 		blocks = len / 8;
 		for (i = 0; i < blocks; i++) {
 			for (j = 0; j < 8; j++)
-				ctx->u.des3.cbc[j] ^= plain[j];
+				ctx->u.des.cbc[j] ^= plain[j];
 			des_block_encrypt(ctx->u.des.cbc, ctx->u.des.ek,
 					  ctx->u.des.cbc);
 			os_memcpy(crypt, ctx->u.des.cbc, 8);
