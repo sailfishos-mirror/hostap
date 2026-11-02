@@ -2825,11 +2825,13 @@ static int hostapd_ctrl_iface_color_change(struct hostapd_iface *iface,
 
 static u8 hostapd_maxnss(struct hostapd_data *hapd, struct sta_info *sta)
 {
-	u8 rx_nss, max_nss = 1;
+	u8 rx_nss, max_nss = 1, nss;
+	u8 mcs_count;
 	u16 mcs_map;
 	u8 mcs;
 	const u8 *mcs_set;
-	int i;
+	const u16 *he_mcs_set;
+	int i, j;
 
 	if (sta->ht_capabilities && (sta->flags & WLAN_STA_HT)) {
 		mcs_set = sta->ht_capabilities->supported_mcs_set;
@@ -2850,6 +2852,57 @@ static u8 hostapd_maxnss(struct hostapd_data *hapd, struct sta_info *sta)
 					max_nss = rx_nss;
 				break;
 			}
+		}
+	}
+
+	if (sta->he_capab && (sta->flags & WLAN_STA_HE)) {
+		switch (hapd->iface->conf->he_oper_chwidth) {
+		case CONF_OPER_CHWIDTH_80P80MHZ:
+			mcs_count = 3;
+			break;
+		case CONF_OPER_CHWIDTH_160MHZ:
+			mcs_count = 2;
+			break;
+		default:
+			mcs_count = 1;
+			break;
+		}
+
+		he_mcs_set = (const u16 *) sta->he_capab->optional;
+		for (i = 0; i < mcs_count; i++) {
+			mcs_map = WPA_GET_LE16((const u8 *) &he_mcs_set[i * 2]);
+			for (j = 7; j >= 0; j--) {
+				mcs = (mcs_map >> (2 * j)) & 0x03;
+				if (mcs != 0x03) {
+					rx_nss = j + 1;
+					if (rx_nss > max_nss)
+						max_nss = rx_nss;
+					break;
+				}
+			}
+		}
+	}
+
+	if (sta->eht_capab && (sta->flags & WLAN_STA_EHT)) {
+		mcs_count = 1;
+		switch (hapd->iface->conf->eht_oper_chwidth) {
+		case CONF_OPER_CHWIDTH_320MHZ:
+			mcs_count++;
+			/* fallthrough */
+		case CONF_OPER_CHWIDTH_80P80MHZ:
+		case CONF_OPER_CHWIDTH_160MHZ:
+			mcs_count++;
+			break;
+		default:
+			break;
+		}
+
+		mcs_set = sta->eht_capab->optional;
+		for (i = 0; i < mcs_count * EHT_PHYCAP_MCS_NSS_LEN_20MHZ_PLUS;
+		     i++) {
+			nss = mcs_set[i] & 0x0F;
+			if (nss > max_nss)
+				max_nss = nss;
 		}
 	}
 
