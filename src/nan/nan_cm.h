@@ -128,7 +128,7 @@ int nan_cm_build_saqa(struct wpabuf *buf, u8 dialog_token, u8 ctrl);
 int nan_cm_parse_saqa(const u8 *data, size_t len, struct nan_cm_saqa *saqa);
 
 /**
- * struct nan_cm_rkra - Parsed Rekey Request attribute
+ * struct nan_cm_rka - Parsed Rekey attribute
  * @ctrl: Attribute Control field (NAN_RKA_CTRL_*)
  * @init_ndi: Initiator NDI of the ND-TKSA; NULL if not ND-TK rekey
  * @resp_ndi: Responder NDI of the ND-TKSA; NULL if not ND-TK rekey
@@ -144,7 +144,7 @@ struct nan_cm_rka {
 };
 
 /**
- * nan_cm_build_rka - Build a Rekey Request attribute
+ * nan_cm_build_rka - Build a Rekey attribute
  * @buf: Buffer to which the attribute is appended
  * @ctrl: Attribute Control field (NAN_RKA_CTRL_*)
  * @init_ndi: Initiator NDI of the ND-TKSA; used only for ND-TK rekey
@@ -153,10 +153,10 @@ struct nan_cm_rka {
  * Returns: 0 on success, -1 on failure
  */
 int nan_cm_build_rka(struct wpabuf *buf, u8 ctrl, const u8 *init_ndi,
-		      const u8 *resp_ndi, u8 ndp_id);
+		     const u8 *resp_ndi, u8 ndp_id);
 
 /**
- * nan_cm_parse_rka - Parse a Rekey Request attribute
+ * nan_cm_parse_rka - Parse a Rekey attribute
  * @data: Attribute body (after the Attribute ID and Length fields)
  * @len: Length of the attribute body
  * @rka: Buffer for returning the parsed attribute
