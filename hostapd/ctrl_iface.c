@@ -2825,47 +2825,35 @@ static int hostapd_ctrl_iface_color_change(struct hostapd_iface *iface,
 
 static u8 hostapd_maxnss(struct hostapd_data *hapd, struct sta_info *sta)
 {
-	u8 *mcs_set = NULL;
+	u8 rx_nss, max_nss = 1;
 	u16 mcs_map;
-	u8 ht_rx_nss = 0;
-	u8 vht_rx_nss = 1;
 	u8 mcs;
-	bool ht_supported = false;
-	bool vht_supported = false;
+	const u8 *mcs_set;
 	int i;
 
 	if (sta->ht_capabilities && (sta->flags & WLAN_STA_HT)) {
 		mcs_set = sta->ht_capabilities->supported_mcs_set;
-		ht_supported = true;
+		rx_nss = (!!mcs_set[0]) + (!!mcs_set[1]) +
+			(!!mcs_set[2]) + (!!mcs_set[3]);
+		if (rx_nss > max_nss)
+			max_nss = rx_nss;
 	}
 
 	if (sta->vht_capabilities && (sta->flags & WLAN_STA_VHT)) {
 		mcs_map = le_to_host16(
 			sta->vht_capabilities->vht_supported_mcs_set.rx_map);
-		vht_supported = true;
-	}
-
-	if (ht_supported && mcs_set) {
-		if (mcs_set[0])
-			ht_rx_nss++;
-		if (mcs_set[1])
-			ht_rx_nss++;
-		if (mcs_set[2])
-			ht_rx_nss++;
-		if (mcs_set[3])
-			ht_rx_nss++;
-	}
-	if (vht_supported) {
 		for (i = 7; i >= 0; i--) {
 			mcs = (mcs_map >> (2 * i)) & 0x03;
 			if (mcs != 0x03) {
-				vht_rx_nss = i + 1;
+				rx_nss = i + 1;
+				if (rx_nss > max_nss)
+					max_nss = rx_nss;
 				break;
 			}
 		}
 	}
 
-	return ht_rx_nss > vht_rx_nss ? ht_rx_nss : vht_rx_nss;
+	return max_nss;
 }
 
 
