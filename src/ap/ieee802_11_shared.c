@@ -507,6 +507,21 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx,
 }
 
 
+static void hostapd_clear_ext_capab_byte(struct hostapd_data *hapd,
+					 u8 *pos, int idx)
+{
+	/*
+	 * Clear bits 83 and 22 if EMA and MBSSID are not enabled
+	 * otherwise association fails with some clients
+	 */
+	if (idx == 10 && hapd->iconf->mbssid < ENHANCED_MBSSID_ENABLED)
+		*pos &= ~0x08;
+
+	if (idx == 2 && !hapd->iconf->mbssid)
+		*pos &= ~0x40;
+}
+
+
 u8 * hostapd_eid_ext_capab(struct hostapd_data *hapd, u8 *eid,
 			   bool mbssid_complete)
 {
@@ -531,12 +546,11 @@ u8 * hostapd_eid_ext_capab(struct hostapd_data *hapd, u8 *eid,
 			*pos |= hapd->conf->ext_capa[i];
 		}
 
-		/* Clear bits 83 and 22 if EMA and MBSSID are not enabled
-		 * otherwise association fails with some clients */
-		if (i == 10 && hapd->iconf->mbssid < ENHANCED_MBSSID_ENABLED)
-			*pos &= ~0x08;
-		if (i == 2 && !hapd->iconf->mbssid)
-			*pos &= ~0x40;
+		/*
+		 * Clear Extended Capabilities bits for features
+		 * disabled through hostapd configuration
+		 */
+		hostapd_clear_ext_capab_byte(hapd, pos, i);
 	}
 
 	while (len > 0 && eid[1 + len] == 0) {
