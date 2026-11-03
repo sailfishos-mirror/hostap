@@ -419,7 +419,8 @@ static int eap_ttls_phase2_request_eap_method(struct eap_sm *sm,
 
 	if (data->tnc_started) {
 		if (data->phase2_eap_type.vendor != EAP_VENDOR_IETF ||
-		    data->phase2_eap_type.method == EAP_TYPE_TNC) {
+		    data->phase2_eap_type.method == EAP_TYPE_TNC ||
+		    vendor != EAP_VENDOR_IETF || method != EAP_TYPE_TNC) {
 			wpa_printf(MSG_DEBUG, "EAP-TTLS: Unexpected EAP "
 				   "type %d for TNC", method);
 			return -1;
