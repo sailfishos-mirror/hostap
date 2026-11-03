@@ -1870,6 +1870,8 @@ static void mlme_event(struct i802_bss *bss,
 	int link_id = -1;
 	struct i802_link *mld_link = NULL;
 	const struct ieee80211_mgmt *mgmt = NULL;
+	const u8 *a1, *a2;
+	bool foreign_addr;
 
 	if (timed_out && addr) {
 		mlme_timeout_event(drv, cmd, addr);
@@ -1924,13 +1926,25 @@ static void mlme_event(struct i802_bss *bss,
 		auth_type = le_to_host16(mgmt->u.auth.auth_alg);
 	}
 
-	if (cmd == NL80211_CMD_FRAME && stype == WLAN_FC_STYPE_AUTH &&
+	a1 = data + 4;
+	a2 = a1 + ETH_ALEN;
+	foreign_addr = !is_multicast_ether_addr(a1) &&
+		!ether_addr_equal(bss->addr, a1) &&
+		(is_zero_ether_addr(bss->rand_addr) ||
+		 !ether_addr_equal(bss->rand_addr, a1)) &&
+		(!mld_link || !ether_addr_equal(mld_link->addr, a1)) &&
+		!ether_addr_equal(bss->addr, a2) &&
+		(is_zero_ether_addr(bss->prev_addr) ||
+		 !ether_addr_equal(bss->prev_addr, a2));
+
+	if (foreign_addr &&
+	    cmd == NL80211_CMD_FRAME && stype == WLAN_FC_STYPE_AUTH &&
 	    auth_type == WLAN_AUTH_PASN) {
 		wpa_printf(MSG_DEBUG,
 			   "nl80211: %s: Allow PASN frame for foreign address",
 			   bss->ifname);
 #ifdef CONFIG_NAN_USD
-	} else if (cmd == NL80211_CMD_FRAME &&
+	} else if (foreign_addr && cmd == NL80211_CMD_FRAME &&
 		   stype == WLAN_FC_STYPE_ACTION && mgmt &&
 		   len >= offsetof(struct ieee80211_mgmt,
 				   u.action.u.vs_public_action.variable) + 1 &&
@@ -1942,16 +1956,7 @@ static void mlme_event(struct i802_bss *bss,
 		wpa_printf(MSG_DEBUG, "nl80211: %s: Allow NAN USD frame",
 			   bss->ifname);
 #endif /* CONFIG_NAN_USD */
-	} else if (cmd != NL80211_CMD_FRAME_TX_STATUS  &&
-		   !(data[4] & 0x01) &&
-		   !ether_addr_equal(bss->addr, data + 4) &&
-		   (is_zero_ether_addr(bss->rand_addr) ||
-		    !ether_addr_equal(bss->rand_addr, data + 4)) &&
-		   !ether_addr_equal(bss->addr, data + 4 + ETH_ALEN) &&
-		   (is_zero_ether_addr(drv->first_bss->prev_addr) ||
-		    !ether_addr_equal(bss->prev_addr, data + 4 + ETH_ALEN)) &&
-		   (!mld_link ||
-		    !ether_addr_equal(mld_link->addr, data + 4))) {
+	} else if (foreign_addr && cmd != NL80211_CMD_FRAME_TX_STATUS) {
 		wpa_printf(MSG_MSGDUMP, "nl80211: %s: Ignore MLME frame event "
 			   "for foreign address", bss->ifname);
 		return;
