@@ -510,6 +510,14 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx,
 static void hostapd_clear_ext_capab_byte(struct hostapd_data *hapd,
 					 u8 *pos, int idx)
 {
+	/* Clear bit 78 if TWT responder support is disabled */
+	if (idx == 9 &&
+#ifdef CONFIG_IEEE80211AX
+	    !hostapd_get_he_twt_responder(hapd, IEEE80211_MODE_AP) &&
+#endif /* CONFIG_IEEE80211AX */
+	    !hostapd_get_ht_vht_twt_responder(hapd))
+		*pos &= ~0x40;
+
 	/*
 	 * Clear bits 83 and 22 if EMA and MBSSID are not enabled
 	 * otherwise association fails with some clients
