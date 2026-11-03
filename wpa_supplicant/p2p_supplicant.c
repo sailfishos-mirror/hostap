@@ -5614,6 +5614,7 @@ static void wpas_p2p_send_bootstrap_comeback(void *eloop_ctx, void *timeout_ctx)
 	wpa_printf(MSG_DEBUG, "P2P2: Send bootstrapping comeback PD Request");
 
 	if (wpa_s->p2p_pd_before_go_neg) {
+		wpa_s->p2p_pd_before_go_neg = 0;
 		wpas_p2p_connect(wpa_s, wpa_s->p2p_bootstrap_dev_addr,
 				 wpa_s->p2p_pin, wpa_s->p2p_wps_method,
 				 wpa_s->p2p_persistent_group, 0, 0, 0,
@@ -5683,8 +5684,10 @@ static void wpas_bootstrap_rsp_rx(void *ctx, const u8 *addr,
 		       MAC2STR(addr), status);
 
 #ifdef CONFIG_PASN
-	if (wpa_s->p2p_pd_before_go_neg)
+	if (wpa_s->p2p_pd_before_go_neg) {
+		wpa_s->p2p_pd_before_go_neg = 0;
 		wpas_p2p_initiate_pasn_auth(wpa_s, addr, freq);
+	}
 #endif /* CONFIG_PASN */
 }
 
