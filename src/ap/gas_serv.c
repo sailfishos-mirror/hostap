@@ -681,7 +681,8 @@ static void anqp_add_nai_realm(struct hostapd_data *hapd, struct wpabuf **buf,
 
 			realm = &hapd->conf->nai_realm_data[i];
 			tlen += 2 + 1 + 1;
-			for (j = 0; realm->realm[j]; j++) {
+			for (j = 0; j < MAX_NAI_REALMS && realm->realm[j];
+			     j++) {
 				if (j > 0)
 					tlen++;
 				tlen += os_strlen(realm->realm[j]);
@@ -708,7 +709,8 @@ static void anqp_add_nai_realm(struct hostapd_data *hapd, struct wpabuf **buf,
 			realm_data_len = wpabuf_put(*buf, 2);
 			wpabuf_put_u8(*buf, realm->encoding);
 			realm_len = wpabuf_put(*buf, 1);
-			for (j = 0; realm->realm[j]; j++) {
+			for (j = 0; j < MAX_NAI_REALMS && realm->realm[j];
+			     j++) {
 				if (j > 0)
 					wpabuf_put_u8(*buf, ';');
 				wpabuf_put_str(*buf, realm->realm[j]);
