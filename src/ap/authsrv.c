@@ -497,8 +497,11 @@ int authsrv_init(struct hostapd_data *hapd)
 
 #ifdef RADIUS_SERVER
 	if (hapd->conf->radius_server_clients &&
-	    hostapd_setup_radius_srv(hapd))
+	    hostapd_setup_radius_srv(hapd)) {
+		authsrv_deinit(hapd);
 		return -1;
+	    }
+
 #endif /* RADIUS_SERVER */
 
 	return 0;
