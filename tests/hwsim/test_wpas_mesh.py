@@ -1170,6 +1170,52 @@ def _test_wpas_mesh_open_vht20(dev, apdev):
     dev[0].dump_monitor()
     dev[1].dump_monitor()
 
+def test_mesh_open_vht_80(dev, apdev):
+    """Open mesh network on VHT 80 MHz channel"""
+    try:
+        _test_mesh_open_vht_80(dev, apdev)
+    finally:
+        clear_reg_setting(dev)
+
+def _test_mesh_open_vht_80(dev, apdev):
+    check_mesh_support(dev[0])
+    check_mesh_support(dev[1])
+    dev[0].flush_scan_cache()
+    dev[1].flush_scan_cache()
+    subprocess.call(['iw', 'reg', 'set', 'US'])
+    for i in range(2):
+        for j in range(5):
+            ev = dev[i].wait_event(["CTRL-EVENT-REGDOM-CHANGE"], timeout=5)
+            if ev is None:
+                raise Exception("No regdom change event")
+            if "alpha2=US" in ev:
+                break
+
+        add_open_mesh_network(dev[i], freq="5180", chwidth=1)
+
+    check_mesh_joined_connected(dev, connectivity=True)
+    dev[0].dump_monitor()
+    dev[1].dump_monitor()
+
+    sig = dev[0].request("SIGNAL_POLL").splitlines()
+    if "WIDTH=80 MHz" not in sig:
+        raise Exception("Unexpected SIGNAL_POLL value(2): " + str(sig))
+    if "FREQUENCY=5180" not in sig:
+        raise Exception("Unexpected SIGNAL_POLL value(3): " + str(sig))
+
+    sig = dev[1].request("SIGNAL_POLL").splitlines()
+    if "WIDTH=80 MHz" not in sig:
+        raise Exception("Unexpected SIGNAL_POLL value(2b): " + str(sig))
+    if "FREQUENCY=5180" not in sig:
+        raise Exception("Unexpected SIGNAL_POLL value(3b): " + str(sig))
+
+    dev[0].mesh_group_remove()
+    dev[1].mesh_group_remove()
+    check_mesh_group_removed(dev[0])
+    check_mesh_group_removed(dev[1])
+    dev[0].dump_monitor()
+    dev[1].dump_monitor()
+
 def test_wpas_mesh_open_vht_80p80(dev, apdev):
     """wpa_supplicant open MESH network on VHT 80+80 MHz channel"""
     try:
