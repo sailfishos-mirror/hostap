@@ -1223,6 +1223,9 @@ def test_mesh_open_vht_160(dev, apdev):
 
 def _test_mesh_open_vht_160(dev, apdev):
     check_mesh_support(dev[0])
+    check_mesh_support(dev[1])
+    dev[0].flush_scan_cache()
+    dev[1].flush_scan_cache()
     subprocess.call(['iw', 'reg', 'set', 'ZA'])
     for i in range(2):
         for j in range(5):
@@ -2625,6 +2628,8 @@ def test_wpas_mesh_secure_6ghz_320(dev, apdev):
     """wpa_supplicant secure 6 GHz mesh network connectivity in 320 MHz"""
     check_mesh_support(dev[0], secure=True)
     check_mesh_support(dev[1], secure=True)
+    dev[0].flush_scan_cache()
+    dev[1].flush_scan_cache()
 
     try:
         # CA enables 320 MHz channels without NO-IR restriction
