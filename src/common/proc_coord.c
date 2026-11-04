@@ -311,6 +311,7 @@ static void proc_coord_receive(int sock, void *eloop_ctx, void *sock_ctx)
 	struct msghdr mh;
 	struct iovec io[2];
 	struct proc_coord_handler *handler, *h_tmp;
+	size_t pid_len;
 
 	res = recv(sock, tmp, 0, MSG_PEEK | MSG_TRUNC);
 	if (res < 0) {
@@ -372,7 +373,13 @@ static void proc_coord_receive(int sock, void *eloop_ctx, void *sock_ctx)
 	if (pos == from.sun_path)
 		goto out;
 	pos++;
-	os_memcpy(tmp, pos, end - pos);
+	if (end <= pos)
+		goto out;
+	pid_len = (size_t) (end - pos);
+	if (pid_len >= sizeof(tmp))
+		goto out;
+	os_memcpy(tmp, pos, pid_len);
+	tmp[pid_len] = '\0';
 	pid = atoi(tmp);
 
 	wpa_printf(MSG_DEBUG, "proc_coord: pid=%u msg_type=%u cmd=%u seq=%u",
