@@ -133,7 +133,10 @@ static void vlan_dynamic_remove(struct hostapd_data *hapd,
 int vlan_init(struct hostapd_data *hapd)
 {
 #ifdef CONFIG_FULL_DYNAMIC_VLAN
-	hapd->full_dynamic_vlan = full_dynamic_vlan_init(hapd);
+	/* Only a BSS that can have VLAN interfaces needs their link events */
+	if (hapd->conf->ssid.dynamic_vlan != DYNAMIC_VLAN_DISABLED ||
+	    hapd->conf->ssid.per_sta_vif || hapd->conf->vlan)
+		hapd->full_dynamic_vlan = full_dynamic_vlan_init(hapd);
 #endif /* CONFIG_FULL_DYNAMIC_VLAN */
 
 	if ((hapd->conf->ssid.dynamic_vlan != DYNAMIC_VLAN_DISABLED ||
