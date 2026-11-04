@@ -2795,6 +2795,10 @@ struct wpa_driver_capa {
 		bool pd_support;
 	} ranging_type;
 
+	/* Maximum length of an MMPDU on the RX path. 0 indicates that this is
+	 * unknown */
+	size_t max_mmpdu_len_rx;
+
 #ifdef CONFIG_NAN
 	struct nan_capa nan_capa;
 #endif /* CONFIG_NAN */

@@ -9005,6 +9005,7 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 			wpa_s->mac_addr_rand_supported |=
 				(MAC_ADDR_RAND_SCHED_SCAN | MAC_ADDR_RAND_PNO);
 		wpa_s->drv_max_probe_req_ie_len = capa.max_probe_req_ie_len;
+		wpa_s->drv_max_mmpdu_len_rx = capa.max_mmpdu_len_rx;
 
 		wpa_drv_get_ext_capa(wpa_s, WPA_IF_STATION);
 		if (wpa_s->extended_capa &&

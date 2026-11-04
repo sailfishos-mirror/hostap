@@ -1038,6 +1038,7 @@ struct wpa_supplicant {
 	unsigned int drv_rrm_flags;
 	unsigned int drv_max_acl_mac_addrs;
 	size_t drv_max_probe_req_ie_len;
+	size_t drv_max_mmpdu_len_rx;
 
 	/*
 	 * A bitmap of supported protocols for probe response offload. See
