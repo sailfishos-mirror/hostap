@@ -828,6 +828,7 @@ int aes_unwrap(const u8 *kek, size_t kek_len, int n, const u8 *cipher,
 	if (ret < 0) {
 		wpa_printf(MSG_ERROR, "%s: sendmsg failed: %s",
 			   __func__, strerror(errno));
+		linux_af_alg_skcipher_deinit(skcipher);
 		return -1;
 	}
 
