@@ -129,7 +129,7 @@ void * aes_decrypt_init(const u8 *key, size_t len)
 int aes_decrypt(void *ctx, const u8 *crypt, u8 *plain)
 {
 	symmetric_key *skey = ctx;
-	return aes_ecb_encrypt(plain, (u8 *) crypt, skey) == CRYPT_OK ? 0 : -1;
+	return aes_ecb_decrypt(crypt, plain, skey) == CRYPT_OK ? 0 : -1;
 }
 
 
