@@ -941,6 +941,22 @@ static void wpas_pasn_sec_prof_eppke(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_ENC_ASSOC */
 
 
+/*
+ * The Security Profile element's copy of the Extended RSN Capabilities is
+ * considered only for EPPKE. Other PASN uses the AP's RSNXE.
+ */
+static bool wpas_pasn_ap_rsnx_capab(struct wpa_supplicant *wpa_s,
+				    struct wpa_bss *bss, unsigned int auth_alg,
+				    unsigned int capab)
+{
+	if (auth_alg == WLAN_AUTH_EPPKE)
+		return wpas_eppke_ap_rsnx_capab(wpa_s, bss, capab);
+
+	return ieee802_11_rsnx_capab(wpa_bss_get_rsnxe(wpa_s, bss, NULL, false),
+				     capab);
+}
+
+
 static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
 {
 	struct wpa_supplicant *wpa_s = work->wpa_s;
@@ -954,7 +970,7 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
 	u16 fils_info;
 #endif /* CONFIG_FILS */
 	u64 capab = 0;
-	bool derive_kdk;
+	bool derive_kdk, ap_secure_ltf;
 	int ret;
 
 	wpa_printf(MSG_DEBUG, "PASN: auth_start_cb: deinit=%d", deinit);
@@ -990,12 +1006,16 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
 		goto fail;
 	}
 
-	/* Use the RSNXOE, if it was included, for actual AP capability check */
-	rsnxe = wpa_bss_get_rsnxe(wpa_s, bss, NULL, false);
-
+	/*
+	 * Use the RSNXOE, if it was included, for actual AP capability check.
+	 * With EPPKE, the AP might omit or mask the RSNXE, so the Security
+	 * Profile element's copy of the Extended RSN Capabilities is also
+	 * considered.
+	 */
+	ap_secure_ltf = wpas_pasn_ap_rsnx_capab(wpa_s, bss, awork->auth_alg,
+						WLAN_RSNX_CAPAB_SECURE_LTF);
 	derive_kdk = (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_STA) &&
-		ieee802_11_rsnx_capab(rsnxe,
-				      WLAN_RSNX_CAPAB_SECURE_LTF);
+		ap_secure_ltf;
 #ifdef CONFIG_TESTING_OPTIONS
 	if (!derive_kdk)
 		derive_kdk = wpa_s->conf->force_kdk_derivation;
@@ -1008,7 +1028,7 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
 	wpa_printf(MSG_DEBUG, "PASN: kdk_len=%zu", pasn->kdk_len);
 
 	if ((wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_STA) &&
-	    ieee802_11_rsnx_capab(rsnxe, WLAN_RSNX_CAPAB_SECURE_LTF))
+	    ap_secure_ltf)
 		pasn->secure_ltf = true;
 	else
 		pasn->secure_ltf = false;
@@ -1046,7 +1066,8 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
 		}
 	}
 	if ((wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SPP_AMSDU) &&
-	    ieee802_11_rsnx_capab(rsnxe, WLAN_RSNX_CAPAB_SPP_A_MSDU))
+	    wpas_pasn_ap_rsnx_capab(wpa_s, bss, awork->auth_alg,
+				    WLAN_RSNX_CAPAB_SPP_A_MSDU))
 		capab |= BIT(WLAN_RSNX_CAPAB_SPP_A_MSDU);
 	ssid = wpa_config_get_network(wpa_s->conf, awork->network_id);
 #ifdef CONFIG_ENC_ASSOC
@@ -1107,8 +1128,8 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
 			if ((wpa_s->drv_flags2 &
 			     WPA_DRIVER_FLAGS2_PMKSA_PRIVACY) &&
 			    ssid->pmksa_privacy &&
-			    ieee802_11_rsnx_capab(
-				    rsnxe,
+			    wpas_eppke_ap_rsnx_capab(
+				    wpa_s, bss,
 				    WLAN_RSNX_CAPAB_PMKSA_CACHING_PRIVACY))
 				capab |= BIT(
 					WLAN_RSNX_CAPAB_PMKSA_CACHING_PRIVACY);
@@ -1297,8 +1318,8 @@ int wpas_pasn_auth_start(struct wpa_supplicant *wpa_s,
 	}
 
 	if (ltf_keyseed_required &&
-	    !ieee802_11_rsnx_capab(wpa_bss_get_rsnxe(wpa_s, bss, NULL, false),
-				   WLAN_RSNX_CAPAB_SECURE_LTF)) {
+	    !wpas_pasn_ap_rsnx_capab(wpa_s, bss, auth_alg,
+				     WLAN_RSNX_CAPAB_SECURE_LTF)) {
 		wpa_printf(MSG_DEBUG,
 			   "PASN: LTF keyseed required but peer does not support Secure LTF");
 		return -1;
