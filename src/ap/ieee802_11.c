@@ -3119,6 +3119,11 @@ prepare_802_1x_auth_resp(struct hostapd_data *hapd, struct sta_info *sta,
 		wpabuf_free(pqc);
 #endif /* CONFIG_PQC */
 	}
+
+	if (enc_assoc &&
+	    (status == WLAN_STATUS_802_1_X_AUTH_SUCCESS || cached_pmk))
+		wpa_add_supported_groups(data, hapd->conf->pasn_groups);
+
 reply:
 	return data;
 }
