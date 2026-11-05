@@ -2919,9 +2919,19 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_IEEE8021X_AUTH */
 
 #ifdef CONFIG_ENC_ASSOC
+		/*
+		 * An AP enabling security profiles 1 or 2 may advertise EPPKE
+		 * only via the Security Profile element bitmap while its RSNE
+		 * lists just the SAE-EXT-KEY or FT-SAE-EXT-KEY AKM (IEEE
+		 * P802.11bn/D2.0, Table 9-bb18). Only do this if EPPKE is
+		 * enabled in the network profile so that a security profile 9
+		 * or 10 STA does not get steered to EPPKE.
+		 */
 		if (wpa_s->key_mgmt == WPA_KEY_MGMT_EPPKE ||
 		    ((wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_EPPKE) &&
-		     (sel & WPA_KEY_MGMT_EPPKE)))
+		     ((sel & WPA_KEY_MGMT_EPPKE) ||
+		      ((ssid->key_mgmt & WPA_KEY_MGMT_EPPKE) &&
+		       security_profile_has_eppke(sp, ssid->key_mgmt)))))
 			eppke = true;
 #endif /* CONFIG_ENC_ASSOC */
 
