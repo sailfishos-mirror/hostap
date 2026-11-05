@@ -854,6 +854,14 @@ static int idp_pasn_rx_m1(struct wpa_supplicant *wpa_s,
 	if (!wpa_s->global->idp)
 		return -1;
 
+	if (!wpas_idp_peer_supports_idp(wpa_s, peer_addr)) {
+		wpa_printf(MSG_DEBUG,
+			   "IDP-PASN: Ignoring PASN M1 from " MACSTR
+			   " without advertised IDP connection capability",
+			   MAC2STR(peer_addr));
+		return -1;
+	}
+
 	if (wpas_idp_get_pending_request_by_peer(wpa_s, peer_addr)) {
 		wpa_printf(MSG_DEBUG,
 			   "IDP-PASN: Repeated PASN M1 from " MACSTR

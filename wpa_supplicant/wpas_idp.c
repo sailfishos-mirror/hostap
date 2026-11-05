@@ -73,6 +73,28 @@ static u8 idp_assign_session_id(struct wpas_idp_session *session)
 }
 
 
+/**
+ * wpas_idp_peer_supports_idp - Check whether a peer advertised IDP support
+ * @wpa_s: Interface holding the NAN context
+ * @peer_addr: Peer NAN management interface address
+ * Returns: Whether the peer advertised the IDP connection capability
+ */
+bool wpas_idp_peer_supports_idp(struct wpa_supplicant *wpa_s,
+				const u8 *peer_addr)
+{
+	u16 conn_capa;
+	bool valid;
+
+	if (!wpa_s || !wpa_s->nan)
+		return false;
+	if (nan_peer_get_conn_capa(wpa_s->nan, peer_addr,
+				   &conn_capa, &valid) < 0 || !valid)
+		return false;
+
+	return !!(conn_capa & NAN_CONN_CAPA_IDP);
+}
+
+
 /*
  * idp_set_channel_from_freq - Settle a session's channel on a given frequency
  * @session: Session to configure

@@ -161,6 +161,10 @@ struct wpas_idp_info {
 
 int wpas_idp_init(struct wpa_global *global);
 void wpas_idp_deinit(struct wpa_global *global);
+
+bool wpas_idp_peer_supports_idp(struct wpa_supplicant *wpa_s,
+				const u8 *peer_addr);
+
 struct wpas_idp_session *
 wpas_idp_get_session_by_peer(struct wpa_supplicant *wpa_s, const u8 *peer_addr);
 struct wpas_idp_session *
