@@ -1197,8 +1197,7 @@ static u8 * hostapd_eid_rsnxe_akm(struct hostapd_data *hapd, u8 *eid,
 	    (hapd->conf->assoc_frame_encryption ||
 	    hapd->conf->pmksa_caching_privacy))
 		capab |= BIT(WLAN_RSNX_CAPAB_ASSOC_FRAME_ENCRYPTION);
-	if ((key_mgmt |
-	     hostapd_config_sp_key_mgmt(hapd->conf)) & WPA_KEY_MGMT_EPPKE)
+	if (key_mgmt & WPA_KEY_MGMT_EPPKE)
 		capab |= BIT(WLAN_RSNX_CAPAB_KEK_IN_PASN);
 	if (hapd->conf->pmksa_caching_privacy)
 		capab |= BIT(WLAN_RSNX_CAPAB_PMKSA_CACHING_PRIVACY);
