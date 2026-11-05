@@ -1491,6 +1491,11 @@ int wpas_parse_pasn_frame(struct pasn_data *pasn, u16 auth_type,
 		goto fail;
 	}
 
+	/* A STA using a security profile treats PMF as enabled even if the
+	 * base RSNE has MFPC=0 (e.g., WPA3-Personal Compatibility Mode). */
+	if (pasn->auth_alg == WLAN_AUTH_EPPKE && pasn->security_profile)
+		rsn_data.capabilities |= WPA_CAPABILITY_MFPC;
+
 	ret = wpa_pasn_validate_rsne(&rsn_data,
 				     pasn->auth_alg == WLAN_AUTH_EPPKE);
 	if (ret) {
