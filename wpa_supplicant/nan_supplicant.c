@@ -1994,11 +1994,74 @@ out:
 }
 
 
+/*
+ * NAN_SET <name> <0|1> for the local Connection Management capabilities in
+ * @cm_capa. Only the capabilities supported by the implementation can be
+ * enabled. The change applies to the frames sent and the Connection
+ * Management procedures started after the command.
+ */
+static int wpas_nan_set_cm_capa(struct wpa_supplicant *wpa_s, const char *name,
+				const char *param, u8 cm_capa)
+{
+	int val = atoi(param);
+
+	if (val < 0 || val > 1) {
+		wpa_printf(MSG_INFO, "NAN: Invalid value for %s", name);
+		return -1;
+	}
+
+	if (!wpa_s->nan) {
+		wpa_printf(MSG_DEBUG, "NAN: NAN not started, cannot set %s",
+			   name);
+		return -1;
+	}
+
+	if (val) {
+		cm_capa &= wpas_nan_cm_capa(wpa_s);
+		if (!cm_capa) {
+			wpa_printf(MSG_INFO, "NAN: %s not supported", name);
+			return -1;
+		}
+	}
+
+	nan_set_cm_capa(wpa_s->nan, cm_capa, val);
+	return 0;
+}
+
+
+/* NAN_SET parameters for the local Connection Management capabilities */
+static const struct {
+	const char *name;
+	u8 capa;
+} wpas_nan_cm_capa_params[] = {
+	{ "connection_mgmt", NAN_DEV_CAPA_EXT_INFO_2_CM_MASK },
+	{ "default_ka", NAN_DEV_CAPA_EXT_INFO_2_CM_DEFAULT_KA },
+	{ "deauth_sa_query", NAN_DEV_CAPA_EXT_INFO_2_CM_DEAUTH_SA_QUERY },
+	{ "ndtk_rekey", NAN_DEV_CAPA_EXT_INFO_2_CM_NDTK_REKEY },
+	{ "termination_notif", NAN_DEV_CAPA_EXT_INFO_2_CM_TERM_NOTIF },
+};
+
+
+/* Connection Management capabilities of a NAN_SET parameter; 0 if none */
+static u8 wpas_nan_cm_capa_param(const char *name)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(wpas_nan_cm_capa_params); i++) {
+		if (os_strcmp(wpas_nan_cm_capa_params[i].name, name) == 0)
+			return wpas_nan_cm_capa_params[i].capa;
+	}
+
+	return 0;
+}
+
+
 int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
 {
 	struct nan_cluster_config *config = &wpa_s->nan_cluster_config;
 	struct nan_data *nan = wpa_s->nan;
 	char *param = os_strchr(cmd, ' ');
+	u8 cm_capa;
 
 	if (!param)
 		return -1;
@@ -2396,6 +2459,17 @@ int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
 
 		return 0;
 	}
+
+	/*
+	 * NAN_SET <connection_mgmt|default_ka|deauth_sa_query|ndtk_rekey|
+	 *	    termination_notif> <0|1>
+	 *
+	 * Enable or disable all the local Connection Management capabilities
+	 * (connection_mgmt) or a single one without changing the others.
+	 */
+	cm_capa = wpas_nan_cm_capa_param(cmd);
+	if (cm_capa)
+		return wpas_nan_set_cm_capa(wpa_s, cmd, param, cm_capa);
 
 #ifdef CONFIG_TESTING_OPTIONS
 	if (os_strcmp("tx_mcast_follow_up_prot", cmd) == 0) {

@@ -1021,6 +1021,7 @@ int nan_convert_sched_to_avail_attrs(struct nan_data *nan, u8 sequence_id,
 void nan_local_sched_update(struct nan_data *nan, struct nan_schedule *sched);
 void nan_set_sched_update_pending(struct nan_data *nan, bool pending);
 void nan_set_supported_bands(struct nan_data *nan, u8 supported_bands);
+void nan_set_cm_capa(struct nan_data *nan, u8 cm_capa, bool enable);
 int nan_cm_terminate(struct nan_data *nan, const u8 *addr,
 		     enum nan_cm_sa type, const u8 *init_ndi,
 		     const u8 *resp_ndi);

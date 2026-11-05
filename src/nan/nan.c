@@ -3973,6 +3973,31 @@ void nan_set_supported_bands(struct nan_data *nan, u8 supported_bands)
 }
 
 
+/**
+ * nan_set_cm_capa - Enable or disable Connection Management capabilities
+ * @nan: NAN module context from nan_init()
+ * @cm_capa: Local NAN_DEV_CAPA_EXT_INFO_2_CM_* bits to enable or disable
+ * @enable: Whether to indicate and use the capabilities
+ *
+ * The other local Connection Management capabilities are not changed.
+ */
+void nan_set_cm_capa(struct nan_data *nan, u8 cm_capa, bool enable)
+{
+	if (!nan || !nan->cfg)
+		return;
+
+	cm_capa &= NAN_DEV_CAPA_EXT_INFO_2_CM_MASK;
+	if (enable)
+		nan->cfg->dev_capa_ext_info_2 |= cm_capa;
+	else
+		nan->cfg->dev_capa_ext_info_2 &= ~cm_capa;
+
+	wpa_printf(MSG_DEBUG, "NAN: Local CM capabilities 0x%02x",
+		   nan->cfg->dev_capa_ext_info_2 &
+		   NAN_DEV_CAPA_EXT_INFO_2_CM_MASK);
+}
+
+
 void nan_set_ndpe_support(struct nan_data *nan, bool enable)
 {
 	if (!nan || !nan->cfg)
