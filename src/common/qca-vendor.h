@@ -12211,10 +12211,77 @@ enum qca_wlan_vendor_attr_wifi_test_config {
 	 */
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_NAN_DELAY_AVAIL_UPDATE = 87,
 
+	/* Nested attribute to configure the NAN Device to advertise an
+	 * Unaligned Schedule attribute with the specified unaligned window
+	 * (ULW) parameters, e.g., in a Schedule Update Notification frame.
+	 * Uses the enum qca_wlan_vendor_attr_nan_ulw_config attributes.
+	 *
+	 * This attribute is used for NAN testing purposes.
+	 */
+	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_NAN_ULW_CONFIG = 88,
+
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_MAX =
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_AFTER_LAST - 1,
+};
+
+/**
+ * enum qca_wlan_vendor_attr_nan_ulw_config - Attributes used inside
+ * %QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_NAN_ULW_CONFIG nested attribute.
+ *
+ * These attributes configure the fields of the Unaligned Schedule attribute
+ * (Wi-Fi Aware Specification v4.0, Table 109) that the NAN Device advertises.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_ULW_CONTROL: Flag attribute. If
+ *	present, the Unaligned Schedule attribute includes the ULW Control
+ *	field (Wi-Fi Aware Specification v4.0, Table 112) with the Channel
+ *	Availability subfield set to the value of
+ *	%QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_CHANNEL_AVAILABILITY and a Channel
+ *	Entry field for the channel indicated by
+ *	%QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_NDP_CHANNEL_FREQ. If not present,
+ *	the ULW Control field and the Band ID or Channel Entry field are not
+ *	included, i.e., the NAN Device indicates that it is unavailable on all
+ *	bands and channels during the ULWs.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_CHANNEL_AVAILABILITY: u8 attribute.
+ *	Value (0 or 1) of the Channel Availability subfield of the ULW Control
+ *	field. Used only when %QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_ULW_CONTROL
+ *	is present.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_DURATION: u32 attribute. Value of the
+ *	Duration field, i.e., the duration of each ULW in microseconds.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_PERIOD: u32 attribute. Value of the
+ *	Period field, i.e., the time between the start of two consecutive ULWs
+ *	in microseconds.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_COUNTDOWN: u8 attribute. Value of the
+ *	Count Down field.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_TSF_OFFSET: u32 attribute. Offset in
+ *	microseconds from the current TSF to the start of the first ULW. The
+ *	NAN Device uses this offset to set the Starting Time field.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_NDP_CHANNEL_FREQ: u32 attribute.
+ *	Frequency in MHz of the channel to be indicated in the Channel Entry
+ *	field, e.g., the negotiated NDP channel. Used only when
+ *	%QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_ULW_CONTROL is present.
+ */
+enum qca_wlan_vendor_attr_nan_ulw_config {
+	QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_ULW_CONTROL = 1,
+	QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_CHANNEL_AVAILABILITY = 2,
+	QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_DURATION = 3,
+	QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_PERIOD = 4,
+	QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_COUNTDOWN = 5,
+	QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_TSF_OFFSET = 6,
+	QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_NDP_CHANNEL_FREQ = 7,
+
+	/* keep last */
+	QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_MAX =
+	QCA_WLAN_VENDOR_ATTR_NAN_ULW_CONFIG_AFTER_LAST - 1,
 };
 
 /**
