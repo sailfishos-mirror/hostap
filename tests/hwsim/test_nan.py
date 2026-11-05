@@ -3037,6 +3037,9 @@ def test_nan_pkbst_record_update_not_paired(dev, apdev):
                 "NAN_UPDATE_PKR generate=1 send=1"):
             raise Exception("Update without peer accepted")
 
+NAN_CM_CAPAS = ("default_ka", "deauth_sa_query", "ndtk_rekey",
+                "termination_notif")
+
 def nan_cm_info(dev, peer):
     res = dev.wpas.request("NAN_PEER_INFO %s cm" % peer.wpas.own_addr())
     if "FAIL" in res:
@@ -3044,19 +3047,19 @@ def nan_cm_info(dev, peer):
     return dict(line.split('=', 1) for line in res.splitlines())
 
 def nan_cm_check_capa(pub, sub, *capas):
-    """Skip unless both devices can use the CM capabilities with each other"""
+    """Verify that both devices can use the CM capabilities with each other"""
     for dev, peer in ((pub, sub), (sub, pub)):
         info = nan_cm_info(dev, peer)
         for capa in capas:
             if info.get(capa) != "1":
-                raise HwsimSkip("NAN Connection Management %s not supported" %
-                                capa)
+                raise Exception("NAN CM %s not usable on %s: %s" %
+                                (capa, dev.ifname, info))
 
 def nan_cm_pair_ndp(pub, sub, *capas):
     """Pair the devices and set up an NDP
 
-    The test is skipped unless the Connection Management capabilities listed
-    in capas can be used between the paired devices."""
+    The Connection Management capabilities listed in capas are verified to be
+    usable between the paired devices."""
     for dev in (pub, sub):
         if "OK" not in dev.schedule_config((2437, "0e000000")):
             raise Exception("Failed to configure schedule")
@@ -3200,6 +3203,44 @@ def test_nan_cm_keepalive_terminate_during_setup(dev, apdev):
             if ev is not None:
                 raise Exception("NDP disconnected after the setup: " + ev)
             _nan_test_connectivity(pub, sub)
+    finally:
+        set_country("00")
+
+def test_nan_cm_keepalive_not_supported(dev, apdev):
+    """NAN Connection Management keep alive not used without peer support"""
+    set_country("US")
+    try:
+        with hwsim_nan_radios() as (wpas1, wpas2), \
+             NanDevice(wpas1, "nan0", "ndi0") as pub, \
+             NanDevice(wpas2, "nan1", "ndi1") as sub:
+            sub.set("connection_mgmt", "2", ok=False)
+            sub.set("connection_mgmt", "0")
+            nan_cm_pair_ndp(pub, sub)
+
+            # No capability is used with the peer on either device
+            for dev, peer in ((pub, sub), (sub, pub)):
+                info = nan_cm_info(dev, peer)
+                for capa in NAN_CM_CAPAS:
+                    if info.get(capa) != "0":
+                        raise Exception("CM %s used on %s: %s" %
+                                        (capa, dev.ifname, info))
+                if info.get("nm_tksa") != "1" or \
+                   info.get("ka_active") != "0":
+                    raise Exception("Unexpected CM state on %s: %s" %
+                                    (dev.ifname, info))
+
+            ev = pub.wpas.wait_event(["NAN-NDP-DISCONNECTED"], timeout=16)
+            if ev is not None:
+                raise Exception("NDP disconnected without keep alive: " + ev)
+
+            # The peer indicated the capabilities, so they can be used once
+            # enabled locally
+            sub.set("connection_mgmt", "1")
+            info = nan_cm_info(sub, pub)
+            for capa in NAN_CM_CAPAS:
+                if info.get(capa) != "1":
+                    raise Exception("CM %s not enabled again: %s" %
+                                    (capa, info))
     finally:
         set_country("00")
 
@@ -3464,3 +3505,35 @@ def test_nan_cm_rekey_initiator(dev, apdev):
 def test_nan_cm_rekey_responder(dev, apdev):
     """NAN Connection Management ND-TK rekey indicated by the NDP responder"""
     run_nan_cm_rekey(False)
+
+def test_nan_cm_rekey_not_supported(dev, apdev):
+    """NAN Connection Management ND-TK rekey without peer support"""
+    set_country("US")
+    try:
+        with hwsim_nan_radios() as (wpas1, wpas2), \
+             NanDevice(wpas1, "nan0", "ndi0") as pub, \
+             NanDevice(wpas2, "nan1", "ndi1") as sub:
+            pub.set("ndtk_rekey", "0")
+            # The other capabilities are not changed
+            pid, sid, ndp_id, init_ndi = nan_cm_pair_ndp(pub, sub,
+                                                         "default_ka",
+                                                         "deauth_sa_query",
+                                                         "termination_notif")
+            for dev, peer in ((sub, pub), (pub, sub)):
+                info = nan_cm_info(dev, peer)
+                if info.get("ndtk_rekey") != "0":
+                    raise Exception("ND-TK rekey used on %s: %s" %
+                                    (dev.ifname, info))
+                if "FAIL" not in dev.wpas.request(
+                        "NAN_CM_REKEY peer_nmi=%s init_ndi=%s ndp_id=%s" %
+                        (peer.wpas.own_addr(), init_ndi, ndp_id)):
+                    raise Exception("Rekey without support accepted")
+            _nan_test_connectivity(pub, sub)
+
+            # The peer indicated ND-TK rekey, so it can be used once enabled
+            # locally
+            pub.set("ndtk_rekey", "1")
+            if nan_cm_info(pub, sub).get("ndtk_rekey") != "1":
+                raise Exception("ND-TK rekey not enabled again")
+    finally:
+        set_country("00")

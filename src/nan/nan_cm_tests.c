@@ -387,6 +387,65 @@ out:
 }
 
 
+static int test_dcea_cm_capa(void)
+{
+	/*
+	 * Connection Management capabilities with PIK support (b19) and the
+	 * Maximum Service Specific Info length 1205 (b22-b37)
+	 */
+	static const u8 dcea[] = {
+		NAN_ATTR_DCEA, 5, 0, 0x00, 0x05, 0x7e, 0x2d, 0x01
+	};
+	static const u8 capa_info_no_ext[] = { 0x00, 0x05 };
+	struct nan_config cfg;
+	struct nan_data nan;
+	struct nan_peer peer;
+	struct nan_attrs attrs;
+	struct wpabuf *buf;
+	int ret = -1;
+
+	wpa_printf(MSG_INFO, "TEST: NAN CM DCEA capabilities");
+	os_memset(&cfg, 0, sizeof(cfg));
+	os_memset(&nan, 0, sizeof(nan));
+	os_memset(&peer, 0, sizeof(peer));
+	os_memset(&attrs, 0, sizeof(attrs));
+	nan.cfg = &cfg;
+	cfg.pairing_cfg.pairing_setup = true;
+	cfg.pairing_cfg.pik_caching = true;
+	cfg.dev_capa_ext_info_2 = NAN_DEV_CAPA_EXT_INFO_2_CM_MASK;
+	cfg.max_ssi_len = 1205;
+
+	buf = wpabuf_alloc(16);
+	if (!buf)
+		goto out;
+	nan_add_dev_capa_ext_attr(&nan, buf);
+	if (wpabuf_len(buf) != sizeof(dcea) ||
+	    os_memcmp(wpabuf_head(buf), dcea, sizeof(dcea)) != 0)
+		goto out;
+
+	/* Only the Connection Management capabilities are stored */
+	attrs.dev_capa_ext = wpabuf_head_u8(buf) + NAN_ATTR_HDR_LEN;
+	attrs.dev_capa_ext_len = wpabuf_len(buf) - NAN_ATTR_HDR_LEN;
+	nan_parse_peer_dev_capa_ext(&nan, &peer, &attrs);
+	if (peer.info.cm_capa != NAN_DEV_CAPA_EXT_INFO_2_CM_MASK)
+		goto out;
+
+	/* No Connection Management capabilities without b16-b23 */
+	attrs.dev_capa_ext = capa_info_no_ext;
+	attrs.dev_capa_ext_len = sizeof(capa_info_no_ext);
+	nan_parse_peer_dev_capa_ext(&nan, &peer, &attrs);
+	if (peer.info.cm_capa)
+		goto out;
+
+	ret = 0;
+out:
+	if (ret)
+		wpa_printf(MSG_ERROR, "FAIL: NAN CM DCEA capabilities");
+	wpabuf_free(buf);
+	return ret;
+}
+
+
 /**
  * nan_cm_tests - Run NAN Connection Management unit tests
  * Returns: 0 on success, -1 on failure
@@ -395,7 +454,8 @@ int nan_cm_tests(void)
 {
 	if (test_kaa_no_ndps() || test_kaa_ndp_list() ||
 	    test_kaa_parse_invalid() || test_tna() ||
-	    test_tna_parse_invalid() || test_saqa() || test_rka())
+	    test_tna_parse_invalid() || test_saqa() || test_rka() ||
+	    test_dcea_cm_capa())
 		return -1;
 	return 0;
 }
