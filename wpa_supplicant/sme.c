@@ -1540,7 +1540,7 @@ static int wpas_eppke_initialize(struct wpa_supplicant *wpa_s,
 	u8 ap_rsne_len, ap_rsnxe_len;
 	u64 capab = 0;
 	int group;
-	bool derive_kdk;
+	bool derive_kdk, ap_secure_ltf;
 	u8 rsne[80];
 	size_t rsne_len = sizeof(rsne);
 	int len;
@@ -1599,8 +1599,6 @@ static int wpas_eppke_initialize(struct wpa_supplicant *wpa_s,
 					ap_rsnxe, ap_rsnxe_len);
 	}
 
-	/* Use the RSNXOE, if it was included, for actual AP capability check */
-	ap_rsnxe = wpa_bss_get_rsnxe(wpa_s, bss, NULL, false);
 	/*
 	 * Security Profile element preference (IEEE P802.11bn/D2.0, 37.33):
 	 * check both the AP RSNXE and the (unmasked) Extended RSN Capabilities
@@ -1685,8 +1683,8 @@ static int wpas_eppke_initialize(struct wpa_supplicant *wpa_s,
 		    WPA_KEY_MGMT_EPPKE)) {
 		/* EPPKE without base AKM: verify AP supports unauthenticated
 		 * EPPKE per IEEE Std 802.11bi-2026, 12.16.9.1 */
-		if (!ieee802_11_rsnx_capab(ap_rsnxe,
-					   WLAN_RSNX_CAPAB_UNAUTH_EPPKE)) {
+		if (!wpas_eppke_ap_rsnx_capab(wpa_s, bss,
+					      WLAN_RSNX_CAPAB_UNAUTH_EPPKE)) {
 			wpa_printf(MSG_DEBUG,
 				   "EPPKE: AP does not support unauthenticated EPPKE");
 			goto fail;
@@ -1697,8 +1695,15 @@ static int wpas_eppke_initialize(struct wpa_supplicant *wpa_s,
 		goto fail;
 	}
 
+	/*
+	 * The AP might omit or mask the RSNXE (e.g., in WPA3-Personal
+	 * Compatibility Mode), so also check the Security Profile element's
+	 * copy of the Extended RSN Capabilities for Secure LTF support.
+	 */
+	ap_secure_ltf = wpas_eppke_ap_rsnx_capab(wpa_s, bss,
+						 WLAN_RSNX_CAPAB_SECURE_LTF);
 	derive_kdk = (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_STA) &&
-		ieee802_11_rsnx_capab(ap_rsnxe, WLAN_RSNX_CAPAB_SECURE_LTF);
+		ap_secure_ltf;
 #ifdef CONFIG_TESTING_OPTIONS
 	if (!derive_kdk)
 		derive_kdk = wpa_s->conf->force_kdk_derivation;
@@ -1711,7 +1716,7 @@ static int wpas_eppke_initialize(struct wpa_supplicant *wpa_s,
 	wpa_printf(MSG_DEBUG, "PASN: kdk_len=%zu", pasn->kdk_len);
 
 	if ((wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_STA) &&
-	    ieee802_11_rsnx_capab(ap_rsnxe, WLAN_RSNX_CAPAB_SECURE_LTF))
+	    ap_secure_ltf)
 		pasn->secure_ltf = true;
 	else
 		pasn->secure_ltf = false;
@@ -1747,7 +1752,7 @@ static int wpas_eppke_initialize(struct wpa_supplicant *wpa_s,
 		}
 	}
 	if ((wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SPP_AMSDU) &&
-	    ieee802_11_rsnx_capab(ap_rsnxe, WLAN_RSNX_CAPAB_SPP_A_MSDU))
+	    wpas_eppke_ap_rsnx_capab(wpa_s, bss, WLAN_RSNX_CAPAB_SPP_A_MSDU))
 		capab |= BIT(WLAN_RSNX_CAPAB_SPP_A_MSDU);
 
 	pasn_set_rsnxe_caps(pasn, capab);
