@@ -387,15 +387,14 @@ int nan_cm_parse_rka(const u8 *data, size_t len, struct nan_cm_rka *rka)
 
 /*
  * Whether a Connection Management capability (NAN_DEV_CAPA_EXT_INFO_2_CM_*)
- * is supported by both the local device and the peer. The capabilities are
- * indicated in the Capability Info field of the DCEA (Wi-Fi Aware spec R5,
- * Table 173, b17-b21), which is not yet extended beyond b15, so none of them
- * can be used for now.
+ * is supported by both the local device and the peer as indicated in the
+ * Capability Info field of the DCEA (Wi-Fi Aware spec R5, Table 173).
  */
 static bool nan_cm_capa(const struct nan_data *nan,
 			const struct nan_peer *peer, u8 capa)
 {
-	return false;
+	return (nan->cfg->dev_capa_ext_info_2 & capa) &&
+		(peer->info.cm_capa & capa);
 }
 
 

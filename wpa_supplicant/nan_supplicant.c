@@ -1510,6 +1510,22 @@ static u8 wpas_nan_wifi_gen(struct wpa_supplicant *wpa_s)
 }
 
 
+/*
+ * Connection Management capabilities of the Device Capability Extension
+ * attribute (Wi-Fi Aware R5 draft v0.0.16, Table 173) that are supported by
+ * the implementation. The procedures are used with paired peers and need
+ * NAFs, which can be sent only when the driver supports NDPs.
+ */
+static u8 wpas_nan_cm_capa(struct wpa_supplicant *wpa_s)
+{
+#ifdef CONFIG_PASN
+	if (wpa_s->nan_capa.drv_flags & WPA_DRIVER_FLAGS_NAN_SUPPORT_NDP)
+		return NAN_DEV_CAPA_EXT_INFO_2_CM_MASK;
+#endif /* CONFIG_PASN */
+	return 0;
+}
+
+
 int wpas_nan_init(struct wpa_supplicant *wpa_s)
 {
 	struct nan_config nan;
@@ -1666,6 +1682,7 @@ int wpas_nan_init(struct wpa_supplicant *wpa_s)
 	nan.nik_lifetime = NAN_NIK_LIFETIME_DEFAULT;
 	nan.max_ndl_idle_period = DEFAULT_NAN_MAX_NDL_IDLE_PERIOD;
 	nan.wifi_gen = wpas_nan_wifi_gen(wpa_s);
+	nan.dev_capa_ext_info_2 = wpas_nan_cm_capa(wpa_s);
 
 	/*
 	 * Default maximum Service Specific Info length for SDEA in a unicast

@@ -660,6 +660,12 @@ struct nan_shared_key {
 #define NAN_DEV_CAPA_EXT_INFO_2_PIK_SUPPORT       BIT(3)
 #define NAN_DEV_CAPA_EXT_INFO_2_CM_NDTK_REKEY     BIT(4)
 #define NAN_DEV_CAPA_EXT_INFO_2_CM_TERM_NOTIF     BIT(5)
+/* Connection Management capabilities (b17, b18, b20, and b21) */
+#define NAN_DEV_CAPA_EXT_INFO_2_CM_MASK \
+	(NAN_DEV_CAPA_EXT_INFO_2_CM_DEFAULT_KA | \
+	 NAN_DEV_CAPA_EXT_INFO_2_CM_DEAUTH_SA_QUERY | \
+	 NAN_DEV_CAPA_EXT_INFO_2_CM_NDTK_REKEY | \
+	 NAN_DEV_CAPA_EXT_INFO_2_CM_TERM_NOTIF)
 
 /* b22-b37: Maximum Service Specific Info length for SDEA in follow up unicast
  * frame the device can receive */

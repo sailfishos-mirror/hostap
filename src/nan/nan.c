@@ -1390,6 +1390,8 @@ static int nan_parse_peer_ulw(const struct nan_attrs *attrs,
 void nan_parse_peer_dev_capa_ext(struct nan_data *nan, struct nan_peer *peer,
 				 struct nan_attrs *attrs)
 {
+	u8 cm_capa;
+
 	if (!attrs->dev_capa_ext || attrs->dev_capa_ext_len <= 1)
 		return;
 
@@ -1399,6 +1401,16 @@ void nan_parse_peer_dev_capa_ext(struct nan_data *nan, struct nan_peer *peer,
 		NAN_DEV_CAPA_EXT_INFO_1_NPK_NIK_CACHING;
 	peer->pairing.pairing_cfg.pik_caching = attrs->dev_capa_ext[1] &
 		NAN_DEV_CAPA_EXT_INFO_1_PIK_CACHING;
+
+	/* No Connection Management capabilities without b16-b23 */
+	cm_capa = attrs->dev_capa_ext_len > 2 ?
+		attrs->dev_capa_ext[2] & NAN_DEV_CAPA_EXT_INFO_2_CM_MASK : 0;
+	if (cm_capa != peer->info.cm_capa) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Peer " MACSTR " CM capabilities 0x%02x",
+			   MAC2STR(peer->nmi_addr), cm_capa);
+		peer->info.cm_capa = cm_capa;
+	}
 }
 
 
