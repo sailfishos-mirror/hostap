@@ -3507,8 +3507,9 @@ static int ieee80211_802_1x_derive_ptk(struct hostapd_data *hapd,
 
 	if (force_kdk ||
 	    (wpa_auth_ap_support_secure_ltf(hapd->wpa_auth) &&
-	     ieee802_11_rsnx_capab(sta->eap_auth_data.rsnxe,
-				   WLAN_RSNX_CAPAB_SECURE_LTF)))
+	     ieee802_11_rsnx_capab_len(sta->eap_auth_data.rsnxe,
+					sta->eap_auth_data.rsnxe_len,
+					WLAN_RSNX_CAPAB_SECURE_LTF)))
 		kdk_len = WPA_KDK_MAX_LEN;
 	else
 		kdk_len = 0;
