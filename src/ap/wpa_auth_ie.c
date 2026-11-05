@@ -1256,7 +1256,12 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 				 wpa_auth->conf.ocv : 0);
 	}
 #endif /* CONFIG_OCV */
-	if (sm->rsn_override_2)
+	if (security_profile)
+		/* All security profiles require PMF regardless of the base
+		 * RSNE MFP configuration (e.g., WPA3-Personal Compatibility
+		 * Mode). */
+		ap_pmf_enabled = true;
+	else if (sm->rsn_override_2)
 		ap_pmf_enabled = conf->rsn_override_mfp_2 !=
 			NO_MGMT_FRAME_PROTECTION;
 	else if (sm->rsn_override)
