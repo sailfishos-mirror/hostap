@@ -2663,6 +2663,51 @@ def test_security_profile_1_eppke_only_in_sp_rsnxe(dev, apdev):
     finally:
         sta_cleanup(dev[0])
 
+def test_security_profile_1_omit_rsnxe_kdk(dev, apdev):
+    """Security Profile 1 with RSNXE omitted from the AP and KDK"""
+    wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+    wpas.interface_add("wlan5", drv_params="secure_ltf=1")
+    check_sae_capab(wpas)
+    check_eppke_capab(wpas)
+    enable_sta_security_profiles(wpas, 1)
+
+    ssid = "test-sp1-omit-rsnxe"
+    params = hostapd.wpa2_params(ssid=ssid, passphrase="12345678",
+                                 ieee80211w='2')
+    params['wpa_key_mgmt'] = 'SAE-EXT-KEY'
+    params['rsn_pairwise'] = 'GCMP-256'
+    params['group_cipher'] = 'GCMP-256'
+    params['group_mgmt_cipher'] = 'BIP-GMAC-256'
+    params['beacon_prot'] = '1'
+    params['sae_groups'] = '19 20'
+    params['sae_pwe'] = '2'
+    params['assoc_frame_encryption'] = '1'
+    params['pmksa_caching_privacy'] = '1'
+    params['security_profiles'] = '1'
+    params['rsn_override_omit_rsnxe'] = '1'
+    params['ieee80211ax'] = '1'
+    params['driver_params'] = "secure_ltf=1"
+    hapd = start_pasn_ap(apdev[0], params)
+    bssid = hapd.own_addr()
+
+    try:
+        wpas.scan_for_bss(bssid, freq=2412)
+        wpas.set("sae_pwe", "2")
+        wpas.set("sae_groups", "")
+        wpas.set("pasn_groups", "")
+        wpas.connect(ssid, sae_password="12345678", scan_freq="2412",
+                     key_mgmt="EPPKE SAE-EXT-KEY", ieee80211w="2",
+                     pairwise="GCMP-256", group="GCMP-256",
+                     group_mgmt="BIP-GMAC-256", pmksa_privacy="1")
+        hapd.wait_sta()
+        check_security_profile(hapd, wpas, 1, akm='00-0f-ac-24',
+                               auth_alg='9', eht=False)
+        check_pasn_ptk(wpas, hapd, "GCMP-256", clear_keys=False,
+                       require_kdk=True)
+        hwsim_utils.test_connectivity(wpas, hapd)
+    finally:
+        sta_cleanup(wpas)
+
 def test_security_profile_1_wpa3_compat_mode_kdk(dev, apdev):
     """Security Profile 1 and WPA3-Personal Compatibility Mode with KDK"""
     wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
