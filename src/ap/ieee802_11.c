@@ -5432,13 +5432,16 @@ static void handle_auth_pasn(struct hostapd_data *hapd, struct sta_info *sta,
 				   " - security profile mismatch",
 				   MAC2STR(sta->addr));
 			send_auth_reply(
-				hapd, sta, sta->addr,
+				hapd, sta, mgmt->sa,
 				le_to_host16(mgmt->u.auth.auth_alg),
 				WLAN_AUTH_TR_SEQ_PASN_AUTH2,
 				WLAN_STATUS_REJECTED_INVALID_SECURITY_PROFILE,
 				NULL, 0,
 				"pasn-sec-profile-reject");
-			ap_free_sta(hapd, sta);
+			/* Do not free the STA here: the reply frame queued
+			 * above has not been transmitted yet. Let the
+			 * deferred added_unassoc cleanup in handle_auth_cb()
+			 * free it once the TX status is known. */
 			return;
 		}
 
