@@ -2709,3 +2709,68 @@ def test_security_profile_1_wpa3_compat_mode_kdk(dev, apdev):
         hwsim_utils.test_connectivity(wpas, hapd)
     finally:
         sta_cleanup(wpas)
+
+def test_security_profile_1_wpa3_compat_mode_rsnxe(dev, apdev):
+    """Security Profile 1 and WPA3-Personal Compatibility Mode with RSNXE"""
+    check_sae_capab(dev[0])
+    check_eppke_capab(dev[0])
+
+    ssid = "test-sp1-wpa3-compat-rsnxe"
+    params = hostapd.wpa2_params(ssid=ssid,
+                                 passphrase="12345678")
+    params['rsn_override_key_mgmt'] = 'SAE'
+    params['rsn_override_key_mgmt_2'] = 'SAE-EXT-KEY'
+    params['rsn_override_pairwise'] = 'CCMP'
+    params['rsn_override_pairwise_2'] = 'GCMP-256'
+    params['rsn_override_mfp'] = '2'
+    params['rsn_override_mfp_2'] = '2'
+    params['beacon_prot'] = '1'
+    params['sae_groups'] = '19 20'
+    params['sae_require_mfp'] = '1'
+    params['sae_pwe'] = '2'
+    params['assoc_frame_encryption'] = '1'
+    params['pmksa_caching_privacy'] = '1'
+    params['security_profiles'] = '1'
+    params['ieee80211ax'] = '1'
+    hapd = hostapd.add_ap(apdev[0], params)
+    bssid = hapd.own_addr()
+
+    try:
+        logger.info("Security Profile 1 capable STA")
+        enable_sta_security_profiles(dev[0], 1)
+        dev[0].set("rsn_overriding", "1")
+        dev[0].scan_for_bss(bssid, freq=2412)
+        dev[0].set("sae_pwe", "2")
+        dev[0].set("pasn_groups", "")
+        dev[0].connect(ssid, sae_password="12345678", scan_freq="2412",
+                       key_mgmt="EPPKE SAE-EXT-KEY", ieee80211w="2",
+                       pairwise="GCMP-256", pmksa_privacy="1")
+        hapd.wait_sta()
+        check_security_profile(hapd, dev[0], 1, akm='00-0f-ac-24',
+                               auth_alg='9', eht=False)
+        hwsim_utils.test_connectivity(dev[0], hapd)
+        dev[0].request("REMOVE_NETWORK all")
+        dev[0].wait_disconnected()
+        hapd.wait_sta_disconnect()
+
+        logger.info("RSN overriding capable STA without security profiles")
+        disable_sta_security_profiles(dev[0])
+        dev[0].connect(ssid, sae_password="12345678",
+                       pairwise="GCMP-256", key_mgmt="SAE-EXT-KEY",
+                       ieee80211w="2", scan_freq="2412")
+        hapd.wait_sta()
+        sta = hapd.get_sta(dev[0].own_addr())
+        if "security_profile" in sta:
+            raise Exception("Unexpected security profile use")
+        dev[0].request("REMOVE_NETWORK all")
+        dev[0].wait_disconnected()
+        hapd.wait_sta_disconnect()
+
+        logger.info("RSN overriding uncapable STA using RSNE")
+        dev[0].set("rsn_overriding", "0")
+        dev[0].connect(ssid, psk="12345678",
+                       pairwise="CCMP", key_mgmt="WPA-PSK",
+                       ieee80211w="0", scan_freq="2412")
+        hapd.wait_sta()
+    finally:
+        sta_cleanup(dev[0])
