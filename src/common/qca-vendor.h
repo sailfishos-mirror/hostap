@@ -12220,6 +12220,31 @@ enum qca_wlan_vendor_attr_wifi_test_config {
 	 */
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_NAN_ULW_CONFIG = 88,
 
+	/* 8-bit unsigned value to force the NAN Random Factor (0-255) used
+	 * in the Master Rank.
+	 *
+	 * This attribute is used for NAN testing purposes.
+	 */
+	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_NAN_RANDOM_FACTOR = 89,
+
+	/* 32-bit unsigned value to configure the NAN TSF offset in
+	 * microseconds. The NAN Device applies this offset to the TSF of the
+	 * NAN cluster when it starts NAN.
+	 *
+	 * This attribute is used for NAN testing purposes.
+	 */
+	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_NAN_TSF_OFFSET = 90,
+
+	/* 32-bit unsigned value to configure the NAN Master Preference change
+	 * timeout in units of Discovery Windows (DWs), i.e., how quickly the
+	 * NAN Device has to transition from the Master role to a Non-Master
+	 * role or from a Non-Master role to the Master role after its Master
+	 * Preference is changed.
+	 *
+	 * This attribute is used for NAN testing purposes.
+	 */
+	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_NAN_MASTER_PREFERENCE_TIMEOUT = 91,
+
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_MAX =
