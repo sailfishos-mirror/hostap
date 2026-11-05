@@ -1143,8 +1143,8 @@ int get_tx_parameters(struct sta_info *sta, int ap_max_chanwidth,
 #endif /* CONFIG_OCV */
 
 
-u8 * hostapd_eid_rsnxe(struct hostapd_data *hapd, u8 *eid, size_t len,
-		       u64 capab_mask)
+static u8 * hostapd_eid_rsnxe_akm(struct hostapd_data *hapd, u8 *eid,
+				  size_t len, u64 capab_mask, int key_mgmt)
 {
 	u8 *pos = eid;
 	bool sae_pk = false;
@@ -1158,11 +1158,11 @@ u8 * hostapd_eid_rsnxe(struct hostapd_data *hapd, u8 *eid, size_t len,
 	sae_pk = hostapd_sae_pk_in_use(hapd->conf);
 #endif /* CONFIG_SAE_PK */
 
-	if (wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt) &&
+	if (wpa_key_mgmt_sae(key_mgmt) &&
 	    (hapd->conf->sae_pwe == SAE_PWE_HASH_TO_ELEMENT ||
 	     hapd->conf->sae_pwe == SAE_PWE_BOTH ||
 	     hostapd_sae_pw_id_in_use(hapd->conf) || sae_pk ||
-	     wpa_key_mgmt_sae_ext_key(hapd->conf->wpa_key_mgmt)) &&
+	     wpa_key_mgmt_sae_ext_key(key_mgmt)) &&
 	    hapd->conf->sae_pwe != SAE_PWE_FORCE_HUNT_AND_PECK) {
 		capab |= BIT(WLAN_RSNX_CAPAB_SAE_H2E);
 #ifdef CONFIG_SAE_PK
@@ -1197,7 +1197,7 @@ u8 * hostapd_eid_rsnxe(struct hostapd_data *hapd, u8 *eid, size_t len,
 	    (hapd->conf->assoc_frame_encryption ||
 	    hapd->conf->pmksa_caching_privacy))
 		capab |= BIT(WLAN_RSNX_CAPAB_ASSOC_FRAME_ENCRYPTION);
-	if ((hapd->conf->wpa_key_mgmt |
+	if ((key_mgmt |
 	     hostapd_config_sp_key_mgmt(hapd->conf)) & WPA_KEY_MGMT_EPPKE)
 		capab |= BIT(WLAN_RSNX_CAPAB_KEK_IN_PASN);
 	if (hapd->conf->pmksa_caching_privacy)
@@ -1231,6 +1231,14 @@ u8 * hostapd_eid_rsnxe(struct hostapd_data *hapd, u8 *eid, size_t len,
 	}
 
 	return pos;
+}
+
+
+u8 * hostapd_eid_rsnxe(struct hostapd_data *hapd, u8 *eid, size_t len,
+		       u64 capab_mask)
+{
+	return hostapd_eid_rsnxe_akm(hapd, eid, len, capab_mask,
+				     hapd->conf->wpa_key_mgmt);
 }
 
 
@@ -1342,8 +1350,12 @@ u8 * hostapd_eid_security_profile(struct hostapd_data *hapd, u8 *eid)
 			bitmap[p / 8] |= BIT(p % 8);
 	}
 
-	rsnxe_end = hostapd_eid_rsnxe(hapd, rsnxe_buf, sizeof(rsnxe_buf),
-				      ~0ULL);
+	/* The Security Profile element carries the capabilities that apply
+	 * to the AKMs implied by the enabled security profiles. */
+	rsnxe_end = hostapd_eid_rsnxe_akm(
+		hapd, rsnxe_buf, sizeof(rsnxe_buf), ~0ULL,
+		hapd->conf->wpa_key_mgmt |
+		hostapd_config_sp_key_mgmt(hapd->conf));
 	if (rsnxe_end > rsnxe_buf + 2) {
 		ext_rsn_capab_len = rsnxe_end - rsnxe_buf - 2;
 		if (ext_rsn_capab_len > sizeof(ext_rsn_capab)) {
