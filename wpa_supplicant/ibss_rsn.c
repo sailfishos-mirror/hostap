@@ -485,6 +485,11 @@ static int ibss_rsn_auth_init_group(struct ibss_rsn *ibss_rsn,
 static int ibss_rsn_auth_init(struct ibss_rsn *ibss_rsn,
 			      struct ibss_rsn_peer *peer)
 {
+	if (peer->auth) {
+		/* Deinitialize existing state machine before re-creating it */
+		wpa_auth_sta_deinit(peer->auth);
+		peer->auth = NULL;
+	}
 	peer->auth = wpa_auth_sta_init(ibss_rsn->auth_group, peer->addr, NULL);
 	if (peer->auth == NULL) {
 		wpa_printf(MSG_DEBUG, "AUTH: wpa_auth_sta_init() failed");
