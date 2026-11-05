@@ -2625,3 +2625,39 @@ def test_security_profile_1_wpa3_compat_mode(dev, apdev):
         hapd.wait_sta()
     finally:
         sta_cleanup(dev[0])
+
+def test_security_profile_1_eppke_only_in_sp_rsnxe(dev, apdev):
+    """Security Profile 1 with EPPKE indicated only by the security profile"""
+    check_sae_capab(dev[0])
+    check_eppke_capab(dev[0])
+    enable_sta_security_profiles(dev[0], 1)
+
+    ssid = "test-sp1-sp-rsnxe"
+    params = hostapd.wpa2_params(ssid=ssid, passphrase="12345678",
+                                 ieee80211w='2')
+    params['wpa_key_mgmt'] = 'SAE-EXT-KEY'
+    params['rsn_pairwise'] = 'GCMP-256'
+    params['group_cipher'] = 'GCMP-256'
+    params['group_mgmt_cipher'] = 'BIP-GMAC-256'
+    params['beacon_prot'] = '1'
+    params['sae_groups'] = '19 20'
+    params['sae_pwe'] = '2'
+    params['assoc_frame_encryption'] = '1'
+    params['pmksa_caching_privacy'] = '1'
+    params['security_profiles'] = '1'
+    params['ieee80211ax'] = '1'
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    try:
+        dev[0].set("sae_pwe", "2")
+        dev[0].set("pasn_groups", "")
+        dev[0].connect(ssid, sae_password="12345678", scan_freq="2412",
+                       key_mgmt="EPPKE SAE-EXT-KEY", ieee80211w="2",
+                       pairwise="GCMP-256", group="GCMP-256",
+                       group_mgmt="BIP-GMAC-256", pmksa_privacy="1")
+        hapd.wait_sta()
+        check_security_profile(hapd, dev[0], 1, akm='00-0f-ac-24',
+                               auth_alg='9', eht=False)
+        hwsim_utils.test_connectivity(dev[0], hapd)
+    finally:
+        sta_cleanup(dev[0])
