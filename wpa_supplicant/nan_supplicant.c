@@ -4473,6 +4473,10 @@ static void wpas_nan_add_conn_capa_attr(struct wpa_supplicant *wpa_s,
 		conn_capa |= NAN_CONN_CAPA_IBSS;
 	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_MESH)
 		conn_capa |= NAN_CONN_CAPA_MESH;
+#ifdef CONFIG_NAN_IDP
+	if (wpa_s->global->idp)
+		conn_capa |= NAN_CONN_CAPA_IDP;
+#endif /* CONFIG_NAN_IDP */
 	wpa_printf(MSG_DEBUG,
 		   "NAN: Connection capability bitmap=0x%04x", conn_capa);
 	nan_add_conn_capa_attr(buf, conn_capa);
