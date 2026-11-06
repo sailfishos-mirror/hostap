@@ -10774,7 +10774,8 @@ int get_shared_radio_freqs_data(struct wpa_supplicant *wpa_s,
 		    ifs->current_ssid->mode == WPAS_MODE_P2P_GO ||
 		    ifs->current_ssid->mode == WPAS_MODE_MESH) {
 			freqs[n_freqs++] = ifs->current_ssid->frequency;
-		} else if (ifs->valid_links) {
+		} else if (ifs->valid_links &&
+			   wpa_s->wpa_state >= WPA_ASSOCIATED) {
 			struct driver_sta_mlo_info drv_mlo;
 
 			os_memset(&drv_mlo, 0, sizeof(drv_mlo));
