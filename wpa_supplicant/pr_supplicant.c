@@ -83,27 +83,43 @@ static bool
 wpas_pr_edca_is_valid_op_class(u32 bw_bitmap, u32 preamble_bitmap,
 			       const struct oper_class_map *op_class_map)
 {
+	bool is_24ghz, is_5ghz;
+
 	if (!op_class_map)
 		return false;
 
+	/* VHT is only valid on 5 GHz. HT is valid on 2.4 and 5 GHz. */
+	is_24ghz = op_class_map->mode == HOSTAPD_MODE_IEEE80211G;
+	is_5ghz = op_class_map->mode == HOSTAPD_MODE_IEEE80211A &&
+		!is_6ghz_op_class(op_class_map->op_class);
+
 	switch (op_class_map->bw) {
 	case BW20:
-		return !!(bw_bitmap & BIT(WPA_PR_CHAN_WIDTH_20)) &&
+		/* EDCA has VHT20, but no HT20 format-and-bandwidth value. */
+		return is_5ghz &&
+			!!(bw_bitmap & BIT(WPA_PR_CHAN_WIDTH_20)) &&
 			!!(preamble_bitmap & BIT(WPA_PR_PREAMBLE_VHT));
 	case BW40PLUS:
 	case BW40MINUS:
 	case BW40:
-		return !!(bw_bitmap & BIT(WPA_PR_CHAN_WIDTH_40)) &&
+		if (!(bw_bitmap & BIT(WPA_PR_CHAN_WIDTH_40)))
+			return false;
+		if (is_24ghz)
+			return !!(preamble_bitmap & BIT(WPA_PR_PREAMBLE_HT));
+		return is_5ghz &&
 			!!(preamble_bitmap & (BIT(WPA_PR_PREAMBLE_VHT) |
 					      BIT(WPA_PR_PREAMBLE_HT)));
 	case BW80:
-		return !!(bw_bitmap & BIT(WPA_PR_CHAN_WIDTH_80)) &&
+		return is_5ghz &&
+			!!(bw_bitmap & BIT(WPA_PR_CHAN_WIDTH_80)) &&
 			!!(preamble_bitmap & BIT(WPA_PR_PREAMBLE_VHT));
 	case BW80P80:
-		return !!(bw_bitmap & BIT(WPA_PR_CHAN_WIDTH_80P80)) &&
+		return is_5ghz &&
+			!!(bw_bitmap & BIT(WPA_PR_CHAN_WIDTH_80P80)) &&
 			!!(preamble_bitmap & BIT(WPA_PR_PREAMBLE_VHT));
 	case BW160:
-		return !!(bw_bitmap & BIT(WPA_PR_CHAN_WIDTH_160)) &&
+		return is_5ghz &&
+			!!(bw_bitmap & BIT(WPA_PR_CHAN_WIDTH_160)) &&
 			!!(preamble_bitmap & BIT(WPA_PR_PREAMBLE_VHT));
 	default:
 		return false;
