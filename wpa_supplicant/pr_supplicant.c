@@ -551,11 +551,26 @@ static void wpas_pr_ranging_params(void *ctx, const u8 *dev_addr,
 				   u8 self_format_bw, u8 peer_format_bw)
 {
 	struct wpa_supplicant *wpa_s = ctx;
+	const struct oper_class_map *op;
 	int bw, format_bw, freq;
 
 	bw = op_class_to_bandwidth(op_class);
-	format_bw = self_format_bw < peer_format_bw ?
-		self_format_bw : peer_format_bw;
+	op = get_oper_class(NULL, op_class);
+
+	/*
+	 * The operating class/channel list does not carry a preamble per entry.
+	 * For 2.4 GHz EDCA, the only supported format is HT40; both peers
+	 * advertised the channel only if their HT40 ranging capability allowed
+	 * it.
+	 */
+	if ((protocol_type & PR_EDCA_BASED_RANGING) && op &&
+	    op->mode == HOSTAPD_MODE_IEEE80211G &&
+	    (op->bw == BW40PLUS || op->bw == BW40MINUS))
+		format_bw = EDCA_FORMAT_AND_BW_HT40;
+	else
+		format_bw = self_format_bw < peer_format_bw ?
+			self_format_bw : peer_format_bw;
+
 	freq = ieee80211_chan_to_freq(NULL, op_class, op_channel);
 
 	wpas_notify_pr_ranging_params(wpa_s, dev_addr, peer_addr, ranging_role,
