@@ -239,8 +239,46 @@ static int wpas_pr_op_class_to_chan_params(u8 op_class, u8 op_channel,
 	*center_freq1 = control_freq + half_bw - block_pos * 20;
 	*channel_width = bw;
 
-	wpa_printf(MSG_DEBUG, "PR: op_class=%u ch=%u -> freq=%d cf1=%u bw=%d",
+	wpa_printf(MSG_EXCESSIVE,
+		   "PR: op_class=%u ch=%u -> freq=%d cf1=%u bw=%d",
 		   op_class, op_channel, control_freq, *center_freq1, bw);
+
+	return 0;
+}
+
+
+/*
+ * Return 1 if any 20 MHz subchannel is radar-marked, 0 if none are, or -1
+ * if the operating class/channel geometry cannot be determined.
+ */
+static int wpas_pr_check_channel_radar(struct wpa_supplicant *wpa_s,
+				       u8 op_class, u8 op_channel)
+{
+	u32 center_freq1, center_freq2;
+	u16 channel_width;
+	int first_freq, i;
+
+	if (wpas_pr_op_class_to_chan_params(op_class, op_channel,
+					    &center_freq1, &center_freq2,
+					    &channel_width) < 0)
+		return -1;
+
+	switch (channel_width) {
+	case 20:
+	case 40:
+	case 80:
+	case 160:
+		break;
+	default:
+		return -1;
+	}
+
+	first_freq = (int) center_freq1 - channel_width / 2 + 10;
+	for (i = 0; i < channel_width / 20; i++) {
+		if (ieee80211_is_dfs(first_freq + i * 20, wpa_s->hw.modes,
+				     wpa_s->hw.num_modes))
+			return 1;
+	}
 
 	return 0;
 }
@@ -278,8 +316,9 @@ wpas_pr_setup_edca_channels(struct wpa_supplicant *wpa_s,
 				ch = 149;
 
 			res = verify_channel(mode, o->op_class, ch, o->bw);
-
-			if (res == ALLOWED) {
+			if (res == ALLOWED &&
+			    wpas_pr_check_channel_radar(wpa_s, o->op_class,
+							ch) == 0) {
 				if (!op) {
 					if (cla == PR_MAX_OP_CLASSES)
 						continue;
@@ -339,8 +378,9 @@ wpas_pr_setup_ntb_channels(struct wpa_supplicant *wpa_s,
 				ch = 149;
 
 			res = verify_channel(mode, o->op_class, ch, o->bw);
-
-			if (res == ALLOWED) {
+			if (res == ALLOWED &&
+			    wpas_pr_check_channel_radar(wpa_s, o->op_class,
+							ch) == 0) {
 				if (!op) {
 					if (cla == PR_MAX_OP_CLASSES)
 						continue;
