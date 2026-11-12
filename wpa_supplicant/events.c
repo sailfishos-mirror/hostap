@@ -5176,14 +5176,19 @@ static int wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		const u8 *addr = wpa_s->valid_links ?
 			wpa_s->ap_mld_addr : wpa_s->bssid;
 		struct rsn_pmksa_cache_entry *e;
+		u8 pmkid[PMKID_LEN];
 
 		e = pmksa_cache_get(t, addr, NULL, NULL, 0, wpa_s->key_mgmt);
 		if (e && (e->auth_alg == WLAN_AUTH_EPPKE ||
 			  e->auth_alg == WLAN_AUTH_802_1X)) {
-			rsn_pmkid_privacy(wpa_s->pmkid_anonce,
-					  wpa_s->pmkid_snonce,
-					  wpa_s->key_mgmt, e->pmk_len,
-					  e->pmkid);
+			/* Update the entry through the PMKSA cache so that the
+			 * driver and the external PMKSA store (e.g., Android
+			 * framework) get the new PMKID as well. */
+			if (rsn_pmkid_privacy(wpa_s->pmkid_anonce,
+					      wpa_s->pmkid_snonce,
+					      wpa_s->key_mgmt, e->pmk_len,
+					      pmkid) == 0)
+				pmksa_cache_update_pmkid(t, e, pmkid);
 		} else {
 			wpa_printf(MSG_DEBUG,
 				   "PMKID privacy: PMKSA cache entry not found for "

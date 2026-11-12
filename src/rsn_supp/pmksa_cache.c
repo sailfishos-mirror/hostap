@@ -486,6 +486,43 @@ pmksa_cache_add_entry(struct rsn_pmksa_cache *pmksa,
 
 
 /**
+ * pmksa_cache_update_pmkid - Update the PMKID of an existing PMKSA cache entry
+ * @pmksa: Pointer to PMKSA cache data
+ * @entry: PMKSA cache entry to update
+ * @pmkid: New PMKID
+ *
+ * Replace the PMKID of an existing entry (e.g., with the one derived for PMKID
+ * privacy) and refresh the driver and the external listeners so that the new
+ * PMKID is used for the next PMKSA caching attempt.
+ */
+void pmksa_cache_update_pmkid(struct rsn_pmksa_cache *pmksa,
+			      struct rsn_pmksa_cache_entry *entry,
+			      const u8 *pmkid)
+{
+	if (os_memcmp(entry->pmkid, pmkid, PMKID_LEN) == 0)
+		return;
+
+	if (pmksa->sm)
+		wpa_sm_remove_pmkid(pmksa->sm, entry->network_ctx, entry->aa,
+				    entry->pmkid,
+				    entry->fils_cache_id_set ?
+				    entry->fils_cache_id : NULL);
+
+	os_memcpy(entry->pmkid, pmkid, PMKID_LEN);
+	wpa_printf(MSG_DEBUG, "RSN: Updated PMKID of PMKSA cache entry for "
+		   MACSTR, MAC2STR(entry->aa));
+
+	if (!pmksa->sm)
+		return;
+
+	if (pmksa->notify_cb)
+		pmksa->notify_cb(entry, pmksa->ctx);
+
+	pmksa_cache_add_to_driver(pmksa, entry);
+}
+
+
+/**
  * pmksa_cache_flush - Flush PMKSA cache entries for a specific network
  * @pmksa: Pointer to PMKSA cache data from pmksa_cache_init()
  * @network_ctx: Network configuration context or %NULL to flush all entries
@@ -1021,6 +1058,13 @@ void pmksa_cache_flush(struct rsn_pmksa_cache *pmksa, void *network_ctx,
 
 void pmksa_cache_remove(struct rsn_pmksa_cache *pmksa,
 			struct rsn_pmksa_cache_entry *entry)
+{
+}
+
+
+void pmksa_cache_update_pmkid(struct rsn_pmksa_cache *pmksa,
+			      struct rsn_pmksa_cache_entry *entry,
+			      const u8 *pmkid)
 {
 }
 

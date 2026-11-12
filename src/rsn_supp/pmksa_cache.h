@@ -110,6 +110,9 @@ void pmksa_cache_flush(struct rsn_pmksa_cache *pmksa, void *network_ctx,
 		       const u8 *addr);
 void pmksa_cache_remove(struct rsn_pmksa_cache *pmksa,
 			struct rsn_pmksa_cache_entry *entry);
+void pmksa_cache_update_pmkid(struct rsn_pmksa_cache *pmksa,
+			      struct rsn_pmksa_cache_entry *entry,
+			      const u8 *pmkid);
 void pmksa_cache_reconfig(struct rsn_pmksa_cache *pmksa);
 
 #endif /* PMKSA_CACHE_H */
