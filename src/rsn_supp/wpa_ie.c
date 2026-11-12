@@ -885,20 +885,36 @@ int security_profile_build(u16 rsn_capab, const u8 *rsnxe, size_t rsnxe_len,
 }
 
 
+/**
+ * security_profile_build_empty - Build Security Profile element indicating no
+ *                                security profile
+ * @buf: Output buffer
+ * @buf_len: Size of output buffer
+ * Returns: Number of bytes written, or -1 on error.
+ *
+ * Used by a non-AP STA with security profiles activated when the AP does not
+ * advertise a Security Profile element. In such an element, the Reduced RSN
+ * Capabilities field is reserved, the Security Profile Indication field
+ * indicates no Security Profile Bitmap and no vendor specific security
+ * profiles, and the Field Length subfield of the Extended RSN Capabilities
+ * field is set to 0 with the remaining bits reserved (IEEE P802.11bn/D2.1,
+ * 12.2.6).
+ */
 int security_profile_build_empty(u8 *buf, size_t buf_len)
 {
 	u8 *pos = buf;
 
 	/* EID(1) + Len(1) + EID_EXT(1) + ReducedRSNCaps(1) +
-	 * SecProfInd(1) */
-	if (buf_len < 5)
+	 * SecProfInd(1) + ExtRSNCaps(1) */
+	if (buf_len < 6)
 		return -1;
 
 	*pos++ = WLAN_EID_EXTENSION;
-	*pos++ = 3;
+	*pos++ = 4;
 	*pos++ = WLAN_EID_EXT_SECURITY_PROFILE;
-	*pos++ = 0; /* Reduced RSN Capabilities */
+	*pos++ = 0; /* Reduced RSN Capabilities: reserved */
 	*pos++ = 0; /* Security Profile Indication: no security profiles */
+	*pos++ = 0; /* Extended RSN Capabilities: Field Length 0, reserved */
 
 	return pos - buf;
 }
