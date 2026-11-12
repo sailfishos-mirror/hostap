@@ -3453,6 +3453,109 @@ static int wpas_fst_update_mbie(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_FST */
 
 
+/*
+ * For SME-in-driver, the driver selects the security profile and adds the
+ * Security Profile element to the (Re)Association Request frame. Update the
+ * selected security profile based on the element in the (Re)Association
+ * Request frame indicated by the driver.
+ */
+static int wpas_update_own_sec_prof(struct wpa_supplicant *wpa_s,
+				    struct wpa_ssid *ssid,
+				    const u8 *req_ies, size_t req_ies_len,
+				    const struct wpa_ie_data *ie)
+{
+	const struct security_profile_entry *sel_sp = NULL;
+	const u8 *sp = NULL, *bitmap;
+	u8 bitmap_len;
+	int i, num = -1;
+
+	/* Keep the local selection if the driver did not indicate the
+	 * (Re)Association Request frame elements */
+	if (!wpas_security_profile_active(wpa_s) || !req_ies)
+		return 0;
+
+	/* No security profile is used without RSNE */
+	if (ie && (ie->proto & WPA_PROTO_RSN))
+		sp = get_ie_ext(req_ies, req_ies_len,
+				WLAN_EID_EXT_SECURITY_PROFILE);
+	if (!sp)
+		goto out;
+
+	/* Reduced RSN Capabilities, Security Profile Indication, and
+	 * Security Profile Bitmap with the length indicated in B0-B3 of the
+	 * Security Profile Indication field */
+	if (sp[1] < 3)
+		goto invalid;
+	bitmap_len = sp[4] & 0x0f;
+	if (sp[1] < 3 + bitmap_len)
+		goto invalid;
+	bitmap = sp + 5;
+
+	/* Only the bit of the selected profile is set by the STA. An empty
+	 * bitmap indicates that no security profile is used. */
+	for (i = 0; i < bitmap_len * 8; i++) {
+		if (!(bitmap[i / 8] & BIT(i % 8)))
+			continue;
+		if (num >= 0)
+			goto invalid;
+		num = i;
+	}
+	if (num < 0)
+		goto out;
+
+	sel_sp = sec_prof_get(num);
+	if (!sel_sp) {
+		wpa_dbg(wpa_s, MSG_INFO,
+			"Security Profile: Unknown profile %d in driver-generated AssocReq",
+			num);
+		goto fail;
+	}
+
+	/* Non-PQC security profiles can be selected implicitly based on the
+	 * negotiated parameters regardless of the explicitly enabled
+	 * profiles, but PQC security profiles need to be explicitly
+	 * enabled */
+	if (sec_prof_pqc(num) &&
+	    !sec_prof_list_includes(ssid->security_profiles, num)) {
+		wpa_dbg(wpa_s, MSG_INFO,
+			"Security Profile: PQC profile %d in driver-generated AssocReq not enabled in network profile",
+			num);
+		goto fail;
+	}
+
+	if (!(ie->key_mgmt & sel_sp->key_mgmt) ||
+	    ie->pairwise_cipher != sel_sp->pairwise_cipher) {
+		wpa_dbg(wpa_s, MSG_INFO,
+			"Security Profile: Profile %d does not match key_mgmt 0x%x pairwise cipher 0x%x in driver-generated AssocReq",
+			num, ie->key_mgmt, ie->pairwise_cipher);
+		goto fail;
+	}
+
+out:
+	if (sel_sp)
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"Security Profile: Driver selected profile %d",
+			sel_sp->number);
+	else if (wpa_s->sel_security_profile)
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"Security Profile: Driver did not select a security profile");
+
+	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_SECURITY_PROFILE_ACTIVE,
+			 !!sel_sp);
+	wpa_sm_set_security_profile(wpa_s->wpa, sel_sp);
+	wpa_s->sel_security_profile = sel_sp;
+	return 0;
+
+invalid:
+	wpa_hexdump(MSG_INFO,
+		    "Security Profile: Invalid element in driver-generated AssocReq",
+		    sp, 2 + sp[1]);
+fail:
+	wpa_supplicant_deauthenticate(wpa_s, WLAN_REASON_INVALID_IE);
+	return -1;
+}
+
+
 static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 					      union wpa_event_data *data)
 {
@@ -3492,7 +3595,10 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 
 	if (!found || wpa_parse_wpa_ie(p, len, &ie) < 0) {
 		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_OCV, 0);
-		return 0;
+		return wpas_update_own_sec_prof(wpa_s, ssid,
+						data->assoc_info.req_ies,
+						data->assoc_info.req_ies_len,
+						NULL);
 	}
 
 	wpa_hexdump(MSG_DEBUG,
@@ -3574,6 +3680,11 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 			 wpa_s->pairwise_cipher);
 	wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using PTK %s",
 		wpa_cipher_txt(wpa_s->pairwise_cipher));
+
+	/* Update security profile from (Re)Association Request frame info */
+	if (wpas_update_own_sec_prof(wpa_s, ssid, data->assoc_info.req_ies,
+				     data->assoc_info.req_ies_len, &ie) < 0)
+		return -1;
 
 	/* Update other parameters based on AP's WPA IE/RSNE, if available */
 	if (!bss) {
