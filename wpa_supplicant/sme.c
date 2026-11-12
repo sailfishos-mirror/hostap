@@ -758,6 +758,7 @@ fail:
 
 
 static size_t sme_802_1x_auth_start_sec_prof(struct wpa_supplicant *wpa_s,
+					     struct wpa_ssid *ssid,
 					     bool external)
 {
 	int key_mgmt = sme_get_key_mgmt(wpa_s, external);
@@ -767,7 +768,6 @@ static size_t sme_802_1x_auth_start_sec_prof(struct wpa_supplicant *wpa_s,
 	const u8 *bitmap;
 	int ret;
 	const struct security_profile_entry *profile;
-	struct wpa_ssid *ssid = wpa_s->current_ssid;
 
 	/*
 	 * Security Profile element is included only when the RSNE is present in
@@ -1052,7 +1052,7 @@ static struct wpabuf * sme_build_802_1x_auth_start(struct wpa_supplicant *wpa_s,
 	if (!eapol_pdu)
 		return NULL;
 
-	sp_len = sme_802_1x_auth_start_sec_prof(wpa_s, external);
+	sp_len = sme_802_1x_auth_start_sec_prof(wpa_s, ssid, external);
 #ifdef CONFIG_TESTING_OPTIONS
 	if (wpa_s->sec_prof_override_auth)
 		sp_len = wpabuf_len(wpa_s->sec_prof_override_auth);
