@@ -4733,6 +4733,7 @@ static void sme_process_802_1x_auth_response(struct wpa_supplicant *wpa_s,
 	bool validation_failed = false;
 	const u8 *peer_addr = sme_get_peer_addr(wpa_s, external);
 	int key_mgmt = sme_get_key_mgmt(wpa_s, external);
+	u16 ext_status = WLAN_STATUS_UNSPECIFIED_FAILURE;
 
 	if (!wpa_s->auth_1x) {
 		wpa_msg(wpa_s, MSG_INFO,
@@ -4745,6 +4746,8 @@ static void sme_process_802_1x_auth_response(struct wpa_supplicant *wpa_s,
 		wpa_msg(wpa_s, MSG_INFO,
 			"IEEE 802.1X: Authentication failed (status=%u)",
 			auth->status_code);
+		/* Report the status code received from the AP */
+		ext_status = auth->status_code;
 		goto fail;
 	}
 
@@ -4804,8 +4807,10 @@ static void sme_process_802_1x_auth_response(struct wpa_supplicant *wpa_s,
 				"IEEE 802.1X: Invalid/missing AKM Suite Selector");
 			wpa_s->auth_1x->status = WLAN_STATUS_INVALID_AKMP;
 			if (external) {
+				/* Reject to the AP and report to the driver */
 				sme_external_auth_send_802_1x(
 					wpa_s, wpa_s->sme.ext_auth_wpa_ssid, 0);
+				validation_failed = true;
 				goto cleanup;
 			}
 			sme_send_authentication(wpa_s, wpa_s->current_bss,
@@ -4907,12 +4912,14 @@ static void sme_process_802_1x_auth_response(struct wpa_supplicant *wpa_s,
 		if (pmksa)
 			os_memcpy(wpa_s->auth_1x->pmkid, pmksa->pmkid,
 				  PMKID_LEN);
-		if (external)
-			sme_external_auth_send_802_1x(
-				wpa_s, wpa_s->sme.ext_auth_wpa_ssid, 0);
-		else
+		if (external) {
+			if (sme_external_auth_send_802_1x(
+				    wpa_s, wpa_s->sme.ext_auth_wpa_ssid, 0) < 0)
+				validation_failed = true;
+		} else {
 			sme_send_authentication(wpa_s, wpa_s->current_bss,
 						wpa_s->current_ssid, 0);
+		}
 		goto cleanup;
 	}
 #endif /* CONFIG_PQC */
@@ -4946,8 +4953,9 @@ static void sme_process_802_1x_auth_response(struct wpa_supplicant *wpa_s,
 		wpa_printf(MSG_DEBUG,
 			   "IEEE 802.1X: Authentication in progress, sending next frame");
 		if (external) {
-			sme_external_auth_send_802_1x(
-				wpa_s, wpa_s->sme.ext_auth_wpa_ssid, 0);
+			if (sme_external_auth_send_802_1x(
+				    wpa_s, wpa_s->sme.ext_auth_wpa_ssid, 0) < 0)
+				validation_failed = true;
 			goto cleanup;
 		}
 		sme_send_authentication(wpa_s, wpa_s->current_bss,
@@ -4965,8 +4973,7 @@ cleanup:
 	if (validation_failed) {
 		sme_802_1x_auth_data_free(wpa_s);
 		if (external)
-			sme_send_external_auth_status(
-				wpa_s, WLAN_STATUS_UNSPECIFIED_FAILURE);
+			sme_send_external_auth_status(wpa_s, ext_status);
 		else {
 			wpas_connection_failed(wpa_s, wpa_s->pending_bssid,
 					       NULL);
