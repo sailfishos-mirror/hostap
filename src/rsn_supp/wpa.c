@@ -7962,13 +7962,17 @@ int process_encrypted_assoc_resp(struct wpa_sm *sm, int valid_links,
 	struct wpabuf *buf = NULL;
 	int ret = -1;
 
-	if (!sm || !sm->ptk_set) {
+	if (!sm)
+		return -1;
+
+	sm->eppke_completed = 0;
+	sm->eap_over_auth_frame_completed = 0;
+
+	if (!sm->ptk_set) {
 		wpa_printf(MSG_DEBUG, "ENC_ASSOC: No KEK available");
 		return -1;
 	}
 
-	sm->eppke_completed = 0;
-	sm->eap_over_auth_frame_completed = 0;
 	wpa_hexdump_key(MSG_DEBUG, "ENC_ASSOC: (Re)Association Response frame",
 			ies, ies_len);
 
@@ -8120,6 +8124,27 @@ bool wpa_eap_over_auth_frame_is_completed(struct wpa_sm *sm)
 	return sm && sm->eap_over_auth_frame_completed;
 #else /* CONFIG_ENC_ASSOC */
 	return false;
+#endif /* CONFIG_ENC_ASSOC */
+}
+
+
+/**
+ * wpa_sm_clear_enc_assoc_completed - Clear encrypted association state
+ * @sm: Pointer to WPA state machine data from wpa_sm_init()
+ *
+ * This function is called on every (re)association indication before
+ * processing the (Re)Association Response frame so that the EPPKE and EAP
+ * over Authentication frame completion state from a previous association does
+ * not get used for the new association, e.g., when roaming without an
+ * explicit disassociation indication.
+ */
+void wpa_sm_clear_enc_assoc_completed(struct wpa_sm *sm)
+{
+#ifdef CONFIG_ENC_ASSOC
+	if (!sm)
+		return;
+	sm->eppke_completed = 0;
+	sm->eap_over_auth_frame_completed = 0;
 #endif /* CONFIG_ENC_ASSOC */
 }
 

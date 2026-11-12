@@ -295,6 +295,7 @@ int wpa_sm_get_cached_tk(struct wpa_sm *sm, u8 *tk, size_t *tk_len);
 int wpa_fils_is_completed(struct wpa_sm *sm);
 bool wpa_eppke_is_completed(struct wpa_sm *sm);
 bool wpa_eap_over_auth_frame_is_completed(struct wpa_sm *sm);
+void wpa_sm_clear_enc_assoc_completed(struct wpa_sm *sm);
 void wpa_sm_pmksa_cache_reconfig(struct wpa_sm *sm);
 int wpa_sm_set_mlo_params(struct wpa_sm *sm, const struct wpa_sm_mlo *mlo);
 void wpa_sm_set_driver_bss_selection(struct wpa_sm *sm,
@@ -565,6 +566,10 @@ static inline bool wpa_eppke_is_completed(struct wpa_sm *sm)
 static inline bool wpa_eap_over_auth_frame_is_completed(struct wpa_sm *sm)
 {
 	return false;
+}
+
+static inline void wpa_sm_clear_enc_assoc_completed(struct wpa_sm *sm)
+{
 }
 
 static inline void wpa_sm_pmksa_cache_reconfig(struct wpa_sm *sm)

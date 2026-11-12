@@ -5098,6 +5098,15 @@ static int wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 				"WPA/RSN IEs not updated");
 	}
 
+	/*
+	 * Clear EPPKE/EAP over Authentication frame completion state from any
+	 * previous association since roaming does not necessarily go through
+	 * a disassociation indication. The state is set again below if the
+	 * (Re)Association Response frame for this association is encrypted and
+	 * processed successfully.
+	 */
+	wpa_sm_clear_enc_assoc_completed(wpa_s->wpa);
+
 #ifdef CONFIG_ENC_ASSOC
 	if (data && wpa_s->assoc_resp_encrypted &&
 	    (wpa_s->drv_flags2 &
