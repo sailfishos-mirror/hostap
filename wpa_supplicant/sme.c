@@ -5622,7 +5622,7 @@ mscs_fail:
 				     NULL, wpa_s->valid_links);
 	if ((ssid->pmksa_privacy ||
 	     (wpas_security_profile_active(wpa_s) &&
-	      ssid->security_profiles)) &&
+	      sec_prof_list_has_epp(ssid->security_profiles))) &&
 	    (wpa_s->drv_flags2 &
 	     WPA_DRIVER_FLAGS2_ASSOCIATION_FRAME_ENCRYPTION) &&
 	    ieee802_11_rsnx_capab(ap_rsnxe,
