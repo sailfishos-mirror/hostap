@@ -10515,8 +10515,8 @@ bool sec_prof_list_has_epp(const int *numbers)
 		const struct security_profile_entry *e;
 
 		e = sec_prof_get(numbers[i]);
-		if (e)
-			return e->pmksa_caching_privacy;
+		if (e && e->pmksa_caching_privacy)
+			return true;
 	}
 
 	return false;
