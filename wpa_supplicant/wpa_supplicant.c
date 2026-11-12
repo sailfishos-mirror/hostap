@@ -5322,6 +5322,7 @@ mscs_end:
 			 RSN_OVERRIDE_NOT_USED);
 	if (wpas_rsn_overriding(wpa_s, ssid) &&
 	    wpas_ap_supports_rsn_overriding(wpa_s, bss) &&
+	    !wpa_s->sel_security_profile &&
 	    wpa_ie_len + 2 + 4 + 1 <= max_wpa_ie_len) {
 		u8 *pos = wpa_ie + wpa_ie_len, *start = pos;
 		const u8 *ie;
