@@ -6,12 +6,14 @@
 
 import binascii
 import logging
+import os
 import struct
 import time
 
 import hostapd
 import hwsim_utils
 from utils import *
+from tshark import run_tshark
 from wpasupplicant import WpaSupplicant
 from hwsim import HWSimRadio
 from test_eht import eht_mld_ap_wpa2_params, eht_mld_enable_ap, eht_verify_status
@@ -76,6 +78,55 @@ def test_ieee8021x_auth_alg_eap_tls(dev, apdev):
     if str(auth_alg) != "8":
         raise Exception("Expected IEEE 802.1X auth (8), got: " + str(auth_alg))
     hwsim_utils.test_connectivity(dev[0], hapd)
+
+def test_ieee8021x_auth_alg_eap_tls_sec_prof_sta_ap_no_sec_prof(dev, apdev, params):
+    """IEEE 802.1X auth frames with security profiles enabled only on STA"""
+    ssid = "test-ieee8021x-auth-sta-sec-prof"
+
+    capfile = os.path.join(params['logdir'], "hwsim0.pcapng")
+    params = hostapd.wpa2_eap_params(ssid=ssid)
+    params["wpa_key_mgmt"] = "WPA-EAP-SHA256"
+    params["ieee80211w"] = "2"
+    params["eap_using_authentication_frames"] = "1"
+    params["assoc_frame_encryption"] = "1"
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    try:
+        dev[0].set("security_profiles", "1")
+    except:
+        raise HwsimSkip("Security profiles not supported")
+
+    try:
+        dev[0].connect(ssid,
+                       key_mgmt="WPA-EAP-SHA256",
+                       ieee80211w="2",
+                       eap="TLS",
+                       identity="tls user",
+                       ca_cert="auth_serv/ca.pem",
+                       client_cert="auth_serv/user.pem",
+                       private_key="auth_serv/user.key",
+                       scan_freq="2412",
+                       eap_over_auth_frame="1")
+
+        hapd.wait_sta()
+        sta = hapd.get_sta(dev[0].own_addr())
+        if sta["AKMSuiteSelector"] != '00-0f-ac-5':
+            raise Exception("Incorrect AKMSuiteSelector value: " +
+                            sta["AKMSuiteSelector"])
+        if sta.get("auth_alg") != "8":
+            raise Exception("Expected IEEE 802.1X auth (8), got: " +
+                            str(sta.get("auth_alg")))
+        hwsim_utils.test_connectivity(dev[0], hapd)
+    finally:
+        dev[0].set("security_profiles", "0")
+
+    # Verify that the STA included a Security Profile element in the
+    # Authentication frames even though the AP does not support it
+    filt = "wlan.fc.type_subtype == 0x000b && wlan.sa == %s && " \
+           "frame contains ff:04:a2:00:00:00" % dev[0].own_addr()
+    out = run_tshark(capfile, filt, ["wlan.sa"])
+    if out is None or dev[0].own_addr() not in out:
+        raise Exception("Security Profile element not included in Authentication frame")
 
 def test_ieee8021x_auth_alg_eap_ttls_mschapv2(dev, apdev):
     """IEEE 802.1X authentication using Authentication frames with EAP-TTLS/MSCHAPv2"""
