@@ -7951,7 +7951,7 @@ fail:
 
 
 int process_encrypted_assoc_resp(struct wpa_sm *sm, int valid_links,
-				 const u8 *ies, size_t ies_len)
+				 u16 auth_alg, const u8 *ies, size_t ies_len)
 {
 	struct ieee802_11_elems elems;
 	struct wpa_eapol_ie_parse kde;
@@ -8092,8 +8092,8 @@ int process_encrypted_assoc_resp(struct wpa_sm *sm, int valid_links,
 	wpa_sm_set_rekey_offload(sm);
 
 	wpa_printf(MSG_DEBUG, "ENC_ASSOC: Association completed successfully");
-	sm->eppke_completed = 1;
-	sm->eap_over_auth_frame_completed = 1;
+	sm->eppke_completed = auth_alg == WLAN_AUTH_EPPKE;
+	sm->eap_over_auth_frame_completed = auth_alg == WLAN_AUTH_802_1X;
 
 	ret = 0;
 fail:

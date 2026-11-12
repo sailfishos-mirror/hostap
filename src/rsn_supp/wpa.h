@@ -719,8 +719,8 @@ struct wpabuf * fils_build_assoc_req(struct wpa_sm *sm, const u8 **kek,
 				     const struct wpabuf **hlp,
 				     unsigned int num_hlp);
 int fils_process_assoc_resp(struct wpa_sm *sm, const u8 *resp, size_t len);
-int process_encrypted_assoc_resp(struct wpa_sm *sm, int link_id,
-				 const u8 *ies, size_t ies_len);
+int process_encrypted_assoc_resp(struct wpa_sm *sm, int valid_links,
+				 u16 auth_alg, const u8 *ies, size_t ies_len);
 
 struct wpabuf * owe_build_assoc_req(struct wpa_sm *sm, u16 group);
 int owe_process_assoc_resp(struct wpa_sm *sm, const u8 *bssid,

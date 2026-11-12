@@ -4047,6 +4047,7 @@ static int wpas_rx_enc_assoc_resp(struct wpa_supplicant *wpa_s, const u8 *aa,
 					      WPA_DRIVER_FLAGS2_MLO) &&
 					     wpa_s->valid_links) ?
 					    wpa_s->valid_links : -1,
+					    entry->auth_alg,
 					    resp_ies, resp_ies_len);
 }
 #endif /* CONFIG_ENC_ASSOC */
