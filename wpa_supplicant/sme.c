@@ -3929,8 +3929,8 @@ static void sme_handle_eppke_unknown_password_id(struct wpa_supplicant *wpa_s,
 		MAC2STR(bssid));
 
 	if (external) {
-		sme_send_external_auth_status(wpa_s,
-					      WLAN_STATUS_UNSPECIFIED_FAILURE);
+		sme_send_external_auth_status(
+			wpa_s, WLAN_STATUS_UNKNOWN_PASSWORD_IDENTIFIER);
 	} else {
 		wpas_connection_failed(wpa_s, bssid, NULL);
 		wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
