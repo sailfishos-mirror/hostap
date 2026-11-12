@@ -4031,8 +4031,13 @@ static int wpas_rx_enc_assoc_resp(struct wpa_supplicant *wpa_s, const u8 *aa,
 
 	entry = ptksa_cache_get(wpa_s->ptksa, aa, wpa_s->pairwise_cipher);
 	if (!entry || (entry->auth_alg != WLAN_AUTH_EPPKE &&
-		       entry->auth_alg != WLAN_AUTH_802_1X))
-		return 0;
+		       entry->auth_alg != WLAN_AUTH_802_1X)) {
+		wpa_printf(MSG_INFO,
+			   "ENC_ASSOC: No EPPKE/IEEE 802.1X PTKSA for " MACSTR
+			   " to process encrypted (Re)Association Response frame",
+			   MAC2STR(aa));
+		return -1;
+	}
 
 	wpa_sm_set_ptk_kck_kek(wpa_s->wpa, entry->ptk.hash_alg,
 			       entry->ptk.kck, entry->ptk.kck_len,
