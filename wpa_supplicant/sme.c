@@ -3999,12 +3999,22 @@ void sme_external_auth_mgmt_rx(struct wpa_supplicant *wpa_s,
 
 		res = wpas_pasn_auth_rx(wpa_s, header, len);
 		if (res < 0) {
-			/* Notify failure to the driver */
-			sme_send_external_auth_status(
-				wpa_s,
-				res == -2 ?
-				status_code :
-				WLAN_STATUS_UNSPECIFIED_FAILURE);
+			/*
+			 * Notify failure to the driver using the status code
+			 * from the AP if it rejected the authentication. The
+			 * AP indicating an unsupported group or a temporary
+			 * rejection with an anti-clogging token triggers a
+			 * reattempt (with another group or with the comeback
+			 * token), so a failure with these status codes is a
+			 * local failure or a failure of the reattempt.
+			 */
+			if (status_code == WLAN_STATUS_SUCCESS ||
+			    status_code ==
+			    WLAN_STATUS_FINITE_CYCLIC_GROUP_NOT_SUPPORTED ||
+			    status_code ==
+			    WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY)
+				status_code = WLAN_STATUS_UNSPECIFIED_FAILURE;
+			sme_send_external_auth_status(wpa_s, status_code);
 			return;
 		}
 #endif /* CONFIG_ENC_ASSOC */
