@@ -865,14 +865,14 @@ static int wpas_eppke_set_rsne(struct wpa_supplicant *wpa_s,
 static void wpas_pasn_sec_prof_eppke(struct wpa_supplicant *wpa_s,
 				     struct pasn_data *pasn,
 				     struct wpa_pasn_auth_work *awork,
-				     struct wpa_bss *bss)
+				     struct wpa_bss *bss,
+				     struct wpa_ssid *ssid)
 {
 	const u8 *sp, *bitmap;
 	const struct security_profile_entry *profile = NULL;
 	u8 bitmap_len;
 	u8 sp_buf[256];
 	int sp_len;
-	struct wpa_ssid *ssid = wpa_s->current_ssid;
 
 	if (!wpas_security_profile_active(wpa_s))
 		return;
@@ -1141,7 +1141,8 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
 					WLAN_RSNX_CAPAB_PMKSA_CACHING_PRIVACY);
 #endif /* CONFIG_PMKSA_PRIVACY */
 
-			wpas_pasn_sec_prof_eppke(wpa_s, pasn, awork, bss);
+			wpas_pasn_sec_prof_eppke(wpa_s, pasn, awork, bss,
+						 ssid);
 
 		}
 	}
@@ -1471,7 +1472,7 @@ static int wpas_pasn_retry_with_next_group(struct wpa_supplicant *wpa_s,
 
 #ifdef CONFIG_ENC_ASSOC
 	if (pasn->auth_alg == WLAN_AUTH_EPPKE)
-		ssid = wpa_s->current_ssid;
+		ssid = wpa_config_get_network(wpa_s->conf, pasn->network_id);
 #endif /* CONFIG_ENC_ASSOC */
 
 	next_group = (u16) wpas_pasn_get_group(wpa_s, ssid, pasn);
