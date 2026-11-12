@@ -96,10 +96,16 @@ static void wpas_pasn_free_auth_work(struct wpa_pasn_auth_work *awork)
 static void wpas_pasn_auth_work_timeout(void *eloop_ctx, void *timeout_ctx)
 {
 	struct wpa_supplicant *wpa_s = eloop_ctx;
+	bool eppke = wpa_s->pasn.auth_alg == WLAN_AUTH_EPPKE;
 
 	wpa_printf(MSG_DEBUG, "PASN: Auth work timeout - stopping auth");
 
 	wpas_pasn_auth_stop(wpa_s);
+
+	/* Report the failure to the driver for EPPKE external authentication */
+	if (eppke)
+		sme_send_external_auth_status(wpa_s,
+					      WLAN_STATUS_UNSPECIFIED_FAILURE);
 
 	wpas_pasn_auth_work_done(wpa_s, PASN_STATUS_FAILURE);
 }
@@ -1262,6 +1268,10 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
 	wpa_s->pasn_auth_work = work;
 	return;
 fail:
+	/* Report the failure to the driver for EPPKE external authentication */
+	if (awork->auth_alg == WLAN_AUTH_EPPKE)
+		sme_send_external_auth_status(wpa_s,
+					      WLAN_STATUS_UNSPECIFIED_FAILURE);
 	wpas_pasn_free_auth_work(awork);
 	work->ctx = NULL;
 	radio_work_done(work);
