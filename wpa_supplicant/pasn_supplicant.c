@@ -862,11 +862,11 @@ static int wpas_eppke_set_rsne(struct wpa_supplicant *wpa_s,
 
 
 #ifdef CONFIG_ENC_ASSOC
-static void wpas_pasn_sec_prof_eppke(struct wpa_supplicant *wpa_s,
-				     struct pasn_data *pasn,
-				     struct wpa_pasn_auth_work *awork,
-				     struct wpa_bss *bss,
-				     struct wpa_ssid *ssid)
+static int wpas_pasn_sec_prof_eppke(struct wpa_supplicant *wpa_s,
+				    struct pasn_data *pasn,
+				    struct wpa_pasn_auth_work *awork,
+				    struct wpa_bss *bss,
+				    struct wpa_ssid *ssid)
 {
 	const u8 *sp, *bitmap;
 	const struct security_profile_entry *profile = NULL;
@@ -875,7 +875,7 @@ static void wpas_pasn_sec_prof_eppke(struct wpa_supplicant *wpa_s,
 	int sp_len;
 
 	if (!wpas_security_profile_active(wpa_s))
-		return;
+		return 0;
 
 	/*
 	 * Security Profile + EPPKE (external auth path):
@@ -896,12 +896,19 @@ static void wpas_pasn_sec_prof_eppke(struct wpa_supplicant *wpa_s,
 	 */
 
 	sp = wpa_bss_get_ie_ext(bss, WLAN_EID_EXT_SECURITY_PROFILE);
+	if (!sp) {
+		sp_len = security_profile_build_empty(sp_buf, sizeof(sp_buf));
+		if (sp_len > 0 &&
+		    pasn_set_security_profile(pasn, sp_buf, sp_len) == 0)
+			wpa_printf(MSG_DEBUG,
+				   "EPPKE: Including empty Security Profile element in external auth EPPKE Auth1 frame");
+	}
 	if (!sp || sp[1] < 3)
-		return;
+		return 0;
 
 	bitmap_len = sp[4] & 0x0F;
 	if (sp[1] < 3 + bitmap_len)
-		return;
+		return 0;
 
 	bitmap = sp + 5;
 
@@ -923,7 +930,7 @@ static void wpas_pasn_sec_prof_eppke(struct wpa_supplicant *wpa_s,
 					  ssid ? ssid->security_profiles : NULL,
 					  bitmap, bitmap_len);
 	if (!profile)
-		return;
+		return 0;
 
 	/*
 	 * External auth path: build the Security Profile element from the
@@ -939,10 +946,17 @@ static void wpas_pasn_sec_prof_eppke(struct wpa_supplicant *wpa_s,
 					2 + awork->rsnxe_data[1] : 0,
 					profile->number,
 					sp_buf, sizeof(sp_buf));
-	if (sp_len > 0 && pasn_set_security_profile(pasn, sp_buf, sp_len) == 0)
-		wpa_printf(MSG_DEBUG,
-			   "EPPKE: Including Security Profile element in external auth EPPKE Auth1 frame (profile=%d)",
-			   profile->number);
+	if (sp_len <= 0 ||
+	    pasn_set_security_profile(pasn, sp_buf, sp_len) < 0) {
+		wpa_printf(MSG_INFO,
+			   "EPPKE: Failed to build Security Profile element");
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "EPPKE: Including Security Profile element in external auth EPPKE Auth1 frame (profile=%d)",
+		   profile->number);
+	return 0;
 }
 #endif /* CONFIG_ENC_ASSOC */
 
@@ -1141,8 +1155,9 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
 					WLAN_RSNX_CAPAB_PMKSA_CACHING_PRIVACY);
 #endif /* CONFIG_PMKSA_PRIVACY */
 
-			wpas_pasn_sec_prof_eppke(wpa_s, pasn, awork, bss,
-						 ssid);
+			if (wpas_pasn_sec_prof_eppke(wpa_s, pasn, awork, bss,
+						     ssid) < 0)
+				goto fail;
 
 		}
 	}
