@@ -1448,6 +1448,8 @@ static int wpas_pasn_immediate_retry(struct wpa_supplicant *wpa_s,
 	int network_id;
 	unsigned int auth_alg;
 	bool ltf_keyseed_required;
+	u8 *rsnxe = NULL;
+	int ret;
 
 	wpa_printf(MSG_DEBUG, "PASN: Immediate retry");
 	os_memcpy(own_addr, pasn->own_addr, ETH_ALEN);
@@ -1466,15 +1468,27 @@ static int wpas_pasn_immediate_retry(struct wpa_supplicant *wpa_s,
 
 	ltf_keyseed_required = pasn->secure_ltf;
 
+	/*
+	 * Hold the RSNXE provided for external authentication since
+	 * wpas_pasn_reset() frees it.
+	 */
+	if (pasn->rsnxe_ie) {
+		rsnxe = os_memdup(pasn->rsnxe_ie, 2 + pasn->rsnxe_ie[1]);
+		if (!rsnxe)
+			return -1;
+	}
+
 	wpas_pasn_reset(wpa_s);
 
-	return wpas_pasn_auth_start(wpa_s, own_addr, peer_addr, akmp, cipher,
-				    group, network_id, params->comeback,
-				    params->comeback_len, auth_alg,
-				    pasn->group_cipher,
-				    pasn->group_mgmt_cipher, pasn->rsn_capab,
-				    pasn->rsnxe_ie, pasn->is_ml_peer,
-				    ltf_keyseed_required);
+	ret = wpas_pasn_auth_start(wpa_s, own_addr, peer_addr, akmp, cipher,
+				   group, network_id, params->comeback,
+				   params->comeback_len, auth_alg,
+				   pasn->group_cipher,
+				   pasn->group_mgmt_cipher, pasn->rsn_capab,
+				   rsnxe, pasn->is_ml_peer,
+				   ltf_keyseed_required);
+	os_free(rsnxe);
+	return ret;
 }
 
 
