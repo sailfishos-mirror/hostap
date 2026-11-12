@@ -2189,7 +2189,6 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 			bss_sp, ssid->key_mgmt, ssid->security_profiles);
 
 	if (bss_sp && ssid->security_profiles && rsne_parsed &&
-	    ssid->security_profiles &&
 	    (sel_sp = security_profile_select_best(bss_sp,
 						   ssid->security_profiles))) {
 		wpa_dbg(wpa_s, MSG_DEBUG,
