@@ -815,7 +815,7 @@ static int sme_802_1x_auth_start_sec_prof(struct wpa_supplicant *wpa_s,
 		return ret;
 	}
 
-	if (sp_ap &&
+	if (!external &&
 	    wpa_s->sel_security_profile &&
 	    wpa_s->security_profile_len > 0) {
 		/* SME-in-wpa_supplicant: use pre-built Security Profile
@@ -844,15 +844,11 @@ static int sme_802_1x_auth_start_sec_prof(struct wpa_supplicant *wpa_s,
 
 	bitmap = sp_ap + 5;
 
-	if (wpa_s->sel_security_profile)
-		profile = wpa_s->sel_security_profile;
-	else
-		profile = security_profile_select(
-			key_mgmt,
-			wpa_s->sme.ext_pairwise_cipher, true,
-			false,
-			ssid ? ssid->security_profiles : NULL,
-			bitmap, bitmap_len);
+	profile = security_profile_select(key_mgmt,
+					  wpa_s->sme.ext_pairwise_cipher, true,
+					  false,
+					  ssid ? ssid->security_profiles : NULL,
+					  bitmap, bitmap_len);
 	if (!profile)
 		return 0;
 
