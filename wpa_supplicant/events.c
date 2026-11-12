@@ -3860,6 +3860,14 @@ static void wpas_parse_connection_info(struct wpa_supplicant *wpa_s,
 	struct wpabuf *req_mlbuf, *resp_mlbuf;
 
 	wpa_s->connection_set = 0;
+#ifdef CONFIG_PMKSA_PRIVACY
+	/*
+	 * PMKID privacy nonces are valid only for the (Re)Association
+	 * Request/Response frames reported with this association indication.
+	 */
+	wpa_s->pmkid_anonce_set = false;
+	wpa_s->pmkid_snonce_set = false;
+#endif /* CONFIG_PMKSA_PRIVACY */
 
 	if (!req_ies || !resp_ies ||
 	    ieee802_11_parse_elems(req_ies, req_ies_len, &req_elems, 0) ==
@@ -5181,9 +5189,9 @@ static int wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 				   "PMKID privacy: PMKSA cache entry not found for "
 				   MACSTR, MAC2STR(addr));
 		}
-		wpa_s->pmkid_anonce_set = false;
-		wpa_s->pmkid_snonce_set = false;
 	}
+	wpa_s->pmkid_anonce_set = false;
+	wpa_s->pmkid_snonce_set = false;
 #endif /* CONFIG_PMKSA_PRIVACY */
 
 	if (wpa_sm_set_ml_info(wpa_s)) {
