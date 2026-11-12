@@ -421,13 +421,17 @@ struct p2p_device * p2p_get_device_interface(struct p2p_data *p2p,
  * p2p_create_device - Create a peer entry
  * @p2p: P2P module context from p2p_init()
  * @addr: P2P Device Address of the peer
+ * @go_dev_addr: GO address not to evict, or %NULL
+ * @rx_time: Minimum timestamp required for eviction, or %NULL
  * Returns: Pointer to the device entry or %NULL on failure
  *
  * If there is already an entry for the peer, it will be returned instead of
  * creating a new one.
  */
 static struct p2p_device * p2p_create_device(struct p2p_data *p2p,
-					     const u8 *addr)
+					     const u8 *addr,
+					     const u8 *go_dev_addr,
+					     struct os_reltime *rx_time)
 {
 	struct p2p_device *dev, *oldest = NULL;
 	size_t count = 0;
@@ -443,6 +447,16 @@ static struct p2p_device * p2p_create_device(struct p2p_data *p2p,
 			oldest = dev;
 	}
 	if (count + 1 > p2p->cfg->max_peers && oldest) {
+		if ((rx_time &&
+		     !os_reltime_before(&oldest->last_seen, rx_time)) ||
+		    (go_dev_addr &&
+		     ether_addr_equal(oldest->info.p2p_device_addr,
+				      go_dev_addr))) {
+			p2p_dbg(p2p,
+				"Do not evict newer peer or GO for group client "
+				MACSTR, MAC2STR(addr));
+			return NULL;
+		}
 		p2p_dbg(p2p,
 			"Remove oldest peer entry to make room for a new peer "
 			MACSTR, MAC2STR(oldest->info.p2p_device_addr));
@@ -534,7 +548,8 @@ static int p2p_add_group_clients(struct p2p_data *p2p, const u8 *go_dev_addr,
 				dev->flags &= ~P2P_DEV_PROBE_REQ_ONLY;
 			}
 		} else {
-			dev = p2p_create_device(p2p, cli->p2p_device_addr);
+			dev = p2p_create_device(p2p, cli->p2p_device_addr,
+						go_dev_addr, rx_time);
 			if (dev == NULL)
 				continue;
 			dev->flags |= P2P_DEV_GROUP_CLIENT_ONLY;
@@ -772,7 +787,7 @@ int p2p_add_device(struct p2p_data *p2p, const u8 *addr, int freq,
 		return 0;
 	}
 
-	dev = p2p_create_device(p2p, p2p_dev_addr);
+	dev = p2p_create_device(p2p, p2p_dev_addr, NULL, NULL);
 	if (dev == NULL) {
 		p2p_parse_free(&msg);
 		return -1;
@@ -2244,7 +2259,7 @@ static void p2p_add_dev_from_probe_req(struct p2p_data *p2p, const u8 *addr,
 		return; /* already known */
 	}
 
-	dev = p2p_create_device(p2p, addr);
+	dev = p2p_create_device(p2p, addr, NULL, NULL);
 	if (dev == NULL) {
 		p2p_parse_free(&msg);
 		return;
@@ -2288,7 +2303,7 @@ struct p2p_device * p2p_add_dev_from_go_neg_req(struct p2p_data *p2p,
 		return dev; /* already known */
 	}
 
-	dev = p2p_create_device(p2p, addr);
+	dev = p2p_create_device(p2p, addr, NULL, NULL);
 	if (dev == NULL)
 		return NULL;
 
@@ -5758,7 +5773,7 @@ int p2p_process_nfc_connection_handover(struct p2p_data *p2p,
 		params->oob_dev_pw_len = msg.oob_dev_password_len;
 	}
 
-	dev = p2p_create_device(p2p, p2p_dev_addr);
+	dev = p2p_create_device(p2p, p2p_dev_addr, NULL, NULL);
 	if (dev == NULL) {
 		p2p_parse_free(&msg);
 		return -1;
@@ -6195,7 +6210,7 @@ void p2p_process_usd_elems(struct p2p_data *p2p, const u8 *ies, u16 ies_len,
 	else
 		p2p_dev_addr = peer_addr;
 
-	dev = p2p_create_device(p2p, p2p_dev_addr);
+	dev = p2p_create_device(p2p, p2p_dev_addr, NULL, NULL);
 	if (!dev) {
 		p2p_parse_free(&msg);
 		p2p_dbg(p2p, "Failed to add a peer P2P Device");
