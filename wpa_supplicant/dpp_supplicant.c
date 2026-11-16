@@ -4284,6 +4284,7 @@ wpas_dpp_gas_req_handler(void *ctx, void *resp_ctx, const u8 *sa,
 			return NULL;
 		}
 #endif /* CONFIG_TESTING_OPTIONS */
+		wpas_dpp_start_gas_server(wpa_s);
 	}
 
 	wpa_hexdump(MSG_DEBUG,
