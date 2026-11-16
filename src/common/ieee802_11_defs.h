@@ -2782,6 +2782,13 @@ struct ieee80211_he_mu_edca_parameter_set {
 #define RNR_TBTT_INFO_COUNT_VAL(x)                  (((x) & 0xf0) >> 4)
 #define RNR_TBTT_INFO_LEN                           13
 #define RNR_TBTT_INFO_MLD_LEN                       16
+/*
+ * IEEE P802.11bn/D2.0, Table 9-363
+ * 9.4.2.169.2 Neighbor AP Information field
+ * MLD params (3) + Enhanced Critical Updates Information (1)
+ */
+#define RNR_TBTT_INFO_MLD_ECU_LEN                   17
+
 #define RNR_NEIGHBOR_AP_OFFSET_UNKNOWN              255
 /* Figure 9-632a - BSS Parameters subfield format */
 #define RNR_BSS_PARAM_OCT_RECOMMENDED               BIT(0)
