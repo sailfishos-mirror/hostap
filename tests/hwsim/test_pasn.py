@@ -834,6 +834,43 @@ def test_pasn_ft_eap_sha384(dev, apdev):
 
     check_pasn_akmp_cipher(dev[0], pasn_hapd, "FT-EAP-SHA384", "CCMP")
 
+def test_pasn_ecdh_uncompressed_sta(dev, apdev):
+    """PASN authentication with ECDH uncompressed representation from STA"""
+    check_pasn_capab(dev[0])
+
+    params = pasn_ap_params("PASN", "CCMP", "19")
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    try:
+        dev[0].set("pasn_ecdh_uncompressed", "1")
+        check_pasn_akmp_cipher(dev[0], hapd, "PASN", "CCMP")
+    finally:
+        dev[0].set("pasn_ecdh_uncompressed", "0")
+
+def test_pasn_ecdh_uncompressed_ap(dev, apdev):
+    """PASN authentication with ECDH uncompressed representation from AP"""
+    check_pasn_capab(dev[0])
+
+    params = pasn_ap_params("PASN", "CCMP", "19")
+    params['pasn_ecdh_uncompressed'] = "1"
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    check_pasn_akmp_cipher(dev[0], hapd, "PASN", "CCMP")
+
+def test_pasn_ecdh_uncompressed(dev, apdev):
+    """PASN authentication with ECDH uncompressed representation"""
+    check_pasn_capab(dev[0])
+
+    params = pasn_ap_params("PASN", "CCMP", "19")
+    params['pasn_ecdh_uncompressed'] = "1"
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    try:
+        dev[0].set("pasn_ecdh_uncompressed", "1")
+        check_pasn_akmp_cipher(dev[0], hapd, "PASN", "CCMP")
+    finally:
+        dev[0].set("pasn_ecdh_uncompressed", "0")
+
 def test_pasn_sta_mic_error(dev, apdev):
     """PASN authentication with WPA2/CCMP AP with corrupted MIC on station"""
     check_pasn_capab(dev[0])

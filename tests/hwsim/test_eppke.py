@@ -42,7 +42,8 @@ def test_eppke_akm_suite_and_rsnxe_feature_flags(dev, apdev):
     hapd = hostapd.add_ap(apdev[0], params)
     time.sleep(2)
 
-def run_eppke_sae_ext_key(dev, apdev, group):
+def run_eppke_sae_ext_key(dev, apdev, group, ap_uncompressed=False,
+                          sta_uncompressed=False):
     """EPPKE authentication with a Non-MLO AP with base AKM SAE-EXT-KEY and non-MLD client"""
     check_eppke_capab(dev[0])
     ssid = "test-eppke-authentication"
@@ -56,9 +57,13 @@ def run_eppke_sae_ext_key(dev, apdev, group):
     params['sae_pwe'] = '2'
     params['pasn_groups'] = str(group)
     params['sae_groups'] = str(group)
+    if ap_uncompressed:
+        params['pasn_ecdh_uncompressed'] = "1"
     hapd = hostapd.add_ap(apdev[0], params)
 
     try:
+        if sta_uncompressed:
+            dev[0].set("pasn_ecdh_uncompressed", "1")
         dev[0].set("pasn_groups", str(group))
         dev[0].set("sae_pwe", "1")
         dev[0].connect(ssid, sae_password=passphrase, scan_freq="2412",
@@ -71,6 +76,8 @@ def run_eppke_sae_ext_key(dev, apdev, group):
         hwsim_utils.test_connectivity(dev[0], hapd)
 
     finally:
+        if sta_uncompressed:
+            dev[0].set("pasn_ecdh_uncompressed", "0")
         dev[0].set("pasn_groups", "")
         dev[0].set("sae_pwe", "0")
 
@@ -85,6 +92,19 @@ def test_eppke_ap_with_base_akm_sae_ext_non_mld_client_20(dev, apdev):
 def test_eppke_ap_with_base_akm_sae_ext_non_mld_client_21(dev, apdev):
     """EPPKE authentication with a Non-MLO AP with base AKM SAE-EXT-KEY and non-MLD client, group 21"""
     run_eppke_sae_ext_key(dev, apdev, 21)
+
+def test_eppke_ecdh_uncompressed_ap(dev, apdev):
+    """EPPKE and ECDH uncompressed representation from AP"""
+    run_eppke_sae_ext_key(dev, apdev, 19, ap_uncompressed=True)
+
+def test_eppke_ecdh_uncompressed_sta(dev, apdev):
+    """EPPKE and ECDH uncompressed representation from STA"""
+    run_eppke_sae_ext_key(dev, apdev, 20, sta_uncompressed=True)
+
+def test_eppke_ecdh_uncompressed(dev, apdev):
+    """EPPKE and ECDH uncompressed representation"""
+    run_eppke_sae_ext_key(dev, apdev, 21, ap_uncompressed=True,
+                          sta_uncompressed=True)
 
 def test_eppke_mld_ap_with_base_akm_sae_ext_non_mld_client(dev, apdev):
     """EPPKE authentication with an MLD AP with base AKM SAE-EXT and non-MLD client"""
