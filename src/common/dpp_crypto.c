@@ -521,12 +521,14 @@ int dpp_ecdh(struct crypto_ec_key *own, struct crypto_ec_key *peer,
 		goto fail;
 	}
 
+	wpa_hexdump_buf(MSG_DEBUG, "DPP: Peer ECDH public key", peer_pub);
 	secret_buf = crypto_ecdh_set_peerkey(ecdh, 1, wpabuf_head(peer_pub),
 					     wpabuf_len(peer_pub));
 	if (!secret_buf) {
 		wpa_printf(MSG_ERROR, "DPP: crypto_ecdh_set_peerkey() failed");
 		goto fail;
 	}
+	wpa_hexdump_buf_key(MSG_DEBUG, "DPP: ECDH shared secret", secret_buf);
 
 	if (wpabuf_len(secret_buf) > DPP_MAX_SHARED_SECRET_LEN) {
 		wpa_printf(MSG_ERROR, "DPP: ECDH secret longer than expected");
@@ -2055,6 +2057,8 @@ int dpp_pfs_process(struct dpp_pfs *pfs, const u8 *peer_ie, size_t peer_ie_len)
 		return -1;
 	}
 
+	wpa_hexdump(MSG_DEBUG, "DPP: Peer ECDH public key",
+		    peer_ie + 2, peer_ie_len - 2);
 	pfs->secret = crypto_ecdh_set_peerkey(pfs->ecdh, 0, peer_ie + 2,
 					      peer_ie_len - 2);
 	pfs->secret = wpabuf_zeropad(pfs->secret, pfs->curve->prime_len);
@@ -2062,7 +2066,7 @@ int dpp_pfs_process(struct dpp_pfs *pfs, const u8 *peer_ie, size_t peer_ie_len)
 		wpa_printf(MSG_DEBUG, "DPP: Invalid peer DH public key");
 		return -1;
 	}
-	wpa_hexdump_buf_key(MSG_DEBUG, "DPP: DH shared secret", pfs->secret);
+	wpa_hexdump_buf_key(MSG_DEBUG, "DPP: ECDH shared secret", pfs->secret);
 	return 0;
 }
 

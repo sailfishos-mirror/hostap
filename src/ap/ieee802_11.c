@@ -3239,7 +3239,8 @@ static u16 wpa_auth_process_pqc_params(struct hostapd_data *hapd,
 			goto err;
 		}
 
-		wpa_hexdump(MSG_DEBUG, "Peer DH public key", pos, pubkey_len);
+		wpa_hexdump(MSG_DEBUG, "IEEE 802.1X(PQC): Peer ECDH public key",
+			    pos, pubkey_len);
 
 		auth_data->dhss = crypto_ecdh_set_peerkey(auth_data->ecdh, 0,
 							  pos, pubkey_len);
@@ -3249,7 +3250,8 @@ static u16 wpa_auth_process_pqc_params(struct hostapd_data *hapd,
 			goto err;
 		}
 
-		wpa_hexdump_buf_key(MSG_DEBUG, "DH shared secret",
+		wpa_hexdump_buf_key(MSG_DEBUG,
+				    "IEEE 802.1X(PQC): ECDH shared secret",
 				    auth_data->dhss);
 
 		pos += pubkey_len;
@@ -3473,13 +3475,16 @@ u16 wpa_auth_validate_802_1x_frame(struct hostapd_data *hapd,
 		/* Generate shared secret */
 		wpabuf_clear_free(sta->eap_auth_data.dhss);
 		sta->eap_auth_data.dhss = NULL;
+		wpa_hexdump(MSG_DEBUG, "IEEE 802.1X: Peer ECDH public key",
+			    pubkey, pubkey_len);
 		secret = crypto_ecdh_set_peerkey(sta->eap_auth_data.ecdh, 0,
 						 pubkey, pubkey_len);
 		if (!secret) {
 			wpa_printf(MSG_INFO, "Invalid peer public key");
 			return WLAN_STATUS_UNSPECIFIED_FAILURE;
 		}
-		wpa_hexdump_buf_key(MSG_DEBUG, "DH shared secret", secret);
+		wpa_hexdump_buf_key(MSG_DEBUG, "IEEE 802.1X: ECDH shared secret",
+				    secret);
 		sta->eap_auth_data.dhss = secret;
 	}
 
@@ -4206,6 +4211,8 @@ void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
 		wpabuf_free(sta->fils_g_sta);
 		sta->fils_g_sta = wpabuf_alloc_copy(pos, elem_len);
 		wpabuf_clear_free(sta->fils_dh_ss);
+		wpa_hexdump(MSG_DEBUG, "FILS: Peer ECDH public key",
+			    pos, elem_len);
 		sta->fils_dh_ss = crypto_ecdh_set_peerkey(sta->fils_ecdh, 1,
 							  pos, elem_len);
 		if (!sta->fils_dh_ss) {
@@ -6468,6 +6475,8 @@ static u16 owe_process_assoc_req(struct hostapd_data *hapd,
 		return WLAN_STATUS_FINITE_CYCLIC_GROUP_NOT_SUPPORTED;
 	sta->owe_group = group;
 
+	wpa_hexdump(MSG_DEBUG, "OWE: Peer ECDH public key",
+		    owe_dh + 2, owe_dh_len - 2);
 	secret = crypto_ecdh_set_peerkey(sta->owe_ecdh, 0, owe_dh + 2,
 					 owe_dh_len - 2);
 	secret = wpabuf_zeropad(secret, prime_len);
@@ -6475,7 +6484,7 @@ static u16 owe_process_assoc_req(struct hostapd_data *hapd,
 		wpa_printf(MSG_DEBUG, "OWE: Invalid peer DH public key");
 		return WLAN_STATUS_UNSPECIFIED_FAILURE;
 	}
-	wpa_hexdump_buf_key(MSG_DEBUG, "OWE: DH shared secret", secret);
+	wpa_hexdump_buf_key(MSG_DEBUG, "OWE: ECDH shared secret", secret);
 
 	/* prk = HKDF-extract(C | A | group, z) */
 

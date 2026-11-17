@@ -6610,6 +6610,8 @@ int fils_process_auth(struct wpa_sm *sm, const u8 *bssid, const u8 *data,
 			wpa_printf(MSG_DEBUG, "FILS: No ECDH state available");
 			goto fail;
 		}
+		wpa_hexdump(MSG_DEBUG, "FILS: Peer ECDH public key",
+			    pos, sm->fils_dh_elem_len);
 		dh_ss = crypto_ecdh_set_peerkey(sm->fils_ecdh, 1, pos,
 						sm->fils_dh_elem_len);
 		if (!dh_ss) {
@@ -7570,6 +7572,8 @@ int owe_process_assoc_resp(struct wpa_sm *sm, const u8 *bssid,
 	else
 		return -1;
 
+	wpa_hexdump(MSG_DEBUG, "OWE: Peer ECDH public key",
+		    elems.owe_dh + 2, elems.owe_dh_len - 2);
 	secret = crypto_ecdh_set_peerkey(sm->owe_ecdh, 0,
 					 elems.owe_dh + 2,
 					 elems.owe_dh_len - 2);
@@ -7578,7 +7582,7 @@ int owe_process_assoc_resp(struct wpa_sm *sm, const u8 *bssid,
 		wpa_printf(MSG_DEBUG, "OWE: Invalid peer DH public key");
 		return -1;
 	}
-	wpa_hexdump_buf_key(MSG_DEBUG, "OWE: DH shared secret", secret);
+	wpa_hexdump_buf_key(MSG_DEBUG, "OWE: ECDH shared secret", secret);
 
 	/* prk = HKDF-extract(C | A | group, z) */
 

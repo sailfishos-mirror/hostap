@@ -1070,6 +1070,8 @@ int handle_auth_pasn_1(struct pasn_data *pasn,
 		goto send_resp;
 	}
 
+	wpa_hexdump(MSG_DEBUG, "PASN: Peer ECDH public key",
+		    pasn_params.pubkey, pasn_params.pubkey_len);
 	secret = crypto_ecdh_set_peerkey(pasn->ecdh, inc_y,
 					 pasn_params.pubkey + 1,
 					 pasn_params.pubkey_len - 1);
@@ -1078,6 +1080,7 @@ int handle_auth_pasn_1(struct pasn_data *pasn,
 		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
 		goto send_resp;
 	}
+	wpa_hexdump_buf_key(MSG_DEBUG, "PASN: ECDH shared secret", secret);
 
 	if (!pasn->noauth && (pasn->akmp == WPA_KEY_MGMT_PASN ||
 			      pasn->akmp == WPA_KEY_MGMT_EPPKE) &&

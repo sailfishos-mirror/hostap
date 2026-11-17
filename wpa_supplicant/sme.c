@@ -4240,6 +4240,7 @@ static int sme_802_1x_process_pqc_params(struct wpa_supplicant *wpa_s,
 			return -1;
 		}
 
+		wpa_hexdump(MSG_DEBUG, "Peer DH public key", pos, pubkey_len);
 		wpabuf_clear_free(wpa_s->auth_1x->dhss);
 		wpa_s->auth_1x->dhss =
 			crypto_ecdh_set_peerkey(wpa_s->auth_1x->ecdh, 0,
@@ -4249,6 +4250,8 @@ static int sme_802_1x_process_pqc_params(struct wpa_supplicant *wpa_s,
 				"IEEE 802.1X: Failed to compute PQC DH shared secret");
 			return -1;
 		}
+		wpa_hexdump_buf_key(MSG_DEBUG, "DH shared secret",
+				    wpa_s->auth_1x->dhss);
 		pos += pubkey_len;
 	} else if (wpa_s->auth_1x->ecdh) {
 		wpa_msg(wpa_s, MSG_INFO,
@@ -4310,6 +4313,8 @@ sme_8021x_auth_process_dh_params(struct wpa_supplicant *wpa_s,
 		return -1;
 	}
 
+	wpa_hexdump(MSG_DEBUG, "Peer DH public key", elems->owe_dh + 2,
+		    elems->owe_dh_len - 2);
 	wpa_s->auth_1x->dhss =
 		crypto_ecdh_set_peerkey(wpa_s->auth_1x->ecdh, 0,
 					elems->owe_dh + 2,
@@ -4319,6 +4324,8 @@ sme_8021x_auth_process_dh_params(struct wpa_supplicant *wpa_s,
 			"IEEE 802.1X: Failed to compute DH shared secret");
 		return -1;
 	}
+	wpa_hexdump_buf_key(MSG_DEBUG, "DH shared secret",
+			    wpa_s->auth_1x->dhss);
 
 	return 0;
 }

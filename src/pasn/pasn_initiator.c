@@ -1523,6 +1523,8 @@ int wpas_parse_pasn_frame(struct pasn_data *pasn, u16 auth_type,
 		goto fail;
 	}
 
+	wpa_hexdump(MSG_DEBUG, "PASN: Peer ECDH public key",
+		    pasn_params->pubkey, pasn_params->pubkey_len);
 	secret = crypto_ecdh_set_peerkey(pasn->ecdh, inc_y,
 					 pasn_params->pubkey + 1,
 					 pasn_params->pubkey_len - 1);
@@ -1531,6 +1533,7 @@ int wpas_parse_pasn_frame(struct pasn_data *pasn, u16 auth_type,
 		wpa_printf(MSG_DEBUG, "PASN: Failed to derive shared secret");
 		goto fail;
 	}
+	wpa_hexdump_buf_key(MSG_DEBUG, "PASN: ECDH shared secret", secret);
 
 	if (pasn_params->wrapped_data_format != WPA_PASN_WRAPPED_DATA_NO) {
 		wrapped_data = ieee802_11_defrag(elems.wrapped_data,
