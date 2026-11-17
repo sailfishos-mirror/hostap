@@ -5180,6 +5180,7 @@ static void hapd_initialize_pasn(struct hostapd_data *hapd,
 
 #ifdef CONFIG_TESTING_OPTIONS
 	pasn->corrupt_mic = hapd->conf->pasn_corrupt_mic;
+	pasn->uncompressed = hapd->conf->pasn_ecdh_uncompressed;
 	pasn->pasn_test_groups = hapd->conf->pasn_test_groups;
 	if (hapd->conf->force_kdk_derivation)
 		pasn_enable_kdk_derivation(pasn);

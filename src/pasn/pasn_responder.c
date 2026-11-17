@@ -589,6 +589,7 @@ int handle_auth_pasn_resp(struct pasn_data *pasn, const u8 *own_addr,
 	size_t frame_len, data_len;
 	int ret;
 	const u8 *pmkid = NULL;
+	bool compressed = !pasn->uncompressed;
 
 	wpa_printf(MSG_DEBUG, "PASN: Building frame 2: status=%u", status);
 
@@ -664,9 +665,10 @@ int handle_auth_pasn_resp(struct pasn_data *pasn, const u8 *own_addr,
 		pasn->wrapped_data_format = WPA_PASN_WRAPPED_DATA_NO;
 
 	/* Get public key */
-	pubkey = crypto_ecdh_get_pubkey(pasn->ecdh, 0);
-	pubkey = wpabuf_zeropad(pubkey,
-				crypto_ecdh_prime_len(pasn->ecdh));
+	pubkey = crypto_ecdh_get_pubkey(pasn->ecdh, !compressed);
+	if (compressed)
+		pubkey = wpabuf_zeropad(pubkey,
+					crypto_ecdh_prime_len(pasn->ecdh));
 	if (!pubkey) {
 		wpa_printf(MSG_DEBUG, "PASN: Failed to get pubkey");
 		goto fail;
@@ -685,7 +687,7 @@ int handle_auth_pasn_resp(struct pasn_data *pasn, const u8 *own_addr,
 
 	wpa_pasn_add_parameter_ie(buf, pasn->group,
 				  pasn->wrapped_data_format,
-				  pubkey, true, NULL, 0);
+				  pubkey, compressed, NULL, 0);
 
 	wpabuf_free(pubkey);
 	pubkey = NULL;

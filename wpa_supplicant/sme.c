@@ -1718,6 +1718,7 @@ static int wpas_eppke_initialize(struct wpa_supplicant *wpa_s,
 
 #ifdef CONFIG_TESTING_OPTIONS
 	pasn->corrupt_mic = wpa_s->conf->pasn_corrupt_mic;
+	wpa_s->pasn.uncompressed = wpa_s->conf->pasn_ecdh_uncompressed;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_STA)

@@ -5173,6 +5173,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->force_kdk_derivation = atoi(pos);
 	} else if (os_strcmp(buf, "pasn_corrupt_mic") == 0) {
 		bss->pasn_corrupt_mic = atoi(pos);
+	} else if (os_strcmp(buf, "pasn_ecdh_uncompressed") == 0) {
+		bss->pasn_ecdh_uncompressed = atoi(pos);
 	} else if (os_strcmp(buf, "pasn_test_groups") == 0) {
 		int *groups = NULL;
 

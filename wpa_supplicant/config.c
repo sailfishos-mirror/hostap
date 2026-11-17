@@ -6069,6 +6069,7 @@ static const struct global_parse_data global_fields[] = {
 #ifdef CONFIG_TESTING_OPTIONS
 	{ INT_RANGE(force_kdk_derivation, 0, 1), 0 },
 	{ INT_RANGE(pasn_corrupt_mic, 0, 1), 0 },
+	{ INT_RANGE(pasn_ecdh_uncompressed, 0, 1), 0 },
 #endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_PASN */
 	{ INT_RANGE(mld_force_single_link, 0, 1), 0 },

@@ -1015,6 +1015,7 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
 
 #ifdef CONFIG_TESTING_OPTIONS
 	pasn->corrupt_mic = wpa_s->conf->pasn_corrupt_mic;
+	pasn->uncompressed = wpa_s->conf->pasn_ecdh_uncompressed;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	if (wpa_key_mgmt_sae(awork->akmp))

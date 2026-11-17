@@ -976,6 +976,9 @@ struct hostapd_bss_config {
 	/* If set, corrupt the MIC in the 2nd Authentication frame of PASN */
 	int pasn_corrupt_mic;
 
+	/* If set, use uncompressed format for ECDH public key in PASN */
+	int pasn_ecdh_uncompressed;
+
 	/*
 	 * If set, override Supported Groups element in the 2nd Authentication
 	 * frame of PASN for group negotiation testing.

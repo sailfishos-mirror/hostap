@@ -154,6 +154,9 @@ struct pasn_data {
 	 * PMKSA is available.
 	 */
 	unsigned int test_random_pmkid_count;
+
+	/* Whether to use uncompressed public key format in ECDH */
+	bool uncompressed;
 #endif /* CONFIG_TESTING_OPTIONS */
 	int network_id;
 	void *network_ctx;
