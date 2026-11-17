@@ -2954,7 +2954,7 @@ static u16 prepare_802_1x_dh_param(struct hostapd_data *hapd,
 		return WLAN_STATUS_SUCCESS;
 
 	/* Derive own public key */
-	pub = crypto_ecdh_get_pubkey(sta->eap_auth_data.ecdh, 1);
+	pub = crypto_ecdh_get_pubkey(sta->eap_auth_data.ecdh, 0);
 	if (!pub)
 		return WLAN_STATUS_UNSPECIFIED_FAILURE;
 

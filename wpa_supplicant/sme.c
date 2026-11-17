@@ -4311,7 +4311,7 @@ sme_8021x_auth_process_dh_params(struct wpa_supplicant *wpa_s,
 	}
 
 	wpa_s->auth_1x->dhss =
-		crypto_ecdh_set_peerkey(wpa_s->auth_1x->ecdh, 1,
+		crypto_ecdh_set_peerkey(wpa_s->auth_1x->ecdh, 0,
 					elems->owe_dh + 2,
 					elems->owe_dh_len - 2);
 	if (!wpa_s->auth_1x->dhss) {
