@@ -4271,6 +4271,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->wnm_sleep_mode_no_keys = atoi(pos);
 	} else if (os_strcmp(buf, "bss_transition") == 0) {
 		bss->bss_transition = atoi(pos);
+	} else if (os_strcmp(buf, "ssid_list_activated") == 0) {
+		bss->ssid_list_activated = atoi(pos);
 #endif /* CONFIG_WNM_AP */
 #ifdef CONFIG_INTERWORKING
 	} else if (os_strcmp(buf, "interworking") == 0) {

@@ -1238,7 +1238,8 @@ static enum ssid_match_result ssid_match(struct hostapd_data *hapd,
 	    os_memcmp(ssid, hapd->conf->ssid.ssid, ssid_len) == 0)
 		return EXACT_SSID_MATCH;
 
-	if (ssid_list) {
+#ifdef CONFIG_WNM_AP
+	if (hapd->conf->ssid_list_activated && ssid_list) {
 		pos = ssid_list;
 		end = ssid_list + ssid_list_len;
 		while (end - pos >= 2) {
@@ -1253,6 +1254,7 @@ static enum ssid_match_result ssid_match(struct hostapd_data *hapd,
 			pos += 2 + pos[1];
 		}
 	}
+#endif /* CONFIG_WNM_AP */
 
 	if (short_ssid_list) {
 		pos = short_ssid_list;

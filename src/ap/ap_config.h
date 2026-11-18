@@ -594,6 +594,7 @@ struct hostapd_bss_config {
 	int wnm_sleep_mode;
 	int wnm_sleep_mode_no_keys;
 	int bss_transition;
+	bool ssid_list_activated;
 
 	/* IEEE 802.11u - Interworking */
 	int interworking;

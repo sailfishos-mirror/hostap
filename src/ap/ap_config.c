@@ -204,6 +204,10 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
 	bss->wmm_ac_params[1] = ac_bk;
 	bss->wmm_ac_params[2] = ac_vi;
 	bss->wmm_ac_params[3] = ac_vo;
+
+#ifdef CONFIG_WNM_AP
+	bss->ssid_list_activated = true;
+#endif /* CONFIG_WNM_AP */
 }
 
 

@@ -399,7 +399,8 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx,
 		break;
 	case 3: /* Bits 24-31 */
 #ifdef CONFIG_WNM_AP
-		*pos |= 0x02; /* Bit 25 - SSID List */
+		if (hapd->conf->ssid_list_activated)
+			*pos |= 0x02; /* Bit 25 - SSID List */
 #endif /* CONFIG_WNM_AP */
 		if (hapd->conf->time_advertisement == 2)
 			*pos |= 0x08; /* Bit 27 - UTC TSF Offset */
