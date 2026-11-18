@@ -271,6 +271,9 @@ struct sta_info {
 	/* valid only if session_timeout_set == 1 */
 	struct os_reltime session_timeout;
 
+	/* Status code in the last transmitted Authentication frame */
+	u16 last_tx_auth_status;
+
 	/* Last Authentication/(Re)Association Request/Action frame sequence
 	 * control */
 	u16 last_seq_ctrl;
@@ -339,6 +342,7 @@ struct sta_info {
 	size_t last_tk_len;
 	u8 *sae_postponed_commit;
 	size_t sae_postponed_commit_len;
+	u16 sae_postponed_commit_status;
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifdef CONFIG_AIRTIME_POLICY
 	unsigned int airtime_weight;

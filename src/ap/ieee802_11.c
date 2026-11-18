@@ -1004,6 +1004,7 @@ static int send_auth_reply(struct hostapd_data *hapd, struct sta_info *sta,
 			os_free(sta->sae_postponed_commit);
 			sta->sae_postponed_commit = buf;
 			sta->sae_postponed_commit_len = rlen;
+			sta->sae_postponed_commit_status = resp;
 			return WLAN_STATUS_SUCCESS;
 		}
 
@@ -1016,6 +1017,9 @@ static int send_auth_reply(struct hostapd_data *hapd, struct sta_info *sta,
 						  sta->sae_postponed_commit_len,
 						  0, NULL, 0, 0) < 0)
 				wpa_printf(MSG_INFO, "send_auth_reply: send failed");
+			else
+				sta->last_tx_auth_status =
+					sta->sae_postponed_commit_status;
 			os_free(sta->sae_postponed_commit);
 			sta->sae_postponed_commit = NULL;
 			sta->sae_postponed_commit_len = 0;
@@ -1089,10 +1093,13 @@ static int send_auth_reply(struct hostapd_data *hapd, struct sta_info *sta,
 
 #endif /* CONFIG_IEEE8021X_AUTH */
 
-	if (hostapd_drv_send_mlme(hapd, reply, rlen, 0, NULL, 0, 0) < 0)
+	if (hostapd_drv_send_mlme(hapd, reply, rlen, 0, NULL, 0, 0) < 0) {
 		wpa_printf(MSG_INFO, "send_auth_reply: send failed");
-	else
+	} else {
+		if (sta)
+			sta->last_tx_auth_status = resp;
 		reply_res = WLAN_STATUS_SUCCESS;
+	}
 
 	os_free(buf);
 
@@ -4971,8 +4978,24 @@ static int hapd_pasn_send_mlme(void *ctx, const u8 *data, size_t data_len,
 			       int noack, unsigned int freq, unsigned int wait)
 {
 	struct hostapd_data *hapd = ctx;
+	struct sta_info *sta;
+	int res;
+	const struct ieee80211_mgmt *mgmt;
 
-	return hostapd_drv_send_mlme(hapd, data, data_len, 0, NULL, 0, 0);
+	res = hostapd_drv_send_mlme(hapd, data, data_len, 0, NULL, 0, 0);
+	if (res)
+		return res;
+
+	if (data_len < offsetof(struct ieee80211_mgmt, u.auth.variable))
+		return 0;
+
+	mgmt = (const struct ieee80211_mgmt *) data;
+	sta = ap_get_sta(hapd, mgmt->da);
+	if (!sta)
+		return 0;
+
+	sta->last_tx_auth_status = le_to_host16(mgmt->u.auth.status_code);
+	return 0;
 }
 
 
@@ -9980,6 +10003,14 @@ static void handle_auth_cb(struct hostapd_data *hapd,
 		   " auth_alg=%d auth_transaction=%d status_code=%d ack=%d",
 		   MAC2STR(mgmt->da), auth_alg, auth_transaction, status_code,
 		   ok);
+
+	if (status_code != sta->last_tx_auth_status) {
+		wpa_printf(MSG_DEBUG,
+			   "%s: Discard TX status since the status code in it (%d) does not match last transmitted status code (%d) for "
+			   MACSTR, __func__, status_code,
+			   sta->last_tx_auth_status, MAC2STR(sta->addr));
+		return;
+	}
 
 	if (!ok) {
 		hostapd_logger(hapd, mgmt->da, HOSTAPD_MODULE_IEEE80211,
