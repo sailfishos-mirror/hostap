@@ -9975,6 +9975,11 @@ static void handle_auth_cb(struct hostapd_data *hapd,
 	auth_alg = le_to_host16(mgmt->u.auth.auth_alg);
 	auth_transaction = le_to_host16(mgmt->u.auth.auth_transaction);
 	status_code = le_to_host16(mgmt->u.auth.status_code);
+	wpa_printf(MSG_DEBUG,
+		   "TX status for " MACSTR
+		   " auth_alg=%d auth_transaction=%d status_code=%d ack=%d",
+		   MAC2STR(mgmt->da), auth_alg, auth_transaction, status_code,
+		   ok);
 
 	if (!ok) {
 		hostapd_logger(hapd, mgmt->da, HOSTAPD_MODULE_IEEE80211,
