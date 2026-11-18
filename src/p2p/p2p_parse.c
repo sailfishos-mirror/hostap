@@ -428,7 +428,7 @@ static int p2p_parse_attribute(u8 id, const u8 *data, u16 len,
 		wpa_printf(MSG_DEBUG, "P2P: * PCEA (length=%u)", len);
 		break;
 	case P2P_ATTR_PAIRING_AND_BOOTSTRAPPING:
-		if (len < 1) {
+		if (len < 2) {
 			wpa_printf(MSG_DEBUG, "P2P: Too short PBMA (length %d)",
 				   len);
 			return -1;

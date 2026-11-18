@@ -784,6 +784,10 @@ static void p2p_process_prov_disc_bootstrap_req(struct p2p_data *p2p,
 		}
 	} else {
 		/* PBMA request */
+		if (!pos || msg->pbma_info_len < 2) {
+			p2p_dbg(p2p, "Truncated PBMA");
+			return;
+		}
 		bootstrap = WPA_GET_LE16(pos);
 
 		os_free(dev->bootstrap_params);
