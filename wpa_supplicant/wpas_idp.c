@@ -34,6 +34,9 @@
 #define IDP_PMKSA_LIFETIME 43200
 #define IDP_PMKSA_REAUTH_THRESHOLD (IDP_PMKSA_LIFETIME * 70 / 100)
 
+/* Seconds to wait for a peer to respond a step of the termination exchange */
+#define IDP_TERM_RESPONSE_TIMEOUT_SEC 5
+
 
 /*
  * idp_assign_session_id - Assign an IDP Session ID for a session we serve as AP
@@ -1167,6 +1170,11 @@ int wpas_idp_state_machine(struct wpas_idp_session *session,
 			wpas_notify_idp_established(
 				session->wpa_s, "ap", session->peer_addr,
 				session->connected_sta_mac_addr);
+		} else if (event == IDP_EVENT_TERM_INITIATED) {
+			session->state = IDP_STATE_TERM_WAIT_RESP;
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: ACTIVE_AP -> TERM_WAIT_RESP",
+				   session->id);
 		} else if (event == IDP_EVENT_DISCONNECTED ||
 			   event == IDP_EVENT_FAILURE) {
 			session->state = IDP_STATE_TERMINATING;
@@ -1182,6 +1190,20 @@ int wpas_idp_state_machine(struct wpas_idp_session *session,
 			session->state = IDP_STATE_TERMINATING;
 			wpa_printf(MSG_DEBUG,
 				   "IDP: Session %u: ACTIVE -> TERMINATING",
+				   session->id);
+		} else if (event == IDP_EVENT_TERM_INITIATED) {
+			session->state = IDP_STATE_TERM_WAIT_RESP;
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: ACTIVE -> TERM_WAIT_RESP",
+				   session->id);
+		}
+		break;
+	case IDP_STATE_TERM_WAIT_RESP:
+		if (event == IDP_EVENT_TERM_TIMEOUT ||
+		    event == IDP_EVENT_FAILURE) {
+			session->state = IDP_STATE_TERMINATING;
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: TERM_WAIT_RESP -> TERMINATING",
 				   session->id);
 		}
 		break;
@@ -2630,4 +2652,224 @@ static void idp_failure_teardown(void *eloop_ctx, void *timeout_ctx)
 
 	session->termination.reason = IDP_TERM_REASON_FAILURE;
 	idp_complete_termination(session);
+}
+
+
+/* Build the IDP Termination attribute */
+static struct wpabuf *
+idp_build_termination_attr(struct wpas_idp_session *session,
+			   enum nan_idp_term_type type,
+			   enum nan_idp_term_status status,
+			   u8 handshake_mode, bool ndp_transition)
+{
+	struct wpabuf *buf;
+	u8 type_status, term_info = 0;
+
+	/* Attr ID(1) + Length(2) + Type/Status(1) + Session ID(1) + Info(1) */
+	buf = wpabuf_alloc(NAN_ATTR_HDR_LEN + 3);
+	if (!buf)
+		return NULL;
+
+	wpabuf_put_u8(buf, NAN_ATTR_IDP_TERMINATION);
+	wpabuf_put_le16(buf, 3);
+
+	type_status = type | (status << NAN_IDP_TERM_STATUS_POS);
+	wpabuf_put_u8(buf, type_status);
+
+	wpabuf_put_u8(buf, session->idp_session_id);
+
+	if (handshake_mode == 3)
+		term_info |= NAN_IDP_TERM_INFO_3_WAY;
+	if (ndp_transition)
+		term_info |= NAN_IDP_TERM_INFO_NDP_TRANSITION;
+	wpabuf_put_u8(buf, term_info);
+
+	return buf;
+}
+
+
+/*
+ * idp_send_termination_naf - Send a termination attribute in NAF
+ *
+ * Send the termination indication over both the IDP data path and NAN
+ * management path. Since either path may already be unavailable, successful
+ * delivery on either is sufficient.
+ */
+static int idp_send_termination_naf(struct wpas_idp_session *session,
+				    const struct wpabuf *payload)
+{
+	struct wpa_supplicant *wpa_s = session->wpa_s;
+	struct wpabuf *naf;
+	const u8 *cluster_id;
+	int ret = -1, nmi_ret;
+
+	if (!wpa_s->nan) {
+		wpa_printf(MSG_ERROR, "IDP: NAN is not running");
+		return -1;
+	}
+
+	/* Category(1) + Action(1) + OUI(3) + OUI Type(1) + Subtype(1) */
+	naf = wpabuf_alloc(7 + wpabuf_len(payload));
+	if (!naf)
+		return -1;
+
+	wpabuf_put_u8(naf, WLAN_ACTION_PUBLIC);
+	wpabuf_put_u8(naf, WLAN_PA_VENDOR_SPECIFIC);
+	wpabuf_put_be24(naf, OUI_WFA);
+	wpabuf_put_u8(naf, NAN_NAF_OUI_TYPE);
+	wpabuf_put_u8(naf, NAN_SUBTYPE_IDP_TERMINATE);
+	wpabuf_put_buf(naf, payload);
+
+	cluster_id = nan_get_cluster_id(wpa_s->nan);
+
+	if (session->group_wpa_s && session->group_wpa_s != wpa_s &&
+	    !is_zero_ether_addr(session->iface_addr)) {
+		const u8 *peer = wpas_idp_get_peer_idp_addr(session);
+		u8 op_class = session->channel.operating_class;
+		u8 channel = session->channel.channel_number;
+		int freq = session->group_wpa_s->assoc_freq;
+
+		if (!freq && op_class && channel)
+			freq = ieee80211_chan_to_freq(NULL, op_class, channel);
+
+		ret = wpa_drv_send_action(session->group_wpa_s, freq, 0,
+					  peer ? peer : session->peer_addr,
+					  session->iface_addr, cluster_id,
+					  wpabuf_head(naf), wpabuf_len(naf), 1);
+		if (ret < 0)
+			wpa_printf(MSG_DEBUG,
+				   "IDP: Session %u: termination not sent on the data path",
+				   session->id);
+	}
+
+	nmi_ret = nan_send_peer_naf(wpa_s->nan, session->peer_addr, naf);
+	if (nmi_ret < 0)
+		wpa_printf(MSG_DEBUG,
+			   "IDP: Session %u: termination not sent on the management interface",
+			   session->id);
+	if (ret < 0)
+		ret = nmi_ret;
+
+	wpabuf_free(naf);
+
+	return ret;
+}
+
+
+/**
+ * wpas_idp_initiate_termination - Start tearing an IDP link down
+ * @session: Session to terminate
+ * @reason: Why the link is being torn down
+ * @handshake_mode: 2 for request and response, 3 to also expect a confirm
+ * @ndp_transition: Whether a NAN data path takes over from this link
+ * Returns: 0 if the request was sent, -1 otherwise
+ *
+ * Request termination of the IDP session and wait for the peer's response.
+ * If no response is received, the timeout handler completes local session
+ * teardown.
+ */
+static int
+wpas_idp_initiate_termination(struct wpas_idp_session *session,
+			      enum wpas_idp_termination_reason reason,
+			      u8 handshake_mode, bool ndp_transition)
+{
+	struct wpabuf *frame;
+	int ret;
+
+	if (session->termination.termination_in_progress) {
+		wpa_printf(MSG_INFO, "IDP: Session %u is already terminating",
+			   session->id);
+		return -1;
+	}
+
+	if (handshake_mode != 2 && handshake_mode != 3) {
+		wpa_printf(MSG_INFO, "IDP: Handshake mode must be 2 or 3");
+		return -1;
+	}
+
+	if (session->state != IDP_STATE_ACTIVE_AP &&
+	    session->state != IDP_STATE_ACTIVE_STA &&
+	    session->state != IDP_STATE_PEER_CONNECTED) {
+		wpa_printf(MSG_INFO,
+			   "IDP: Session %u has no link to terminate (state %d)",
+			   session->id, session->state);
+		return -1;
+	}
+
+	os_memset(&session->termination, 0, sizeof(session->termination));
+	session->termination.termination_in_progress = true;
+	session->termination.is_initiator = true;
+	session->termination.reason = reason;
+	session->termination.handshake_mode = handshake_mode;
+	session->termination.ndp_transition = ndp_transition;
+	session->termination.expected_response = NAN_IDP_TERM_TYPE_RESPONSE;
+	os_get_reltime(&session->termination.request_time);
+
+	frame = idp_build_termination_attr(session, NAN_IDP_TERM_TYPE_REQUEST,
+					   NAN_IDP_TERM_STATUS_CONTINUED,
+					   handshake_mode, ndp_transition);
+	if (!frame)
+		goto fail;
+
+	ret = idp_send_termination_naf(session, frame);
+	wpabuf_free(frame);
+	if (ret < 0) {
+		wpa_printf(MSG_INFO,
+			   "IDP: Session %u: could not send the termination request",
+			   session->id);
+		goto fail;
+	}
+
+	wpa_printf(MSG_INFO,
+		   "IDP: Session %u: asked " MACSTR
+		   " to terminate (mode=%u ndp=%d reason=%d)",
+		   session->id, MAC2STR(session->peer_addr), handshake_mode,
+		   ndp_transition, reason);
+
+	wpas_idp_state_machine(session, IDP_EVENT_TERM_INITIATED);
+	eloop_register_timeout(IDP_TERM_RESPONSE_TIMEOUT_SEC, 0,
+			       idp_termination_timeout, session, NULL);
+
+	return 0;
+
+fail:
+	os_memset(&session->termination, 0, sizeof(session->termination));
+
+	return -1;
+}
+
+
+/**
+ * wpas_idp_terminate - Start tearing down the IDP link with a peer
+ * @wpa_s: Interface holding the NAN context
+ * @peer_addr: Peer NAN management interface address
+ * @reason: Termination reason
+ * @handshake_mode: 2 for a two-step exchange, 3 to also expect a confirm
+ * @ndp_transition: Whether the link is giving way to a NAN data path
+ * Returns: 0 on success, -1 on failure
+ *
+ * @handshake_mode selects whether the peer is also expected to confirm.
+ * @ndp_transition says the link is giving way to a NAN data path rather than
+ * simply terminating, which is something the peer may want to act on.
+ */
+int wpas_idp_terminate(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+		       enum wpas_idp_termination_reason reason,
+		       u8 handshake_mode, bool ndp_transition)
+{
+	struct wpas_idp_session *session;
+
+	if (!wpa_s->global->idp) {
+		wpa_printf(MSG_INFO, "IDP: Not initialized");
+		return -1;
+	}
+
+	session = wpas_idp_get_session_by_peer(wpa_s, peer_addr);
+	if (!session) {
+		wpa_printf(MSG_INFO, "IDP: No session with " MACSTR,
+			   MAC2STR(peer_addr));
+		return -1;
+	}
+
+	return wpas_idp_initiate_termination(session, reason, handshake_mode,
+					    ndp_transition);
 }
