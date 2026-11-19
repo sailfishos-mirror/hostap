@@ -5454,7 +5454,7 @@ static void wpas_nan_usd_start_listen_cb(struct wpa_radio_work *work,
 				     wpa_s, ELOOP_ALL_CTX);
 		/* Pass freq as a pointer; lwork will already been freed when
 		 * the timeout is executed. */
-		eloop_register_timeout(0, 500,
+		eloop_register_timeout(0, 500000,
 				       wpas_nan_usd_remain_on_channel_timeout,
 				       wpa_s,
 				       (void *) (uintptr_t) freq);
