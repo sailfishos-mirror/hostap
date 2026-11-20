@@ -664,12 +664,12 @@ static int wpa_ft_action_send(struct wpa_authenticator *wpa_auth,
 
 static const u8 * wpa_ft_get_psk(struct wpa_authenticator *wpa_auth,
 				 const u8 *addr, const u8 *p2p_dev_addr,
-				 const u8 *prev_psk)
+				 const u8 *prev_psk, int *vlan_id)
 {
 	if (wpa_auth->cb->get_psk == NULL)
 		return NULL;
 	return wpa_auth->cb->get_psk(wpa_auth->cb_ctx, addr, p2p_dev_addr,
-				     prev_psk, NULL, NULL);
+				     prev_psk, NULL, vlan_id);
 }
 
 
@@ -2953,12 +2953,13 @@ static int wpa_ft_psk_pmk_r1(struct wpa_state_machine *sm,
 	const u8 *ssid = wpa_auth->conf.ssid;
 	size_t ssid_len = wpa_auth->conf.ssid_len;
 	int pairwise;
+	int vlan_id = 0;
 
 	pairwise = sm->pairwise;
 
 	for (;;) {
 		pmk = wpa_ft_get_psk(wpa_auth, sm->addr, sm->p2p_dev_addr,
-				     pmk);
+				     pmk, &vlan_id);
 		if (pmk == NULL)
 			break;
 
@@ -2980,6 +2981,16 @@ static int wpa_ft_psk_pmk_r1(struct wpa_state_machine *sm,
 			*out_pairwise = pairwise;
 		os_memcpy(sm->PMK, pmk, PMK_LEN);
 		sm->pmk_len = PMK_LEN;
+#ifndef CONFIG_NO_VLAN
+		if (out_vlan && vlan_id) {
+			/* The VLAN ID of the PSK replaces the VLAN of the STA
+			 * as in wpa_auth_update_vlan() after the 4-way
+			 * handshake. */
+			os_memset(out_vlan, 0, sizeof(*out_vlan));
+			out_vlan->notempty = 1;
+			out_vlan->untagged = vlan_id;
+		} else
+#endif /* CONFIG_NO_VLAN */
 		if (out_vlan &&
 		    wpa_ft_get_vlan(sm->wpa_auth, sm->addr, out_vlan) < 0) {
 			wpa_printf(MSG_DEBUG, "FT: vlan not available for STA "
