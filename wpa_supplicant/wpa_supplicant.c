@@ -5997,13 +5997,17 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 	 */
 	if (wpa_s->num_multichan_concurrent < 2) {
 		int freq, num;
+		int target_freq = params.freq.freq ? params.freq.freq :
+			params.freq_hint;
+
 		num = get_shared_radio_freqs(wpa_s, &freq, 1, false);
-		if (num > 0 && freq > 0 && freq != params.freq.freq) {
+		if (num > 0 && freq > 0 && target_freq > 0 &&
+		    freq != target_freq) {
 			wpa_printf(MSG_DEBUG,
 				   "Assoc conflicting freq found (%d != %d)",
-				   freq, params.freq.freq);
+				   freq, target_freq);
 			if (wpas_p2p_handle_frequency_conflicts(
-				    wpa_s, params.freq.freq, ssid) < 0) {
+				    wpa_s, target_freq, ssid) < 0) {
 				wpas_connect_work_done(wpa_s);
 				os_free(wpa_ie);
 				return;
