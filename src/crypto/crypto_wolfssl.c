@@ -2450,6 +2450,14 @@ fail:
 }
 
 
+struct crypto_ec_key * crypto_ec_key_set_priv(int group,
+					      const u8 *raw, size_t raw_len)
+{
+	wpa_printf(MSG_ERROR, "wolfSSL:%s not yet implemented", __func__);
+	return NULL;
+}
+
+
 int crypto_ec_key_group(struct crypto_ec_key *key)
 {
 
