@@ -7683,6 +7683,7 @@ void ieee80211_ml_build_assoc_resp(struct hostapd_data *hapd,
 	u8 buf[EHT_ML_MAX_STA_PROF_LEN];
 	u8 *p = buf;
 	size_t buflen = sizeof(buf);
+	u8 *end = p + buflen;
 
 	/* Capability Info */
 	WPA_PUT_LE16(p, hostapd_own_capab_info(hapd));
@@ -7719,7 +7720,7 @@ void ieee80211_ml_build_assoc_resp(struct hostapd_data *hapd,
 		}
 	}
 
-	p = hostapd_eid_ext_capab(hapd, p, false);
+	p = hostapd_eid_ext_capab(hapd, p, end - p, false);
 
 
 	assoc_sta = hostapd_ml_get_assoc_sta(hapd, sta, &assoc_hapd);
@@ -8367,7 +8368,7 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 	}
 #endif /* CONFIG_IEEE80211AX */
 
-	p = hostapd_eid_ext_capab(hapd, p, false);
+	p = hostapd_eid_ext_capab(hapd, p, end - p, false);
 	p = hostapd_eid_bss_max_idle_period(hapd, p,
 					    sta ? sta->max_idle_period : 0);
 	if (sta && sta->qos_map_enabled)
@@ -12138,9 +12139,10 @@ static size_t hostapd_mbssid_ext_capa(struct hostapd_data *bss,
 	size_t ext_capa_len, ext_capa_tx_len;
 
 	ext_capa_tx_end = hostapd_eid_ext_capab(tx_bss, ext_capa_tx,
-						true);
+						sizeof(ext_capa_tx), true);
 	ext_capa_tx_len = ext_capa_tx_end - ext_capa_tx;
-	ext_capa_end = hostapd_eid_ext_capab(bss, ext_capa, true);
+	ext_capa_end = hostapd_eid_ext_capab(bss, ext_capa, sizeof(ext_capa),
+					     true);
 	ext_capa_len = ext_capa_end - ext_capa;
 	if (ext_capa_tx_len != ext_capa_len ||
 	    os_memcmp(ext_capa_tx, ext_capa, ext_capa_len) != 0) {

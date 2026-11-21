@@ -928,7 +928,7 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
 
 	/* Probe Response frames always include all non-TX profiles except
 	 * when a list of known BSSes is included in the Probe Request frame. */
-	pos = hostapd_eid_ext_capab(hapd, pos,
+	pos = hostapd_eid_ext_capab(hapd, pos, epos - pos,
 				    hapd->iconf->mbssid >= MBSSID_ENABLED &&
 				    !params->known_bss_len);
 
@@ -2465,7 +2465,8 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 			 params->mbssid.mbssid_elem_count == 1);
 	}
 
-	tailpos = hostapd_eid_ext_capab(hapd, tailpos, complete);
+	tailpos = hostapd_eid_ext_capab(hapd, tailpos, tailend - tailpos,
+					complete);
 
 	/*
 	 * TODO: Time Advertisement element should only be included in some

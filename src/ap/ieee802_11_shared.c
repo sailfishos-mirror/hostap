@@ -531,7 +531,7 @@ static void hostapd_clear_ext_capab_byte(struct hostapd_data *hapd,
 }
 
 
-u8 * hostapd_eid_ext_capab(struct hostapd_data *hapd, u8 *eid,
+u8 * hostapd_eid_ext_capab(struct hostapd_data *hapd, u8 *eid, size_t max_len,
 			   bool mbssid_complete)
 {
 	u8 *pos = eid;
@@ -539,6 +539,12 @@ u8 * hostapd_eid_ext_capab(struct hostapd_data *hapd, u8 *eid,
 
 	if (len < hapd->iface->extended_capa_len)
 		len = hapd->iface->extended_capa_len;
+	if (len > max_len) {
+		wpa_printf(MSG_INFO,
+			   "%s: Not enough room for Extended Capabilities element (len=%u max_len=%zu)",
+			   __func__, len, max_len);
+		return eid;
+	}
 
 	*pos++ = WLAN_EID_EXT_CAPAB;
 	*pos++ = len;

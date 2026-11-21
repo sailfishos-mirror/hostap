@@ -76,7 +76,7 @@ int hostapd_build_ap_extra_ies(struct hostapd_data *hapd,
 			       struct wpabuf **assocresp_ret)
 {
 	struct wpabuf *beacon = NULL, *proberesp = NULL, *assocresp = NULL;
-	u8 buf[208], *pos;
+	u8 buf[208], *pos, *end = &buf[0] + sizeof(buf);
 #ifdef CONFIG_P2P
 	u8 rsn_override[3 * (2 + 255)];
 	size_t len;
@@ -101,7 +101,7 @@ int hostapd_build_ap_extra_ies(struct hostapd_data *hapd,
 		goto fail;
 
 	pos = buf;
-	pos = hostapd_eid_ext_capab(hapd, pos, false);
+	pos = hostapd_eid_ext_capab(hapd, pos, end - pos, false);
 	if (add_buf_data(&assocresp, buf, pos - buf) < 0)
 		goto fail;
 	pos = hostapd_eid_interworking(hapd, pos);
