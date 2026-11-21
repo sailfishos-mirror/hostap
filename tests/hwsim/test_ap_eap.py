@@ -3919,6 +3919,8 @@ def test_ap_wpa2_eap_fast_pac_file(dev, apdev, params):
                     pac_file=pac_file2)
     finally:
         try:
+            with open(pac_file, "r") as f:
+                logger.info("pac_file:\n" + f.read())
             os.remove(pac_file)
         except:
             pass
