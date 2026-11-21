@@ -12237,8 +12237,12 @@ static size_t hostapd_eid_mbssid_elem_len(struct hostapd_data *hapd,
 		if (ie_count)
 			nontx_profile_len += 4 + ie_count + 1;
 
-		if (len + nontx_profile_len > 255)
+		if (len + nontx_profile_len > 255) {
+			wpa_printf(MSG_DEBUG,
+				   "MBSSID: Not enough room for BSS index %zu (len=%zu nontx_profile_len=%zu)",
+				   i, len, nontx_profile_len);
 			break;
+		}
 
 		len += nontx_profile_len;
 	}
@@ -12289,6 +12293,7 @@ size_t hostapd_eid_mbssid_len(struct hostapd_data *hapd_probed, u32 frame_type,
 
 	while (bss_index < hapd->iface->num_bss) {
 		size_t rnr_count = bss_index;
+		size_t start_bss_index = bss_index;
 
 		len += hostapd_eid_mbssid_elem_len(hapd_probed, frame_type,
 						   &bss_index, known_bss,
@@ -12310,6 +12315,8 @@ size_t hostapd_eid_mbssid_len(struct hostapd_data *hapd_probed, u32 frame_type,
 				hostapd_mbssid_get_tx_bss(hapd), frame_type,
 				&skip_profiles, &rnr_cur_len);
 		}
+		if (start_bss_index == bss_index)
+			break;
 	}
 
 	if (hapd->iconf->mbssid == ENHANCED_MBSSID_ENABLED && rnr_len)
@@ -12494,6 +12501,7 @@ u8 * hostapd_eid_mbssid(struct hostapd_data *hapd_probed, u8 *eid, u8 *end,
 
 	while (bss_index < hapd->iface->num_bss) {
 		unsigned int rnr_start_count = bss_index;
+		size_t start_bss_index = bss_index;
 
 		if (frame_stype == WLAN_FC_STYPE_BEACON) {
 			if (elem_index == elem_count) {
@@ -12526,6 +12534,9 @@ u8 * hostapd_eid_mbssid(struct hostapd_data *hapd_probed, u8 *eid, u8 *end,
 				hostapd_mbssid_get_tx_bss(hapd), frame_stype,
 				rnr_eid, &skip_profiles, &cur_len);
 		}
+
+		if (start_bss_index == bss_index)
+			break;
 	}
 
 	if (add_rnr && (size_t) (rnr_eid - rnr_start_eid) < rnr_len) {
