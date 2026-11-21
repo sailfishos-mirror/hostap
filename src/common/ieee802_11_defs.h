@@ -650,6 +650,9 @@
 #define WLAN_EXT_CAPAB_KNOWN_STA_IDENTIFICATION 102
 #define WLAN_EXT_CAPAB_EXT_LEN_ELEMENT 117
 
+/* The largest octet in which extended capabilities bits have been defined */
+#define EXT_CAPAB_DEFINED_OCTETS 15
+
 /* Extended RSN Capabilities */
 /* bits 0-3: Field length (n-1) */
 #define WLAN_RSNX_CAPAB_PROTECTED_TWT 4

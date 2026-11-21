@@ -2323,22 +2323,6 @@ fail:
 #endif /* CONFIG_DPP2 */
 
 
-static int get_hex_config(u8 *buf, size_t max_len, int line,
-			  const char *field, const char *val)
-{
-	size_t hlen = os_strlen(val), len = hlen / 2;
-	u8 tmp[EXT_CAPA_MAX_LEN];
-
-	os_memset(tmp, 0, EXT_CAPA_MAX_LEN);
-	if (hlen & 1 || len > EXT_CAPA_MAX_LEN || hexstr2bin(val, tmp, len)) {
-		wpa_printf(MSG_ERROR, "Line %d: Invalid %s", line, field);
-		return -1;
-	}
-	os_memcpy(buf, tmp, EXT_CAPA_MAX_LEN);
-	return 0;
-}
-
-
 #ifdef CONFIG_IEEE80211BE
 static int get_u16(const char *pos, int line, u16 *ret_val)
 {
@@ -5210,12 +5194,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->urnm_mfpr_x20 = !!atoi(pos);
 #endif /* CONFIG_PASN */
 	} else if (os_strcmp(buf, "ext_capa_mask") == 0) {
-		if (get_hex_config(bss->ext_capa_mask, EXT_CAPA_MAX_LEN,
-				   line, "ext_capa_mask", pos))
+		if (parse_wpabuf_hex(line, buf, &bss->ext_capa_mask, pos))
 			return 1;
 	} else if (os_strcmp(buf, "ext_capa") == 0) {
-		if (get_hex_config(bss->ext_capa, EXT_CAPA_MAX_LEN,
-				   line, "ext_capa", pos))
+		if (parse_wpabuf_hex(line, buf, &bss->ext_capa, pos))
 			return 1;
 	} else if (os_strcmp(buf, "rnr") == 0) {
 		bss->rnr = atoi(pos);

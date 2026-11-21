@@ -1031,6 +1031,9 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 
 	wpabuf_clear_free(conf->sae_pw_id_key);
 
+	wpabuf_free(conf->ext_capa_mask);
+	wpabuf_free(conf->ext_capa);
+
 	os_free(conf);
 }
 

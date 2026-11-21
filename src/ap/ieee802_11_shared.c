@@ -535,10 +535,14 @@ u8 * hostapd_eid_ext_capab(struct hostapd_data *hapd, u8 *eid, size_t max_len,
 			   bool mbssid_complete)
 {
 	u8 *pos = eid;
-	u8 len = EXT_CAPA_MAX_LEN, i;
+	u8 len = EXT_CAPAB_DEFINED_OCTETS, i;
 
 	if (len < hapd->iface->extended_capa_len)
 		len = hapd->iface->extended_capa_len;
+#ifdef CONFIG_TESTING_OPTIONS
+	if (hapd->conf->ext_capa && wpabuf_len(hapd->conf->ext_capa) > len)
+		len = wpabuf_len(hapd->conf->ext_capa);
+#endif /* CONFIG_TESTING_OPTIONS */
 	if (len > max_len) {
 		wpa_printf(MSG_INFO,
 			   "%s: Not enough room for Extended Capabilities element (len=%u max_len=%zu)",
@@ -556,16 +560,18 @@ u8 * hostapd_eid_ext_capab(struct hostapd_data *hapd, u8 *eid, size_t max_len,
 			*pos |= hapd->iface->extended_capa[i];
 		}
 
-		if (i < EXT_CAPA_MAX_LEN) {
-			*pos &= ~hapd->conf->ext_capa_mask[i];
-			*pos |= hapd->conf->ext_capa[i];
-		}
-
 		/*
 		 * Clear Extended Capabilities bits for features
 		 * disabled through hostapd configuration
 		 */
 		hostapd_clear_ext_capab_byte(hapd, pos, i);
+
+		if (hapd->conf->ext_capa_mask &&
+		    i < wpabuf_len(hapd->conf->ext_capa_mask))
+			*pos &= ~wpabuf_head_u8(hapd->conf->ext_capa_mask)[i];
+		if (hapd->conf->ext_capa &&
+		    i < wpabuf_len(hapd->conf->ext_capa))
+			*pos |= wpabuf_head_u8(hapd->conf->ext_capa)[i];
 	}
 
 	while (len > 0 && eid[1 + len] == 0) {
