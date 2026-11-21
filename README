@@ -22,6 +22,18 @@ configuration (.config) and running 'make' there (for Linux/BSD/cygwin
 builds).
 
 
+Reporting of security issues
+----------------------------
+
+A private email to the maintainer of the project, Jouni Malinen <j@w1.fi>
+is the preferred option for initial reporting of security issues. Such
+reports can be encrypted with PGP/GPG, if desired, with the
+PGP key from https://w1.fi/jouni-pgp.asc.
+
+The security advisories for the project are available at
+https://w1.fi/security/
+
+
 License
 -------
 
