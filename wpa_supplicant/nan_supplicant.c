@@ -6082,7 +6082,9 @@ int wpas_nan_transmit(struct wpa_supplicant *wpa_s, int handle,
 	if (!wpa_s->nan_de)
 		return -1;
 
+#ifdef CONFIG_NAN
 	nan_setup_transient_peer(wpa_s->nan, peer_addr);
+#endif /* CONFIG_NAN */
 
 	return nan_de_transmit(wpa_s->nan_de, handle, ssi, elems, peer_addr,
 			       req_instance_id, NULL, cookie, 0);
