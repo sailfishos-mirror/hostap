@@ -519,7 +519,11 @@ static void eap_fast_write(char **buf, char **pos, size_t *buf_len,
 			return;
 		*pos += ret;
 		for (i = 0; i < len; i++) {
-			ret = os_snprintf(*pos, end - *pos, "%c", data[i]);
+			char ch = data[i];
+
+			if (ch < 32 || ch >= 127)
+				ch = '_';
+			ret = os_snprintf(*pos, end - *pos, "%c", ch);
 			if (os_snprintf_error(end - *pos, ret))
 				return;
 			*pos += ret;
