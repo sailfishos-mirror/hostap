@@ -172,7 +172,7 @@ else
 
 	mkdir -p /var/run/dbus
 	touch /var/run/dbus/hwsim-test
-	chown messagebus.messagebus /var/run/dbus
+	chown messagebus:messagebus /var/run/dbus
 	dbus-daemon --config-file=$TESTDIR/vm/dbus.conf --fork
 
 	cd $TESTDIR
