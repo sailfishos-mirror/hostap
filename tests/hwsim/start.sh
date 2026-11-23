@@ -105,7 +105,9 @@ else
     TRACE=""
 fi
 
-$DIR/stop.sh
+if [ -z "$VM" ]; then
+    $DIR/stop.sh
+fi
 
 TMP=$1
 if [ x${TMP%=[0-9]*} = "xchannels" ]; then
