@@ -360,15 +360,9 @@ void * ieee802_1x_notify_create_actor(struct wpa_supplicant *wpa_s,
 					EAP_EXCHANGE, false);
 
 fail:
-	if (msk) {
-		os_memset(msk, 0, sizeof(*msk));
-		os_free(msk);
-	}
+	bin_clear_free(msk, sizeof(*msk));
 	os_free(ckn);
-	if (cak) {
-		os_memset(cak, 0, sizeof(*cak));
-		os_free(cak);
-	}
+	bin_clear_free(cak, sizeof(*cak));
 
 	return res;
 }
