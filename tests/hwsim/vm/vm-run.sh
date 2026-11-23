@@ -18,7 +18,7 @@ MEMORY=256
 # Some ubuntu systems (notably 12.04) have issues with this - since the guest
 # mounts as read-only it should be safe to not specify ,readonly. Override in
 # vm-config if needed (see below)
-ROTAG=,readonly
+ROTAG=,readonly=on
 
 # set this to ttyS0 to see kvm messages (if something doesn't work)
 KVMOUT=ttyS1
