@@ -42,6 +42,8 @@ fi
 if [ -z "$KERNEL" ] ; then
 	if [ -e $KERNELDIR/arch/x86_64/boot/bzImage ]; then
 		KERNEL=$KERNELDIR/arch/x86_64/boot/bzImage
+	elif [ -e $KERNELDIR/arch/arm64/boot/Image ]; then
+		KERNEL=$KERNELDIR/arch/arm64/boot/Image
 	elif [ -e $KERNELDIR/linux ]; then
 		KERNEL=$KERNELDIR/linux
 	else
