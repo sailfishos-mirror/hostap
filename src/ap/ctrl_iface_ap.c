@@ -813,14 +813,11 @@ int hostapd_ctrl_iface_poll_sta(struct hostapd_data *hapd,
 static u8 hostapd_ap_maxnss(struct hostapd_data *hapd)
 {
 	struct hostapd_hw_modes *mode = hapd->iface->current_mode;
-	struct hostapd_config *conf = hapd->iface->conf;
-	u8 rx_nss, max_nss = 1, nss;
-	u8 mcs_count;
+	u8 rx_nss, max_nss = 1;
 	u16 mcs_map;
 	u8 mcs;
 	const u8 *mcs_set;
-	const u16 *he_mcs_set;
-	int i, j;
+	int i;
 
 	if (!mode)
 		return max_nss;
@@ -847,8 +844,13 @@ static u8 hostapd_ap_maxnss(struct hostapd_data *hapd)
 		}
 	}
 
+#ifdef CONFIG_IEEE80211AX
 	if (hostapd_is_he_enabled(hapd)) {
-		switch (conf->he_oper_chwidth) {
+		const u16 *he_mcs_set;
+		u8 mcs_count;
+		int j;
+
+		switch (hapd->iface->conf->he_oper_chwidth) {
 		case CONF_OPER_CHWIDTH_80P80MHZ:
 			mcs_count = 3;
 			break;
@@ -875,10 +877,14 @@ static u8 hostapd_ap_maxnss(struct hostapd_data *hapd)
 			}
 		}
 	}
+#endif /* CONFIG_IEEE80211AX */
 
+#ifdef CONFIG_IEEE80211BE
 	if (hostapd_is_eht_enabled(hapd)) {
-		mcs_count = 1;
-		switch (conf->eht_oper_chwidth) {
+		u8 mcs_count = 1;
+		u8 nss;
+
+		switch (hapd->iface->conf->eht_oper_chwidth) {
 		case CONF_OPER_CHWIDTH_320MHZ:
 			mcs_count++;
 			/* fallthrough */
@@ -898,6 +904,7 @@ static u8 hostapd_ap_maxnss(struct hostapd_data *hapd)
 				max_nss = nss;
 		}
 	}
+#endif /* CONFIG_IEEE80211BE */
 
 	return max_nss;
 }

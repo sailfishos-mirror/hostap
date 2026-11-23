@@ -2825,13 +2825,11 @@ static int hostapd_ctrl_iface_color_change(struct hostapd_iface *iface,
 
 static u8 hostapd_maxnss(struct hostapd_data *hapd, struct sta_info *sta)
 {
-	u8 rx_nss, max_nss = 1, nss;
-	u8 mcs_count;
+	u8 rx_nss, max_nss = 1;
 	u16 mcs_map;
 	u8 mcs;
 	const u8 *mcs_set;
-	const u16 *he_mcs_set;
-	int i, j;
+	int i;
 
 	if (sta->ht_capabilities && (sta->flags & WLAN_STA_HT)) {
 		mcs_set = sta->ht_capabilities->supported_mcs_set;
@@ -2855,7 +2853,12 @@ static u8 hostapd_maxnss(struct hostapd_data *hapd, struct sta_info *sta)
 		}
 	}
 
+#ifdef CONFIG_IEEE80211AX
 	if (sta->he_capab && (sta->flags & WLAN_STA_HE)) {
+		const u16 *he_mcs_set;
+		u8 mcs_count;
+		int j;
+
 		switch (hapd->iface->conf->he_oper_chwidth) {
 		case CONF_OPER_CHWIDTH_80P80MHZ:
 			mcs_count = 3;
@@ -2882,9 +2885,13 @@ static u8 hostapd_maxnss(struct hostapd_data *hapd, struct sta_info *sta)
 			}
 		}
 	}
+#endif /* CONFIG_IEEE80211AX */
 
+#ifdef CONFIG_IEEE80211BE
 	if (sta->eht_capab && (sta->flags & WLAN_STA_EHT)) {
-		mcs_count = 1;
+		u8 mcs_count = 1;
+		u8 nss;
+
 		switch (hapd->iface->conf->eht_oper_chwidth) {
 		case CONF_OPER_CHWIDTH_320MHZ:
 			mcs_count++;
@@ -2905,6 +2912,7 @@ static u8 hostapd_maxnss(struct hostapd_data *hapd, struct sta_info *sta)
 				max_nss = nss;
 		}
 	}
+#endif /* CONFIG_IEEE80211BE */
 
 	return max_nss;
 }
