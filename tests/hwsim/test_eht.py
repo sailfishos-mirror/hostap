@@ -36,7 +36,7 @@ def _eht_get_links_bitmap(wpas, name):
         (wpas.get_driver_status_field("phyname"), wpas.ifname, name)
 
     if wpas.cmd_execute(["ls", vfile])[0] != 0:
-        logger_info("%s not supported in mac80211: %s" % (name, vfile))
+        logger.info("%s not supported in mac80211: %s" % (name, vfile))
         return 0
 
     res, out = wpas.cmd_execute(["cat", vfile], shell=True)
