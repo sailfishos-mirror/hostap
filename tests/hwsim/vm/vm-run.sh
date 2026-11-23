@@ -168,6 +168,8 @@ fi
 A+="ro"
 
 if [ -z $KVM ]; then
+	A+="TIMETRAVEL=1"
+
 	UML_ARGS="mem=${MEMORY}M \
 	     LOGDIR=$LOGDIR \
 	     umid=hwsim-$DATE \

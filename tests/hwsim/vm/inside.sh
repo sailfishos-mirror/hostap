@@ -152,7 +152,9 @@ if [ "$TELNET" = "1" ] ; then
 fi
 
 # procps 3.3.17 needs an uptime of >1s (relevant for UML time-travel)
-sleep 1
+if [ "$TIMETRAVEL" = "1" ] ; then
+    sleep 1
+fi
 
 # check if we're rebooting due to a kernel panic ...
 if grep -q 'Kernel panic' /tmp/logs/console ; then
