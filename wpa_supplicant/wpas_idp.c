@@ -38,6 +38,10 @@
 #define IDP_TERM_RESPONSE_TIMEOUT_SEC 5
 
 
+static int wpas_idp_setup_ap(struct wpas_idp_session *session);
+static int wpas_idp_setup_sta(struct wpas_idp_session *session);
+
+
 /*
  * idp_assign_session_id - Assign an IDP Session ID for a session we serve as AP
  * @session: Session to assigned in ID for
@@ -207,7 +211,7 @@ wpas_idp_get_session_by_peer(struct wpa_supplicant *wpa_s, const u8 *peer_addr)
  * global session list. Only one session per peer is allowed, so allocation
  * fails if a session for this peer already exists.
  */
-struct wpas_idp_session *
+static struct wpas_idp_session *
 wpas_idp_alloc_session(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 		       enum wpas_idp_role role)
 {
@@ -1384,7 +1388,7 @@ static int wpas_idp_set_ap_beacon_elems(struct wpas_idp_session *session)
  * negotiated BSSID, SSID, and operating channel. Report the result to the state
  * machine through IDP_EVENT_AP_UP on success or IDP_EVENT_FAILURE on failure.
  */
-int wpas_idp_setup_ap(struct wpas_idp_session *session)
+static int wpas_idp_setup_ap(struct wpas_idp_session *session)
 {
 	struct wpa_supplicant *iface_wpa_s;
 	struct wpa_ssid *ssid_conf;
@@ -1574,7 +1578,7 @@ fail:
  * authenticate using a PMKSA derived from the PASN exchange and therefore
  * requests Open authentication to use PMKSA caching.
  */
-int wpas_idp_setup_sta(struct wpas_idp_session *session)
+static int wpas_idp_setup_sta(struct wpas_idp_session *session)
 {
 	struct wpa_supplicant *iface_wpa_s;
 	struct wpa_ssid *ssid_conf;

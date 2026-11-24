@@ -231,9 +231,6 @@ bool wpas_idp_peer_supports_idp(struct wpa_supplicant *wpa_s,
 
 struct wpas_idp_session *
 wpas_idp_get_session_by_peer(struct wpa_supplicant *wpa_s, const u8 *peer_addr);
-struct wpas_idp_session *
-wpas_idp_alloc_session(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
-		       enum wpas_idp_role role);
 struct wpas_idp_pending_request *
 wpas_idp_get_pending_request_by_peer(struct wpa_supplicant *wpa_s,
 				     const u8 *peer_addr);
@@ -266,9 +263,6 @@ wpas_idp_init_interface(struct wpa_supplicant *wpa_s,
 void wpas_idp_remove_interface(struct wpa_supplicant *wpa_s,
 			       struct wpas_idp_session *session);
 
-/* AP and STA bring-up */
-int wpas_idp_setup_ap(struct wpas_idp_session *session);
-int wpas_idp_setup_sta(struct wpas_idp_session *session);
 void wpas_idp_add_sdf_info_attr(struct wpa_supplicant *wpa_s,
 				struct wpabuf *buf);
 
