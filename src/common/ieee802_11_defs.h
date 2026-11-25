@@ -3412,7 +3412,7 @@ struct ieee80211_uhr_capabilities {
 #define UHR_OPER_CTRL_DPS_OP_PARAMS_PRES    0x0200
 #define UHR_OPER_CTRL_NPCA_OP_PARAMS_PRES   0x0400
 #define UHR_OPER_CTRL_P_EDCA_OP_PARAMS_PRES 0x0800
-#define UHR_OPER_CTRL_DPE_OP_PARAMS_PRES    0x1000
+#define UHR_OPER_CTRL_DBE_OP_PARAMS_PRES    0x1000
 
 /* UHR Operation element format */
 struct ieee80211_uhr_operation {

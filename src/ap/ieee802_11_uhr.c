@@ -130,7 +130,7 @@ u8 * hostapd_eid_uhr_operation(struct hostapd_data *hapd, u8 *eid, bool beacon)
 	/* UHR Operation Parameters field */
 
 	if (!beacon && hapd->iconf->dbe_bandwidth) {
-		oper_ctrl |= UHR_OPER_CTRL_DPE_OP_PARAMS_PRES;
+		oper_ctrl |= UHR_OPER_CTRL_DBE_OP_PARAMS_PRES;
 
 		/* DBE Operation Parameters field */
 		*pos = hapd->iconf->dbe_bandwidth;
