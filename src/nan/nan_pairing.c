@@ -1904,6 +1904,7 @@ static int nan_pairing_process_elems(struct nan_data *nan_data,
 	size_t ies_len;
 	const u8 *buf;
 	struct wpabuf *ie_buf;
+	struct ieee802_11_elems elems;
 	struct nan_attrs attrs;
 	int ret;
 
@@ -1916,11 +1917,11 @@ static int nan_pairing_process_elems(struct nan_data *nan_data,
 	ies = mgmt->u.auth.variable;
 	ies_len = len - offsetof(struct ieee80211_mgmt, u.auth.variable);
 
-	buf = get_vendor_ie(ies, ies_len, NAN_IE_VENDOR_TYPE);
-	if (!buf)
+	if (ieee802_11_parse_elems(ies, ies_len, &elems, 0) == ParseFailed ||
+	    !elems.nan_ie)
 		return -1;
 
-	ie_buf = ieee802_11_defrag(buf + 2, buf[1], false);
+	ie_buf = ieee802_11_defrag(elems.nan_ie, elems.nan_len, false);
 	if (!ie_buf)
 		return -1;
 
@@ -2141,7 +2142,7 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 	u16 auth_alg, auth_transaction, status_code;
 	int ret;
 	struct wpabuf *nan_ie;
-	const u8 *buf;
+	struct ieee802_11_elems elems;
 
 	if (len < offsetof(struct ieee80211_mgmt, u.auth.variable))
 		return -1;
@@ -2211,17 +2212,17 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 		return nan_pairing_handle_auth_3(nan_data, peer, mgmt, len);
 	}
 
-	buf = get_vendor_ie(mgmt->u.auth.variable,
-			    len - offsetof(struct ieee80211_mgmt,
-					   u.auth.variable),
-			    NAN_IE_VENDOR_TYPE);
-	if (!buf) {
+	if (ieee802_11_parse_elems(mgmt->u.auth.variable,
+				   len - offsetof(struct ieee80211_mgmt,
+						  u.auth.variable),
+				   &elems, 0) == ParseFailed ||
+	    !elems.nan_ie) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Pairing: NAN pairing element not found in Authentication frame 1");
 		return -1;
 	}
 
-	nan_ie = ieee802_11_defrag(buf + 2, buf[1], false);
+	nan_ie = ieee802_11_defrag(elems.nan_ie, elems.nan_len, false);
 	if (!nan_ie) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Pairing: No NAN element in PASN Authentication frame");

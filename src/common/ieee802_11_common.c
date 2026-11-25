@@ -596,6 +596,8 @@ static ParseRes __ieee802_11_parse_elems(const u8 *start, size_t len,
 							     elems,
 							     show_errors))
 				unknown++;
+			else if (elems->nan_ie == pos)
+				total_len = &elems->nan_len;
 			break;
 		case WLAN_EID_RSN:
 			elems->rsn_ie = pos;
