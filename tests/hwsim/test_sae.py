@@ -3896,3 +3896,136 @@ def test_sae_wrong_password_two_ssids(dev, apdev):
     if "[id=%d " % id2 not in ev:
         raise Exception("Unexpected network used: " + ev)
     hapd2.wait_sta()
+
+def test_sae_proto_pw_id_change_1(dev, apdev):
+    """SAE protocol testing - Password Identifier changing between Commit messages"""
+    run_sae_proto_pw_id_change(dev, apdev)
+
+def test_sae_proto_pw_id_change_2(dev, apdev):
+    """SAE protocol testing - Password Identifier changing between Commit messages and an Pw Id configured"""
+    run_sae_proto_pw_id_change(dev, apdev, id_in_use=True)
+
+def test_sae_proto_pw_id_change_3(dev, apdev):
+    """SAE protocol testing - Password Identifier changing between Commit messages and an Pw Id configured"""
+    run_sae_proto_pw_id_change(dev, apdev, id_in_use=True, rejected_groups=True)
+
+def test_sae_proto_pw_id_change_4(dev, apdev):
+    """SAE protocol testing - Password Identifier changing between Commit messages"""
+    run_sae_proto_pw_id_change(dev, apdev, rejected_groups=True)
+
+def test_sae_proto_pw_id_change_5(dev, apdev):
+    """SAE protocol testing - Password Identifier changing between Commit messages"""
+    run_sae_proto_pw_id_change(dev, apdev, use_wpa_passphrase=True)
+
+def run_sae_proto_pw_id_change(dev, apdev, id_in_use=False,
+                               rejected_groups=False, use_wpa_passphrase=False):
+    check_sae_capab(dev[0])
+    try:
+        dev[0].set("sae_pwe", "2")
+        _run_sae_proto_pw_id_change(dev, apdev, id_in_use, rejected_groups,
+                                    use_wpa_passphrase)
+    finally:
+        dev[0].set("sae_pwe", "0")
+
+def _run_sae_proto_pw_id_change(dev, apdev, id_in_use=False,
+                                rejected_groups=False,
+                                use_wpa_passphrase=False):
+    params = hostapd.wpa2_params(ssid="test-sae")
+    params['wpa_key_mgmt'] = 'SAE'
+    if use_wpa_passphrase:
+        params['wpa_passphrase'] = "12345678"
+        if id_in_use:
+            params['sae_password'] = ["foo|id=test"]
+    else:
+        params['sae_password'] = ["12345678"]
+        if id_in_use:
+            params['sae_password'] += ["foo|id=test"]
+    params['sae_pwe'] = '2'
+    params['sae_groups'] = '19 20 21'
+    hapd = hostapd.add_ap(apdev[0], params)
+    bssid = apdev[0]['bssid']
+
+    dev[0].set("sae_groups", "20 19")
+
+    dev[0].scan_for_bss(bssid, freq=2412)
+    hapd.set("ext_mgmt_frame_handling", "1")
+    dev[0].connect("test-sae", sae_password="12345678", key_mgmt="SAE",
+                   scan_freq="2412", wait_connect=False)
+
+    logger.info("Commit")
+    for i in range(0, 10):
+        req = hapd.mgmt_rx()
+        if req is None:
+            raise Exception("MGMT RX wait timed out (commit)")
+        if req['subtype'] == 11:
+            break
+        req = None
+    if not req:
+        raise Exception("Authentication frame (commit) not received")
+
+    hapd.dump_monitor()
+
+    # Inject a Password Identifier element with unknown password identifier into
+    # the frame. In addition, add an unexpected Rejected Groups element, if
+    # used for the test case, to bypass some earlier protection in hostapd.
+    frame = binascii.hexlify(req['frame']).decode()
+    pw_id_elem = 'ff06217077206964'
+    rejected_groups_elem = 'ff035c1500'
+    extra = pw_id_elem
+    if rejected_groups:
+        extra += rejected_groups_elem;
+    logger.info("Commit (modified)")
+    hapd.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=" + frame + extra)
+    logger.info("Commit")
+    hapd.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=" + frame)
+
+    logger.info("Confirm")
+    for i in range(0, 10):
+        req = hapd.mgmt_rx()
+        if req is None:
+            raise Exception("MGMT RX wait timed out (confirm)")
+        if req['subtype'] == 11:
+            trans, = struct.unpack('<H', req['payload'][2:4])
+            if trans == 1:
+                logger.info("Extra Commit")
+                hapd.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=" + binascii.hexlify(req['frame']).decode())
+                continue
+            break
+        req = None
+    if not req:
+        raise Exception("Authentication frame (confirm) not received")
+
+    hapd.dump_monitor()
+    hapd.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=" + binascii.hexlify(req['frame']).decode())
+
+    logger.info("Association Request")
+    for i in range(0, 10):
+        req = hapd.mgmt_rx()
+        if req is None:
+            raise Exception("MGMT RX wait timed out (AssocReq)")
+        if req['subtype'] == 0:
+            break
+        req = None
+    if not req:
+        raise Exception("Association Request frame not received")
+
+    hapd.dump_monitor()
+    hapd.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=" + binascii.hexlify(req['frame']).decode())
+    for i in range(0, 10):
+        ev = hapd.wait_event(["MGMT-TX-STATUS"], timeout=5)
+        if ev is None:
+            raise Exception("Management frame TX status not reported (1)")
+        if "stype=11 ok=1" in ev:
+            continue
+        if "stype=12 ok=1" in ev:
+            continue
+        if "stype=1 ok=1" not in ev:
+            raise Exception("Unexpected management frame TX status (1): " + ev)
+        cmd = "MGMT_TX_STATUS_PROCESS %s" % (" ".join(ev.split(' ')[1:4]))
+        if "OK" not in hapd.request(cmd):
+            raise Exception("MGMT_TX_STATUS_PROCESS failed")
+        break
+
+    hapd.set("ext_mgmt_frame_handling", "0")
+
+    dev[0].wait_connected()
