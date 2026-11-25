@@ -1798,22 +1798,19 @@ int wpa_pasn_auth_tx_status(struct pasn_data *pasn,
 	const struct ieee80211_mgmt *mgmt =
 		(const struct ieee80211_mgmt *) data;
 
-	wpa_printf(MSG_DEBUG, "PASN: auth_tx_status: acked=%u", acked);
-
 	if (!is_pasn_auth_frame(pasn, mgmt, data_len, false))
 		return -1;
 
 	if (mgmt->u.auth.auth_transaction != host_to_le16(pasn->trans_seq)) {
-		wpa_printf(MSG_ERROR,
-			   "PASN: Invalid transaction sequence: (%u != %u)",
+		wpa_printf(MSG_INFO,
+			   "PASN: Unexpected transaction sequence: (%u != %u) in TX status",
 			   pasn->trans_seq,
 			   le_to_host16(mgmt->u.auth.auth_transaction));
 		return 0;
 	}
 
-	wpa_printf(MSG_ERROR,
-		   "PASN: auth with trans_seq=%u, acked=%u", pasn->trans_seq,
-		   acked);
+	wpa_printf(MSG_DEBUG, "PASN: auth with trans_seq=%u, acked=%u",
+		   pasn->trans_seq, acked);
 
 	/*
 	 * Even if the frame was not acked, do not treat this is an error, and
