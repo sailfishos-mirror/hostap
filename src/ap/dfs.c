@@ -1031,7 +1031,8 @@ static int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
 		.vht.caps = cmode->vht_capab,
 		.he.cap = &cmode->he_capab[ieee80211_mode],
 		.eht.cap = &cmode->eht_capab[ieee80211_mode],
-		.eht.punct_bitmap = hostapd_get_punct_bitmap(iface->bss[0]),
+		.eht.punct_bitmap =
+			hostapd_get_punct_bitmap(iface->bss[0], false),
 	};
 
 	err = hostapd_set_freq_params(&csa_settings.freq_params, &info);

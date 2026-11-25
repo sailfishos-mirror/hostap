@@ -85,7 +85,7 @@ static void set_ht_param(struct hostapd_data *hapd,
 	int secondary_channel = hapd->iconf->secondary_channel;
 #ifdef CONFIG_IEEE80211BE
 	enum oper_chan_width chwidth = hostapd_get_oper_chwidth(hapd->iconf);
-	u16 bw = 0, punct_bitmap = hostapd_get_punct_bitmap(hapd);
+	u16 bw = 0, punct_bitmap = hostapd_get_punct_bitmap(hapd, true);
 	u8 offset, chan_bit_pos;
 
 	switch (chwidth) {

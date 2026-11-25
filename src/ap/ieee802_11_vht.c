@@ -88,7 +88,7 @@ u8 * hostapd_eid_vht_operation(struct hostapd_data *hapd, u8 *eid)
 	u8 seg0 = hapd->iconf->vht_oper_centr_freq_seg0_idx;
 	u8 seg1 = hapd->iconf->vht_oper_centr_freq_seg1_idx;
 #ifdef CONFIG_IEEE80211BE
-	u16 punct_bitmap = hostapd_get_punct_bitmap(hapd);
+	u16 punct_bitmap = hostapd_get_punct_bitmap(hapd, true);
 #endif /* CONFIG_IEEE80211BE */
 
 	if (is_6ghz_op_class(hapd->iconf->op_class))

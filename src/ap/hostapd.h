@@ -971,7 +971,16 @@ static inline bool hostapd_mld_is_first_bss(struct hostapd_data *hapd)
 
 #endif /* CONFIG_IEEE80211BE */
 
-u16 hostapd_get_punct_bitmap(struct hostapd_data *hapd);
+/**
+ * hostapd_get_punct_bitmap - Get the puncturing bitmap of a BSS
+ * @hapd: BSS context
+ * @include_override: Whether the eht_oper_puncturing_override testing option
+ *	may be used when no puncturing bitmap is configured. This is allowed
+ *	only when building the advertised elements and channel information;
+ *	driver/channel configuration must pass %false.
+ * Returns: The puncturing bitmap to use
+ */
+u16 hostapd_get_punct_bitmap(struct hostapd_data *hapd, bool include_override);
 
 void hostapd_get_oper_chan_info_of_bss(struct hostapd_data *hapd,
 				       enum oper_chan_width *width,

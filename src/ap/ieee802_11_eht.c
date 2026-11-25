@@ -118,7 +118,7 @@ u8 * hostapd_eid_eht_operation(struct hostapd_data *hapd, u8 *eid)
 	enum oper_chan_width chwidth;
 	size_t elen = 1 + 4;
 	bool eht_oper_info_present;
-	u16 punct_bitmap = hostapd_get_punct_bitmap(hapd);
+	u16 punct_bitmap = hostapd_get_punct_bitmap(hapd, true);
 
 	if (!hapd->iface->current_mode)
 		return eid;

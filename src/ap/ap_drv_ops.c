@@ -701,7 +701,7 @@ int hostapd_set_freq(struct hostapd_data *hapd, enum hostapd_hw_mode mode,
 		.vht.caps = cmode ? cmode->vht_capab : 0,
 		.he.cap = cmode ? &cmode->he_capab[IEEE80211_MODE_AP] : NULL,
 		.eht.cap = cmode ? &cmode->eht_capab[IEEE80211_MODE_AP] : NULL,
-		.eht.punct_bitmap = hostapd_get_punct_bitmap(hapd),
+		.eht.punct_bitmap = hostapd_get_punct_bitmap(hapd, false),
 	};
 
 	if (hostapd_set_freq_params(&data, &info))
@@ -1155,7 +1155,7 @@ int hostapd_start_dfs_cac(struct hostapd_iface *iface,
 		.vht.caps = cmode ? cmode->vht_capab : 0,
 		.he.cap = cmode ? &cmode->he_capab[IEEE80211_MODE_AP] : NULL,
 		.eht.cap = cmode ? &cmode->eht_capab[IEEE80211_MODE_AP] : NULL,
-		.eht.punct_bitmap = hostapd_get_punct_bitmap(hapd),
+		.eht.punct_bitmap = hostapd_get_punct_bitmap(hapd, false),
 	};
 
 	if (!hapd->driver || !hapd->driver->start_dfs_cac || !cmode)

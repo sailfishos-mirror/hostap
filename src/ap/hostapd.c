@@ -4605,7 +4605,8 @@ int hostapd_change_config_freq(struct hostapd_data *hapd,
 			NULL,
 			.eht.cap = mode ? &mode->eht_capab[IEEE80211_MODE_AP] :
 			NULL,
-			.eht.punct_bitmap = hostapd_get_punct_bitmap(hapd),
+			.eht.punct_bitmap =
+				hostapd_get_punct_bitmap(hapd, false),
 		};
 
 		if (hostapd_set_freq_params(old_params, &info))
@@ -5445,14 +5446,14 @@ u8 hostapd_get_active_links(struct hostapd_data *hapd)
 #endif /* CONFIG_IEEE80211BE */
 
 
-u16 hostapd_get_punct_bitmap(struct hostapd_data *hapd)
+u16 hostapd_get_punct_bitmap(struct hostapd_data *hapd, bool include_override)
 {
 	u16 punct_bitmap = 0;
 
 #ifdef CONFIG_IEEE80211BE
 	punct_bitmap = hapd->iconf->punct_bitmap;
 #ifdef CONFIG_TESTING_OPTIONS
-	if (!punct_bitmap)
+	if (include_override && !punct_bitmap)
 		punct_bitmap = hapd->conf->eht_oper_puncturing_override;
 #endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_IEEE80211BE */
@@ -5550,7 +5551,7 @@ void hostapd_get_oper_chan_info_of_bss(struct hostapd_data *hapd,
 	 * capable interface for punctured channel and 320 MHz bandwidth cases.
 	 */
 	if (hapd->iconf->ieee80211be && !hostapd_is_eht_enabled(hapd)) {
-		u16 punct_bitmap = hostapd_get_punct_bitmap(hapd);
+		u16 punct_bitmap = hostapd_get_punct_bitmap(hapd, true);
 
 		if (punct_bitmap)
 			punct_update_legacy_bw(punct_bitmap,

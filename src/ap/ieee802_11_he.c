@@ -169,7 +169,7 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
 		u8 seg1 = hostapd_get_oper_centr_freq_seg1_idx(hapd->iconf);
 		u8 control;
 #ifdef CONFIG_IEEE80211BE
-		u16 punct_bitmap = hostapd_get_punct_bitmap(hapd);
+		u16 punct_bitmap = hostapd_get_punct_bitmap(hapd, true);
 
 		if (punct_bitmap) {
 			oper_chwidth = hostapd_get_oper_chwidth(hapd->iconf);
