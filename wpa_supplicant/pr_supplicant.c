@@ -513,6 +513,7 @@ static int wpas_pr_trigger_ranging(struct wpa_supplicant *wpa_s,
 
 	/* Populate ranging params */
 	params->ranging_op_class = op_class;
+	params->freq = freq;
 	params->channel_width = channel_width;
 	params->format_bw = format_bw;
 	params->center_freq1 = center_freq1;
@@ -1027,6 +1028,11 @@ void wpas_pr_measurement_result(struct wpa_supplicant *wpa_s,
 			   (unsigned long long) result->cookie);
 		return;
 	}
+
+	/* The driver does not report the ranging frequency; use the negotiated
+	 * one from the ranging request. */
+	if (pr && pr->pr_pasn_params && pr->pr_pasn_params->freq > 0)
+		result->ftm.ranging_freq = pr->pr_pasn_params->freq;
 
 	/* Forward result to upper layer - includes failures and final */
 	if (result->ftm.has_data || result->ftm.fail)

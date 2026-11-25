@@ -7906,6 +7906,7 @@ union wpa_event_data {
 			u8 availability_window;
 			u32 band_width;
 			u32 preamble;
+			u32 ranging_freq;
 			bool is_delayed_lmr;
 			/* Flag indicating if FTM data is present */
 			bool has_data;
