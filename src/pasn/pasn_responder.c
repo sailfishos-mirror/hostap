@@ -589,7 +589,11 @@ int handle_auth_pasn_resp(struct pasn_data *pasn, const u8 *own_addr,
 	size_t frame_len, data_len;
 	int ret;
 	const u8 *pmkid = NULL;
+#ifdef CONFIG_TESTING_OPTIONS
 	bool compressed = !pasn->uncompressed;
+#else /* CONFIG_TESTING_OPTIONS */
+	bool compressed = true;
+#endif /* CONFIG_TESTING_OPTIONS */
 
 	wpa_printf(MSG_DEBUG, "PASN: Building frame 2: status=%u", status);
 

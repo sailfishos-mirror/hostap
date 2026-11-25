@@ -639,7 +639,11 @@ struct wpabuf * wpas_pasn_build_auth_1(struct pasn_data *pasn,
 	const u8 *data;
 	size_t data_len;
 	u8 *copy = NULL;
+#ifdef CONFIG_TESTING_OPTIONS
 	bool compressed = !pasn->uncompressed;
+#else /* CONFIG_TESTING_OPTIONS */
+	bool compressed = true;
+#endif /* CONFIG_TESTING_OPTIONS */
 
 	wpa_printf(MSG_DEBUG, "PASN: Building frame 1");
 
