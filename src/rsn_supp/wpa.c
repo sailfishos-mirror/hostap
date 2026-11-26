@@ -4782,10 +4782,7 @@ void wpa_sm_notify_disassoc(struct wpa_sm *sm)
 	sm->ft_reassoc_completed = 0;
 	sm->ft_protocol = 0;
 #endif /* CONFIG_IEEE80211R */
-#ifdef CONFIG_ENC_ASSOC
-	sm->eppke_completed = 0;
-	sm->eap_over_auth_frame_completed = 0;
-#endif /* CONFIG_ENC_ASSOC */
+	wpa_sm_clear_enc_assoc_completed(sm);
 
 	/* Keys are not needed in the WPA state machine anymore */
 	wpa_sm_drop_sa(sm);
@@ -7965,8 +7962,7 @@ int process_encrypted_assoc_resp(struct wpa_sm *sm, int valid_links,
 	if (!sm)
 		return -1;
 
-	sm->eppke_completed = 0;
-	sm->eap_over_auth_frame_completed = 0;
+	wpa_sm_clear_enc_assoc_completed(sm);
 
 	if (!sm->ptk_set) {
 		wpa_printf(MSG_DEBUG, "ENC_ASSOC: No KEK available");
