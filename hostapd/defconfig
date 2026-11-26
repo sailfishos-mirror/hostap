@@ -162,7 +162,7 @@ CONFIG_IPV6=y
 #CONFIG_IEEE80211BE=y
 
 # Simultaneous Authentication of Equals (SAE), WPA3-Personal
-#CONFIG_SAE=y
+CONFIG_SAE=y
 
 # SAE Public Key, WPA3-Personal
 #CONFIG_SAE_PK=y
