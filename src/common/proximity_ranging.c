@@ -678,6 +678,12 @@ static void pr_buf_add_edca_capa_info(struct wpabuf *buf,
 	u8 ranging_role = 0;
 	size_t _len;
 
+	if (edca_data->channels.op_classes == 0) {
+		wpa_printf(MSG_DEBUG,
+			   "PR: No channels supported for EDCA - skip attribute");
+		return;
+	}
+
 	/* Proximity Ranging EDCA Capability Attribute */
 	wpabuf_put_u8(buf, PR_ATTR_EDCA_CAPABILITY);
 	len = wpabuf_put(buf, 2); /* Attribute length to be filled */
@@ -707,6 +713,12 @@ static void pr_buf_add_ntb_capa_info(struct wpabuf *buf,
 	u8 *len;
 	u8 ranging_role = 0;
 	size_t _len;
+
+	if (ntb_data->channels.op_classes == 0) {
+		wpa_printf(MSG_DEBUG,
+			   "PR: No channels supported for NTB - skip attribute");
+		return;
+	}
 
 	/* Proximity Ranging 11az NTB Capability Attribute */
 	wpabuf_put_u8(buf, PR_ATTR_NTB_CAPABILITY);
