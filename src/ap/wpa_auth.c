@@ -6872,9 +6872,13 @@ int wpa_auth_pmksa_add(struct wpa_state_machine *sm, const u8 *pmk,
 		       unsigned int pmk_len,
 		       int session_timeout, struct eapol_state_machine *eapol)
 {
+	struct rsn_pmksa_cache *pmksa;
+
 	if (!sm || sm->wpa != WPA_VERSION_WPA2 ||
 	    sm->wpa_auth->conf.disable_pmksa_caching)
 		return -1;
+
+	pmksa = sm->wpa_auth->pmksa;
 
 #ifdef CONFIG_IEEE80211R_AP
 	if (pmk_len >= 2 * PMK_LEN && wpa_key_mgmt_ft(sm->wpa_key_mgmt) &&
@@ -6893,7 +6897,11 @@ int wpa_auth_pmksa_add(struct wpa_state_machine *sm, const u8 *pmk,
 	}
 
 	wpa_hexdump_key(MSG_DEBUG, "RSN: Cache PMK", pmk, pmk_len);
-	if (pmksa_cache_auth_add(sm->wpa_auth->pmksa, pmk, pmk_len, NULL,
+#ifdef CONFIG_IEEE80211BE
+	if (sm->wpa_auth->is_ml && sm->mld_assoc_link_id >= 0)
+		pmksa = sm->wpa_auth->ml_pmksa;
+#endif /* CONFIG_IEEE80211BE */
+	if (pmksa_cache_auth_add(pmksa, pmk, pmk_len, NULL,
 				 sm->PTK.kck, sm->PTK.kck_len,
 				 wpa_auth_get_aa(sm),
 				 wpa_auth_get_spa(sm), session_timeout,
