@@ -85,7 +85,7 @@ struct pasn_data {
 	 * Extra elements to add into Authentication frames. These can be used,
 	 * e.g., for Wi-Fi Aware use cases.
 	 */
-	const u8 *extra_ies;
+	u8 *extra_ies;
 	size_t extra_ies_len;
 
 	/* Security Profile element to include in PASN Auth frame 1 only. */

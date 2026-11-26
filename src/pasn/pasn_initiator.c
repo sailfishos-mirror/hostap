@@ -966,7 +966,7 @@ void wpa_pasn_reset(struct pasn_data *pasn)
 	pasn->custom_pmkid_valid = false;
 
 	if (pasn->extra_ies) {
-		os_free((u8 *) pasn->extra_ies);
+		os_free(pasn->extra_ies);
 		pasn->extra_ies = NULL;
 	}
 

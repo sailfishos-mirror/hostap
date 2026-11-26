@@ -39,6 +39,7 @@ void pasn_data_deinit(struct pasn_data *pasn)
 	wpabuf_free(pasn->auth1);
 	os_free(pasn->dec_pw_id);
 	wpabuf_free(pasn->security_profile);
+	os_free(pasn->extra_ies);
 	bin_clear_free(pasn, sizeof(struct pasn_data));
 }
 
@@ -219,7 +220,7 @@ int pasn_set_extra_ies(struct pasn_data *pasn, const u8 *extra_ies,
 		return -1;
 
 	if (pasn->extra_ies) {
-		os_free((u8 *) pasn->extra_ies);
+		os_free(pasn->extra_ies);
 		pasn->extra_ies_len = 0;
 	}
 
